@@ -80,6 +80,11 @@ einer bewussten Aktivierung und einer Rückfrage geladen. Plugins laufen mit den
 Rechten des App-Hauptprozesses; installiere daher nur Dateien, denen du
 vertraust.
 
+Eine `.js`-Datei, die du über *Einstellungen → Plugins* auswählst oder auf den
+Plugin-Bereich ziehst, wird von CleanMusic in deinen Profil-Plugin-Ordner
+kopiert. Die App prüft nicht, ob die Datei vertrauenswürdig oder ihr Verhalten
+zulässig ist.
+
 Nutzer:innen sind selbst dafür verantwortlich, welche Plugins sie installieren
 und verwenden. Ein Plugin kann Dienste oder Inhalte auf eine Weise nutzen, die
 den Nutzungsbedingungen des jeweiligen Anbieters widerspricht. CleanMusic prüft

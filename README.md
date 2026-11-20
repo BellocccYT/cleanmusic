@@ -3,6 +3,8 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
+**Version 0.7.1**
+
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
 mit gespeichertem Login. Lokale Musik, Radio und **30-Sekunden-Vorschauen**
@@ -16,6 +18,20 @@ selbst in den Plugin-Ordner legst und bewusst aktivierst. Es werden **keine
 Plugins mitgeliefert**.
 
 Kein DRM-Bypass. Kein Herunterladen oder Speichern von Streams.
+
+## Einblicke
+
+<p align="center">
+  <img src="docs/images/01-startseite.png" alt="CleanMusic-Startseite mit Suche, Diensten und Charts" width="100%">
+</p>
+
+<table>
+  <tr><th>Cutter-Modus</th><th>Vollbild-Player mit Visualizer</th></tr>
+  <tr>
+    <td><img src="docs/images/03-cutter.png" alt="Cutter-Modus mit NCS-Kategorien, Titelliste und Video-Credits" width="100%"></td>
+    <td><img src="docs/images/04-vollbild-player.png" alt="Vollbild-Player mit Visualizer und Warteschlange" width="100%"></td>
+  </tr>
+</table>
 
 ---
 
@@ -156,12 +172,15 @@ CleanMusic kann **Quellen-Plugins** laden – einzelne `.js`-Dateien, die weiter
 Quellen für Suche, volle Titel und Vorschläge anbinden. **Es werden keine
 Plugins mitgeliefert.**
 
-1. *Einstellungen → Plugins → Plugin-Ordner öffnen* (liegt im App-Profil,
-   z. B. `%APPDATA%\CleanMusic\plugins`; bei der portablen EXE zusätzlich
-   `plugins\` neben der EXE).
-2. Plugin-Datei hineinlegen, *Neu einlesen*.
-3. Das Plugin erscheint **ausgeschaltet**. Erst beim Aktivieren wird es geladen –
-   mit einer Rückfrage, denn Plugins laufen mit vollen Rechten.
+1. Wähle in *Einstellungen → Plugins* **Plugin-Datei hinzufügen …** und öffne
+   eine `.js`-Datei. Du kannst sie auch per Drag & Drop auf den Plugin-Bereich
+   ziehen. CleanMusic kopiert die Datei in deinen Plugin-Ordner im App-Profil
+   (z. B. `%APPDATA%\CleanMusic\plugins`).
+2. Die Plugin-Liste wird automatisch neu eingelesen. Das Plugin bleibt
+   **ausgeschaltet**. Erst beim Aktivieren wird es geladen – nach einer
+   Rückfrage, denn Plugins laufen mit vollen Rechten.
+3. Liegt im Profil schon eine Datei mit demselben Namen, fragt CleanMusic vor
+   dem Überschreiben. Nach dem Ersetzen bleibt das Plugin ausgeschaltet.
 
 Ein aktives Plugin kann:
 
@@ -174,7 +193,7 @@ Ein aktives Plugin kann:
 Was ein Plugin tut und ob das bei der jeweiligen Quelle erlaubt ist, liegt in
 der Verantwortung von dir bzw. der Person, die das Plugin geschrieben hat.
 Die Schnittstelle (Plugin-API v1) ist in [docs/PLUGIN-API.md](docs/PLUGIN-API.md)
-beschrieben.
+beschrieben. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
 
 ---
 
@@ -242,10 +261,13 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-0.7.0-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-0.7.1-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
+
+`release/` bleibt aus Git ausgeschlossen. Für eine Weitergabe hängst du die
+portable EXE als Asset an ein GitHub Release, statt sie ins Repository zu committen.
 
 Die EXE ist nicht code-signiert. Windows SmartScreen zeigt beim ersten Start
 „Windows hat den PC geschützt" → **Weitere Informationen** →
@@ -261,7 +283,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-0.7.0.AppImage`.
+Ergebnis: `release/CleanMusic-0.7.1.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die
@@ -389,6 +411,7 @@ Die vollständige Einordnung inklusive GitHub-/AppImage-Risiken steht in
 ## Struktur
 
 ```
+AGENTS.md               Kontext und Regeln für künftige Code-Sitzungen
 main.js                 Electron-Hauptprozess, Fenster, IPC, Widevine, Dateiscan,
                         Katalog/Charts/Radio, Vorschläge, Cutter-Quellen, Plugin-Lader,
                         Discord-Steuerung, Smoke-Test
@@ -403,6 +426,7 @@ renderer/
   app.js                Navigation, Webviews, Bibliothek, Favoriten, Playlists,
                         Vorschläge, Cutter-Modus, Vollbild-Player, Player
   musickit.html/.js     optionale Apple-MusicKit-Wiedergabe
+docs/                   Plugin-API und Screenshots für die README
 plugins/                Lokale Plugin-Dateien – nicht Teil des Repositorys oder der Builds
 ```
 
