@@ -4379,6 +4379,18 @@
       drag = null;
     });
 
+    // Files dropped anywhere else must not be opened by the browser engine.
+    const isFileDrag = (event) =>
+      Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes('Files');
+    document.addEventListener('dragover', (event) => {
+      if (!isFileDrag(event) || event.defaultPrevented) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'none';
+    });
+    document.addEventListener('drop', (event) => {
+      if (isFileDrag(event) && !event.defaultPrevented) event.preventDefault();
+    });
+
     const settingsView = $('#view-settings');
     const hasFiles = (event) => Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes('Files');
     settingsView.addEventListener('dragover', (event) => {

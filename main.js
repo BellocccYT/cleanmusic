@@ -489,11 +489,12 @@ function createMainWindow() {
     return { action: 'deny' };
   });
 
+  // The shell is a single page and never navigates itself. Block every
+  // navigation – including file:// (a file dropped onto the window would
+  // otherwise replace the whole UI) – and send web links to the browser.
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('file://')) {
-      event.preventDefault();
-      if (/^https?:\/\//i.test(url)) shell.openExternal(url);
-    }
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
   });
 
   if (isDev || isSmoke) {
