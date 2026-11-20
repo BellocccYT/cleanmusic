@@ -1,0 +1,67 @@
+{
+  "name": "cleanmusic",
+  "productName": "CleanMusic",
+  "version": "0.7.0",
+  "private": true,
+  "description": "CleanMusic – The Music Launcher. Alle Streaming-Dienste an einem Ort, lokale Wiedergabe, Favoriten, Playlists, Cutter-Modus, Vollbild-Player mit Visualizer, Discord Rich Presence und optionale Quellen-Plugins.",
+  "author": "CleanMusic",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "smoke": "electron . --smoke",
+    "smoke:plugin": "electron . --smoke --smoke-plugin",
+    "build:win": "electron-builder --win portable",
+    "build:linux": "electron-builder --linux AppImage",
+    "build:dir": "electron-builder --win dir"
+  },
+  "build": {
+    "appId": "de.cleanmusic.launcher",
+    "productName": "CleanMusic",
+    "copyright": "Copyright © 2026 CleanMusic",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "discord-rpc.js",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "normal",
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CleanMusic-${version}-portable.${ext}"
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CleanMusic-${version}.${ext}",
+      "category": "AudioVideo",
+      "synopsis": "The Music Launcher"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.18.0"
+  }
+}

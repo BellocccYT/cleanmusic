@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' https://js-cdn.music.apple.com; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src https: blob:; connect-src https:; frame-src https://authorize.music.apple.com https://*.apple.com; worker-src blob:;"
+  />
+  <title>Apple Music · MusicKit</title>
+  <style>
+    :root {
+      --bg: #080a0e;
+      --panel: #11161f;
+      --border: #232c3a;
+      --text: #e8ecf3;
+      --muted: #8d99ac;
+      --muted-2: #5f6a7c;
+      --accent: #5b8cff;
+      --accent-2: #35e0c0;
+      --ok: #3ddc97;
+      --err: #ff5d6c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      padding: 26px 28px 40px;
+      background:
+        radial-gradient(700px 300px at 80% -10%, rgba(91, 140, 255, 0.12), transparent 65%),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    h1 { font-size: 20px; letter-spacing: -0.01em; }
+    h1 span { color: #fa2d48; }
+    p { color: var(--muted); margin-top: 6px; max-width: 640px; }
+    .card {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: inset 0 0 0 1px var(--border);
+    }
+    label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 6px; }
+    input {
+      width: 100%;
+      height: 34px;
+      padding: 0 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0b0f16;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12.5px;
+      outline: 0;
+    }
+    input:focus { border-color: rgba(91, 140, 255, 0.6); }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+    button {
+      height: 34px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #06121a;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+    }
+    button.ghost {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: inset 0 0 0 1px var(--border);
+    }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .status { margin-top: 12px; font-size: 12.5px; color: var(--muted); min-height: 18px; }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+    .hint {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 11.5px;
+      line-height: 1.6;
+      color: var(--muted);
+      background: rgba(255, 191, 94, 0.06);
+      box-shadow: inset 0 0 0 1px rgba(255, 191, 94, 0.18);
+    }
+    .hint code { color: var(--accent-2); }
+    #search-row { margin-top: 16px; }
+    .songs { margin-top: 14px; display: flex; flex-direction: column; gap: 2px; }
+    .song {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      width: 100%;
+      padding: 8px 9px;
+      border-radius: 9px;
+      text-align: left;
+      color: var(--text);
+      background: transparent;
+      font-weight: 400;
+    }
+    .song:hover { background: rgba(255, 255, 255, 0.05); }
+    .song img { width: 38px; height: 38px; border-radius: 6px; object-fit: cover; background: #151b25; }
+    .song-meta { flex: 1; min-width: 0; }
+    .song-meta strong { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song-meta small { display: block; font-size: 11px; color: var(--muted-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song .play { color: var(--accent-2); font-size: 11px; }
+    .divider { height: 1px; background: var(--border); margin: 18px 0; }
+  </style>
+</head>
+<body>
+  <h1><span>●</span> Apple Music · MusicKit</h1>
+  <p>
+    Offizielle In-App-Wiedergabe. Du brauchst einen MusicKit-Developer-Token
+    (ES256-JWT) aus deinem Apple-Developer-Account und ein aktives
+    Apple-Music-Abo. Der Token bleibt lokal auf diesem Rechner.
+  </p>
+
+  <div class="card">
+    <label for="token">MusicKit Developer Token</label>
+    <input id="token" type="password" placeholder="eyJhbGciOiJFUzI1NiIsImtpZCI6..." spellcheck="false" />
+    <div class="row">
+      <button id="btn-connect">Verbinden</button>
+      <button id="btn-clear" class="ghost">Token löschen</button>
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+
+  <div id="search-row" hidden>
+    <div class="card">
+      <label for="q">Suche im Apple-Music-Katalog</label>
+      <div class="row">
+        <input id="q" placeholder="Song oder Artist …" style="flex:1;min-width:220px" />
+        <button id="btn-search">Suchen</button>
+      </div>
+      <div id="results" class="songs"></div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <strong>So bekommst du den Token:</strong> Apple Developer Account →
+    Certificates, Identifiers &amp; Profiles → Keys → neuen <em>MusicKit</em>-Key
+    anlegen → <code>.p8</code> herunterladen → daraus ein ES256-JWT mit
+    <code>iss</code> (Team-ID) und <code>kid</code> (Key-ID) bauen.
+    Tokens laufen nach spätestens 6 Monaten ab.
+  </div>
+
+  <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"></script>
+  <script src="musickit.js"></script>
+</body>
+</html>
