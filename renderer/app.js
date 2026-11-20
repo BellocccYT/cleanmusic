@@ -3971,6 +3971,18 @@
     onPluginsChanged();
   }
 
+  async function handlePluginImport(result) {
+    if (!result || result.canceled) return;
+    if (result.error) {
+      toast(result.error);
+      return;
+    }
+    if (result.ok) {
+      await refreshPlugins(true);
+      toast(`Plugin-Datei „${result.name}“ hinzugefügt – es bleibt ausgeschaltet`);
+    }
+  }
+
   function onPluginsChanged() {
     renderSettings();
     buildHome();
@@ -4120,11 +4132,12 @@
       <div class="panel" id="plugins-panel">
         <h3>Plugins <span class="tag">optional</span></h3>
         <p>
-          CleanMusic bringt keine Plugins mit. Legst du eine Plugin-Datei (<code>.js</code>) in den
-          Plugin-Ordner, erscheint sie hier und bleibt aus, bis du sie aktivierst. Plugins laufen mit
-          vollen Rechten – aktiviere nur Dateien, denen du vertraust.
+          CleanMusic bringt keine Plugins mit. Füge eine vertrauenswürdige <code>.js</code>-Datei hinzu
+          oder zieh sie auf diesen Bereich. Neue Plugins bleiben ausgeschaltet, bis du sie bewusst
+          aktivierst. Plugins laufen mit vollen Rechten.
         </p>
         <div class="row">
+          <button class="btn primary small" data-plugin-global="add">${ICONS.plus} Plugin-Datei hinzufügen …</button>
           <button class="btn ghost small" data-plugin-global="open">${ICONS.folder} Plugin-Ordner öffnen</button>
           <button class="btn ghost small" data-plugin-global="refresh" ${
             state.plugins.loading ? 'disabled' : ''
@@ -4364,6 +4377,34 @@
       document.body.classList.remove('is-dragging');
       clearDropMarks();
       drag = null;
+    });
+
+    const settingsView = $('#view-settings');
+    const hasFiles = (event) => Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes('Files');
+    settingsView.addEventListener('dragover', (event) => {
+      const pluginPanel = event.target.closest('#plugins-panel');
+      if (!pluginPanel || !hasFiles(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      pluginPanel.classList.add('file-drop-active');
+    });
+    settingsView.addEventListener('dragleave', (event) => {
+      const pluginPanel = event.target.closest('#plugins-panel');
+      if (!pluginPanel) return;
+      if (!pluginPanel.contains(event.relatedTarget)) pluginPanel.classList.remove('file-drop-active');
+    });
+    settingsView.addEventListener('drop', async (event) => {
+      const pluginPanel = event.target.closest('#plugins-panel');
+      if (!pluginPanel || !hasFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pluginPanel.classList.remove('file-drop-active');
+      const file = Array.from(event.dataTransfer.files || []).find((entry) => /\.js$/i.test(entry.name));
+      if (!file) {
+        toast('Zieh eine .js-Datei auf den Plugin-Bereich.');
+        return;
+      }
+      await handlePluginImport(await bridge.pluginImportDropped(file));
     });
 
     const sidebar = $('#sidebar');
@@ -4783,6 +4824,8 @@
         if (pluginGlobal.dataset.pluginGlobal === 'open') {
           const result = await bridge.pluginOpenFolder();
           if (result && result.error) toast(`Ordner konnte nicht geöffnet werden: ${result.error}`);
+        } else if (pluginGlobal.dataset.pluginGlobal === 'add') {
+          await handlePluginImport(await bridge.pluginAddFile());
         } else if (pluginGlobal.dataset.pluginGlobal === 'refresh') {
           refreshPlugins(true);
         }

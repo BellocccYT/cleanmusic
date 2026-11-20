@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('cm', {
   isElectron: true,
@@ -33,6 +33,14 @@ contextBridge.exposeInMainWorld('cm', {
   pluginSetEnabled: (id, enabled) => ipcRenderer.invoke('plugin-set-enabled', id, Boolean(enabled)),
   pluginAction: (id, actionId) => ipcRenderer.invoke('plugin-action', id, actionId),
   pluginOpenFolder: () => ipcRenderer.invoke('plugin-open-folder'),
+  pluginAddFile: () => ipcRenderer.invoke('plugin-add-file'),
+  pluginImportDropped: (file) => {
+    try {
+      return ipcRenderer.invoke('plugin-import-dropped', webUtils.getPathForFile(file));
+    } catch {
+      return Promise.resolve({ error: 'Der Dateipfad konnte nicht gelesen werden.' });
+    }
+  },
   pluginSearch: (id, query) => ipcRenderer.invoke('plugin-search', id, query),
   pluginResolve: (id, refId, force) => ipcRenderer.invoke('plugin-resolve', id, refId, Boolean(force)),
   pluginMatch: (id, track) => ipcRenderer.invoke('plugin-match', id, track),

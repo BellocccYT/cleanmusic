@@ -778,6 +778,51 @@ function createMainWindow() {
           console.error('SMOKE_PLUGINS_FAIL:', error.message);
         }
 
+        try {
+          const pluginImportUi = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              window.CleanMusic.showView('settings');
+              const syntheticDrop = await window.cm.pluginImportDropped(
+                new File(['test'], 'synthetic-plugin.js', { type: 'text/javascript' })
+              );
+              return {
+                addButton: Boolean(document.querySelector('[data-plugin-global="add"]')),
+                dropTarget: Boolean(document.querySelector('#plugins-panel')),
+                rejectsUnselectedFile: Boolean(syntheticDrop && syntheticDrop.error),
+              };
+            })()
+          `);
+          console.log('SMOKE_PLUGIN_IMPORT_UI:', JSON.stringify(pluginImportUi));
+        } catch (error) {
+          console.error('SMOKE_PLUGIN_IMPORT_UI_FAIL:', error.message);
+        }
+
+        try {
+          const sourceFile = path.join(app.getPath('temp'), 'cleanmusic-smoke-import.js');
+          const copiedFile = path.join(pluginDirs()[0], path.basename(sourceFile));
+          fs.writeFileSync(sourceFile, "module.exports = { apiVersion: 1, name: 'Smoke-Import' };\n");
+          const imported = await importPluginFile(sourceFile);
+          const refreshed = await pluginList(true);
+          const added = refreshed.plugins.find((plugin) => plugin.id === 'cleanmusic-smoke-import');
+          console.log(
+            'SMOKE_PLUGIN_IMPORT:',
+            JSON.stringify({
+              copied: Boolean(imported.ok && fs.existsSync(copiedFile)),
+              found: Boolean(added),
+              enabled: Boolean(added && added.enabled),
+              loaded: Boolean(added && added.loaded),
+            })
+          );
+          const smokePlugin = plugins.get('cleanmusic-smoke-import');
+          if (smokePlugin) unloadPlugin(smokePlugin);
+          plugins.delete('cleanmusic-smoke-import');
+          fs.rmSync(copiedFile, { force: true });
+          discoverPlugins();
+          fs.rmSync(sourceFile, { force: true });
+        } catch (error) {
+          console.error('SMOKE_PLUGIN_IMPORT_FAIL:', error.message);
+        }
+
         // Optional: exercise the first source plugin found in the plugin folders.
         if (isSmokePlugin) {
           try {
@@ -1761,6 +1806,85 @@ ipcMain.handle('plugin-open-folder', async () => {
   const error = await shell.openPath(dir);
   return { dir, error: error || null };
 });
+
+async function importPluginFile(sourcePath) {
+  if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) {
+    return { error: 'Ungültige Dateiauswahl.' };
+  }
+
+  const extension = path.extname(sourcePath).toLowerCase();
+  const fileName = path.basename(sourcePath);
+  const pluginId = path.basename(sourcePath, path.extname(sourcePath)).toLowerCase();
+  if (extension !== '.js' || !PLUGIN_ID.test(pluginId)) {
+    return { error: 'Wähle eine .js-Datei mit einem gültigen Plugin-Dateinamen.' };
+  }
+
+  let stat;
+  try {
+    stat = fs.lstatSync(sourcePath);
+  } catch {
+    return { error: 'Die ausgewählte Datei ist nicht mehr verfügbar.' };
+  }
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    return { error: 'Die Auswahl ist keine reguläre Datei.' };
+  }
+
+  const pluginDir = pluginDirs()[0];
+  const destination = path.join(pluginDir, fileName);
+  if (path.resolve(sourcePath).toLowerCase() === path.resolve(destination).toLowerCase()) {
+    return { error: 'Diese Datei liegt bereits im Plugin-Ordner.' };
+  }
+
+  try {
+    fs.mkdirSync(pluginDir, { recursive: true });
+  } catch (error) {
+    return { error: `Plugin-Ordner konnte nicht angelegt werden: ${cleanText(error.message)}` };
+  }
+  const alreadyExists = fs.existsSync(destination);
+  if (alreadyExists) {
+    const answer = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: 'Plugin-Datei überschreiben?',
+      message: `„${fileName}“ liegt bereits im Plugin-Ordner.`,
+      detail: 'Möchtest du die Datei überschreiben? Das Plugin wird danach ausgeschaltet.',
+      buttons: ['Abbrechen', 'Überschreiben'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (answer.response !== 1) return { canceled: true };
+  }
+
+  try {
+    fs.copyFileSync(sourcePath, destination);
+  } catch (error) {
+    return { error: `Plugin-Datei konnte nicht kopiert werden: ${cleanText(error.message)}` };
+  }
+
+  const current = plugins.get(pluginId);
+  if (current) {
+    unloadPlugin(current);
+    plugins.delete(pluginId);
+  }
+  const config = pluginConfig();
+  config.enabled = config.enabled.filter((id) => id !== pluginId);
+  savePluginConfig(config);
+  discoverPlugins();
+
+  return { ok: true, name: fileName, replaced: alreadyExists };
+}
+
+ipcMain.handle('plugin-add-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Plugin-Datei hinzufügen',
+    properties: ['openFile'],
+    filters: [{ name: 'JavaScript-Dateien', extensions: ['js'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+  return importPluginFile(result.filePaths[0]);
+});
+
+ipcMain.handle('plugin-import-dropped', async (_event, sourcePath) => importPluginFile(sourcePath));
 
 ipcMain.handle('plugin-search', async (_event, id, query) => {
   const plugin = readyPlugin(id, 'search');
