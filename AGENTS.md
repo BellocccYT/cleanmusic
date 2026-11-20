@@ -1,6 +1,6 @@
 # CleanMusic – Projekthinweise
 
-## Stand (Version 0.7.1)
+## Stand (Version 0.7.2)
 
 Electron-App für Windows, die Musik-Streamingdienste als offizielle Web-Player einbettet und selbst abspielt: lokale Dateien, 30-Sekunden-Vorschauen (Apple Music, Deezer), Live-Radio, Favoriten, Playlists, Vorschläge, Cutter-Modus (NCS, Kevin-MacLeod-Klassiker, Soundeffekte und freie Musik über Openverse, mit Lizenz und Credit), Vollbild-Player mit Visualizer, optionale Discord Rich Presence und optionale Quellen-Plugins.
 
