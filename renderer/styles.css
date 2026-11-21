@@ -4134,3 +4134,14 @@ body.fs-open .toast {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Home: trending tabs ------------------------------------------------- */
+
+.trend-tabs {
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+#home-rediscover-section[hidden] {
+  display: none;
+}

@@ -863,6 +863,40 @@ function createMainWindow() {
           console.error('SMOKE_DOWNLOAD_FAIL:', error.message);
         }
 
+        // Home: new releases, listening history, "Wiederentdecken".
+        try {
+          const homeResult = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              cm.showView('home');
+              cm.setTrend('releases');
+              for (let i = 0; i < 60 && !cm.home().releases && !cm.home().releasesError; i += 1) await wait(300);
+              await wait(200);
+              const releases = cm.home();
+              cm.setTrend('charts');
+              const first = document.querySelector('#home-charts [data-list="charts"]');
+              const id = first ? first.dataset.trackId : null;
+              const recorded = id ? cm.recordPlay(id, 3, 15) : false;
+              await wait(200);
+              const after = cm.home();
+              return {
+                releases: releases.releases,
+                releaseCards: releases.releaseCards,
+                releasesError: releases.releasesError,
+                recorded,
+                history: cm.history().length,
+                rediscover: after.rediscover,
+                rediscoverHidden: after.rediscoverHidden,
+                recSeeds: after.recSeeds,
+              };
+            })()
+          `);
+          console.log('SMOKE_HOME:', JSON.stringify(homeResult));
+        } catch (error) {
+          console.error('SMOKE_HOME_FAIL:', error.message);
+        }
+
         try {
           const plugins = await mainWindow.webContents.executeJavaScript(
             'window.CleanMusic.plugins()'
@@ -1167,6 +1201,50 @@ ipcMain.handle('top-tracks', async () => {
       tracks: [],
       errors: [{ source: 'Deezer Charts', message: error.message || 'nicht erreichbar' }],
     };
+  }
+});
+
+// New releases (Deezer editorial): first playable track of each album.
+ipcMain.handle('new-releases', async () => {
+  try {
+    // 'releases' is sometimes empty – the editors' selection of new albums is the fallback.
+    let json = await fetchJson('https://api.deezer.com/editorial/0/releases?limit=18');
+    if (!json || !Array.isArray(json.data) || !json.data.length) {
+      json = await fetchJson('https://api.deezer.com/editorial/0/selection?limit=18');
+    }
+    const albums = (json && Array.isArray(json.data) ? json.data : []).slice(0, 18);
+    const tracks = await Promise.all(
+      albums.map(async (album) => {
+        try {
+          const list = await fetchJson(`https://api.deezer.com/album/${album.id}/tracks?limit=4`);
+          const first = (list && Array.isArray(list.data) ? list.data : []).find(
+            (track) => track && track.preview && track.readable !== false
+          );
+          if (!first) return null;
+          return Object.assign({}, first, {
+            album: Object.assign({}, first.album, {
+              id: album.id,
+              title: album.title,
+              cover_medium: album.cover_medium,
+              cover_big: album.cover_big,
+            }),
+            artist: first.artist || album.artist,
+            release_date: album.release_date || '',
+          });
+        } catch {
+          return null;
+        }
+      })
+    );
+    const valid = tracks.filter(Boolean);
+    return {
+      tracks: normalizeDeezer({ data: valid }).map((track, index) =>
+        Object.assign(track, { released: cleanText(valid[index].release_date, 12) })
+      ),
+      errors: [],
+    };
+  } catch (error) {
+    return { tracks: [], errors: [{ source: 'Neuerscheinungen', message: error.message || 'nicht erreichbar' }] };
   }
 });
 

@@ -83,11 +83,17 @@ Suche erscheinen zusätzlich die aktuellen Deezer-Charts.
 - **Drag & Drop:** Titel aus jeder Liste auf *Favoriten*, eine Playlist oder
   *Neue Playlist* in der Seitenleiste ziehen. In einer Playlist per Griff
   sortieren.
-- **„Für dich“** auf der Startseite und **„Mehr wie deine Favoriten“** in den
-  Favoriten: CleanMusic nimmt deine häufigsten Favoriten-Artists und holt über
-  die öffentliche Deezer-API Artist-Radio und Top-Titel verwandter Artists.
+- **„Neu für dich“** auf der Startseite und **„Mehr wie deine Favoriten“** in den
+  Favoriten: CleanMusic nimmt deine häufigsten Favoriten-Artists **und was du
+  zuletzt oft gehört hast** und holt über die öffentliche Deezer-API Artist-Radio
+  und Top-Titel verwandter Artists. Gerade Gehörtes wird nicht erneut vorgeschlagen.
   Ein aktives Quellen-Plugin steuert verwandte Titel zu deinen Plugin-Favoriten bei.
   **Neu mischen** lädt frische Vorschläge.
+- **Trending & Neuheiten:** Deezer-Charts oder neue Alben der Deezer-Redaktion
+  (umschaltbar). **Wiederentdecken:** Titel, die du oft gehört oder favorisiert,
+  aber lange nicht mehr gespielt hast.
+- **Hör-Verlauf:** Ein Titel zählt nach 20 Sekunden (Vorschau: 12 s) als gehört.
+  Der Verlauf (max. 300 Titel) bleibt lokal; Radio wird nicht erfasst.
 - Abgelaufene Deezer-Vorschau-Links in Favoriten/Playlists werden beim
   Abspielen automatisch erneuert.
 

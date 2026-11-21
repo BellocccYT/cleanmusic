@@ -98,6 +98,7 @@
     credits: 'cleanmusic.credits.v1',
     openverseCache: 'cleanmusic.ovcache.v1',
     downloads: 'cleanmusic.downloads.v1', // entry id → { path, at }
+    history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
   };
 
   const RECS_MAX_AGE = 6 * 60 * 60 * 1000;
@@ -170,6 +171,8 @@
     library: { tracks: [], entries: [], folder: null },
     search: { query: '', tracks: [], loading: false, errors: [], sources: null },
     charts: { tracks: [], loading: false, loaded: false, errors: [] },
+    releases: { tracks: [], loading: false, loaded: false, error: null },
+    trend: 'charts', // 'charts' | 'releases' on the home page
     radio: { stations: [], entries: [], loading: false, loaded: false, error: null, tag: '', query: '' },
     plugins: { list: [], dirs: [], loading: false, loaded: false },
     pluginSearch: { pluginId: null, query: '', results: [], loading: false, error: null },
@@ -762,6 +765,8 @@
       case 'favorites': return filteredFavorites();
       case 'local': return state.library.entries;
       case 'radio': return state.radio.entries;
+      case 'releases': return state.releases.tracks;
+      case 'rediscover': return rediscoverEntries();
       default:
         if (key && key.startsWith('playlist:')) {
           const playlist = playlistById(key.slice(9));
@@ -1153,6 +1158,123 @@
     row.innerHTML = chips.join('');
   }
 
+  /* ---------------------------------------------------------------- *
+   * Listening history (local only) – feeds suggestions and "Wiederentdecken"
+   *
+   * A title counts as heard after 20 s (12 s for 30-s previews). Radio is
+   * not recorded. Stored in localStorage, max. 300 titles, never sent anywhere
+   * except the artist names used for suggestions (same as favourites).
+   * ---------------------------------------------------------------- */
+
+  const HISTORY_MAX = 300;
+  const DAY = 24 * 60 * 60 * 1000;
+  let history = loadHistory();
+  const listen = { id: null, secs: 0, last: 0, counted: false };
+
+  function loadHistory() {
+    const stored = readJSON(STORAGE.history, []);
+    return (Array.isArray(stored) ? stored : [])
+      .filter((row) => row && validEntry(row.entry))
+      .map((row) => ({
+        entry: migrateEntry(row.entry),
+        plays: Math.max(1, Number(row.plays) || 1),
+        first: Number(row.first) || Date.now(),
+        last: Number(row.last) || Date.now(),
+      }));
+  }
+
+  function recordPlay(entry) {
+    if (!entry || entry.kind === 'radio' || !validEntry(entry)) return;
+    const now = Date.now();
+    const known = history.find((row) => row.entry.id === entry.id);
+    if (known) {
+      known.plays += 1;
+      known.last = now;
+      known.entry = storable(entry);
+    } else {
+      history.unshift({ entry: storable(entry), plays: 1, first: now, last: now });
+    }
+    history.sort((a, b) => b.last - a.last);
+    history = history.slice(0, HISTORY_MAX);
+    writeJSON(STORAGE.history, history);
+  }
+
+  function trackListening() {
+    const item = currentItem();
+    if (!item || audio.paused) {
+      listen.last = 0;
+      return;
+    }
+    if (listen.id !== item.id) {
+      listen.id = item.id;
+      listen.secs = 0;
+      listen.counted = false;
+      listen.last = 0;
+    }
+    const now = performance.now();
+    if (listen.last) listen.secs += Math.min(2, (now - listen.last) / 1000);
+    listen.last = now;
+    const needed = state.nowMode === 'preview' || item.kind === 'preview' ? 12 : 20;
+    if (!listen.counted && listen.secs >= needed) {
+      listen.counted = true;
+      recordPlay(item);
+    }
+  }
+
+  // Titles you liked (several plays or a favourite) but have not heard for a while.
+  function rediscoverEntries() {
+    const now = Date.now();
+    const seen = new Set();
+    const out = [];
+    history
+      .filter((row) => now - row.last > 10 * DAY && row.plays >= 2)
+      .sort((a, b) => b.plays - a.plays || a.last - b.last)
+      .forEach((row) => {
+        if (seen.has(row.entry.id)) return;
+        seen.add(row.entry.id);
+        out.push(row.entry);
+      });
+    const recent = new Map(history.map((row) => [row.entry.id, row.last]));
+    state.collection.favorites
+      .filter((entry) => entry.kind !== 'radio' && now - (recent.get(entry.id) || entry.addedAt || now) > 21 * DAY)
+      .forEach((entry) => {
+        if (seen.has(entry.id)) return;
+        seen.add(entry.id);
+        out.push(entry);
+      });
+    return out.slice(0, 18);
+  }
+
+  function renderHomeRediscover() {
+    const host = $('#home-rediscover');
+    const section = $('#home-rediscover-section');
+    if (!host || !section) return;
+    const list = rediscoverEntries();
+    section.hidden = !list.length;
+    host.innerHTML = list.map((entry, index) => chartCard(entry, index, 'rediscover')).join('');
+  }
+
+  async function loadReleases(force = false) {
+    if (!bridge.newReleases || state.releases.loading) return;
+    if (state.releases.loaded && !force) return;
+    state.releases.loading = true;
+    renderHomeCharts();
+    try {
+      const result = await bridge.newReleases();
+      state.releases = {
+        tracks: (Array.isArray(result.tracks) ? result.tracks : []).map((track) =>
+          Object.assign(previewEntry(track), { released: track.released || '' })
+        ),
+        loading: false,
+        loaded: true,
+        error: result.errors && result.errors.length ? result.errors[0].message : null,
+      };
+    } catch (error) {
+      state.releases = { tracks: [], loading: false, loaded: true, error: error.message };
+    }
+    renderHomeCharts();
+  }
+
   function buildHome() {
     const cards = SERVICES.map(
       (service) => `
@@ -1218,8 +1340,8 @@
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Für dich</h2>
-              <span class="muted small" id="home-recs-sub">Basierend auf deinen Favoriten</span>
+              <h2>Neu für dich</h2>
+              <span class="muted small" id="home-recs-sub">Basierend auf deinen Favoriten und dem, was du hörst</span>
             </div>
             <button class="btn ghost small" data-home-action="recs">${ICONS.refresh} Neu mischen</button>
           </div>
@@ -1229,14 +1351,28 @@
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Jetzt reinhören</h2>
-              <span class="muted small">Charts · ${
+              <h2>Trending & Neuheiten</h2>
+              <span class="muted small">${
                 full ? `voller Titel über ${esc(fullPlugin.source.label)}` : '30-Sekunden-Vorschau'
               }</span>
             </div>
-            <button class="btn ghost small" data-home-action="refresh">Neu laden</button>
+            <div class="row trend-tabs">
+              <button class="radio-tag ${state.trend === 'charts' ? 'active' : ''}" data-home-action="trend-charts">Charts</button>
+              <button class="radio-tag ${state.trend === 'releases' ? 'active' : ''}" data-home-action="trend-releases">Neuerscheinungen</button>
+              <button class="btn ghost small" data-home-action="refresh">Neu laden</button>
+            </div>
           </div>
           <div id="home-charts" class="charts-row"></div>
+        </section>
+
+        <section class="home-section" id="home-rediscover-section" hidden>
+          <div class="home-section-head">
+            <div class="home-section-title">
+              <h2>Wiederentdecken</h2>
+              <span class="muted small">Lange nicht gehört</span>
+            </div>
+          </div>
+          <div id="home-rediscover" class="charts-row"></div>
         </section>
 
         <section class="home-section">
@@ -1271,6 +1407,7 @@
     updateStatusChips();
     renderHomeRecs();
     renderHomeCharts();
+    renderHomeRediscover();
     renderHomeLocal();
     if (!state.charts.loaded) loadCharts();
   }
@@ -1320,6 +1457,28 @@
   function renderHomeCharts() {
     const host = $('#home-charts');
     if (!host) return;
+    $$('[data-home-action^="trend-"]').forEach((button) =>
+      button.classList.toggle('active', button.dataset.homeAction === `trend-${state.trend}`)
+    );
+
+    if (state.trend === 'releases') {
+      const releases = state.releases;
+      if (!releases.loaded || (releases.loading && !releases.tracks.length)) {
+        host.innerHTML = skeletonCards(8);
+        if (!releases.loading) loadReleases();
+        return;
+      }
+      if (!releases.tracks.length) {
+        host.innerHTML = `
+          <div class="charts-empty">
+            <span>${esc(releases.error || 'Gerade keine Neuerscheinungen gefunden.')}</span>
+            <button class="btn ghost small" data-home-action="refresh">Erneut versuchen</button>
+          </div>`;
+        return;
+      }
+      host.innerHTML = releases.tracks.map((entry, index) => chartCard(entry, index, 'releases')).join('');
+      return;
+    }
 
     const charts = state.charts;
 
@@ -1473,6 +1632,12 @@
     };
 
     state.collection.favorites.forEach((entry, index) => add(entry, 1 + Math.max(0, 1 - index / 15)));
+    // What you actually listen to: more plays and more recent = stronger.
+    const now = Date.now();
+    history.forEach((row) => {
+      const age = (now - row.last) / DAY;
+      add(row.entry, Math.min(row.plays, 6) * 0.3 * Math.exp(-age / 30));
+    });
     state.collection.playlists.forEach((playlist) =>
       playlist.items.forEach((entry) => add(entry, 0.35))
     );
@@ -1585,6 +1750,13 @@
       state.collection.favorites.forEach((entry) => {
         exclude.add(entry.id);
         exclude.add(matchKey(entry));
+      });
+      const recentCut = Date.now() - 7 * DAY;
+      history.forEach((row) => {
+        if (row.last > recentCut) {
+          exclude.add(row.entry.id);
+          exclude.add(matchKey(row.entry));
+        }
       });
       const keep = (entry) => !exclude.has(entry.id) && !exclude.has(matchKey(entry));
 
@@ -5236,7 +5408,13 @@
             showView('settings');
             return;
           case 'refresh':
-            loadCharts(true);
+            if (state.trend === 'releases') loadReleases(true);
+            else loadCharts(true);
+            return;
+          case 'trend-charts':
+          case 'trend-releases':
+            state.trend = action.dataset.homeAction === 'trend-releases' ? 'releases' : 'charts';
+            renderHomeCharts();
             return;
           case 'recs':
             loadRecs(true);
@@ -5836,6 +6014,10 @@
     );
     audio.addEventListener('timeupdate', () => {
       if (Date.now() - playerStateAt > 10000) pushPlayerState();
+      trackListening();
+    });
+    audio.addEventListener('pause', () => {
+      listen.last = 0;
     });
     if (bridge.onPlayerCommand) bridge.onPlayerCommand(onPlayerCommand);
     if (bridge.onPluginNotify) {
@@ -5923,6 +6105,32 @@
     },
     collectCreditAt: (key, index) => collectCredit(entryAt(key, index)),
     downloadAt: (key, index) => downloadEntry(entryAt(key, index)),
+    history: () => history.map((row) => ({ id: row.entry.id, title: row.entry.title, plays: row.plays, last: row.last })),
+    recordPlay: (id, plays = 1, daysAgo = 0) => {
+      const entry = [state.charts.tracks, state.collection.favorites, state.releases.tracks]
+        .flat()
+        .find((item) => item.id === id);
+      for (let i = 0; i < plays; i += 1) recordPlay(entry);
+      const row = history.find((item) => item.entry.id === id);
+      if (row) row.last = Date.now() - daysAgo * DAY;
+      writeJSON(STORAGE.history, history);
+      renderHomeRediscover();
+      return Boolean(row);
+    },
+    home: () => ({
+      trend: state.trend,
+      charts: state.charts.tracks.length,
+      releases: state.releases.tracks.length,
+      releasesError: state.releases.error,
+      releaseCards: document.querySelectorAll('#home-charts [data-list="releases"]').length,
+      rediscover: document.querySelectorAll('#home-rediscover .chart-card').length,
+      rediscoverHidden: ($('#home-rediscover-section') || {}).hidden,
+      recSeeds: recSeeds().artists.map((artist) => artist.name),
+    }),
+    setTrend: (trend) => {
+      state.trend = trend === 'releases' ? 'releases' : 'charts';
+      renderHomeCharts();
+    },
     downloads: () => ({ mode: state.settings.downloads, count: Object.keys(downloads).length }),
     setDownloads: (mode, folder) => {
       state.settings.downloads = mode === 'cutting' ? 'cutting' : 'off';
