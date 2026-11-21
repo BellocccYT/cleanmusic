@@ -253,6 +253,7 @@
         lyricsDim: true,
         lyricsFocus: false, // big lyrics, no cover
         vinyl: false, // cover as a spinning record + tonearm
+        lyricsEffect: 'pop', // none | pop | karaoke | kinetic
         crossfadeSecs: 6,
         onboarded: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
@@ -3870,6 +3871,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.10.0': [
+      'Songtext-Effekte: Pop (Zeile springt hoch), Karaoke (füllt sich im Takt) und Motion (große Zeile, Wörter poppen einzeln rein – wie in Lyric-Videos).',
+      'Umschalten im Vollbild-Player („Effekt: …“) oder unter Einstellungen → Wiedergabe → Songtexte.',
+    ],
     '1.9.1': [
       'Schärfere Cover: Apple Music und Deezer liefern jetzt die großen Bilder – vor allem im Vollbild-Player und beim Plattenspieler zu sehen.',
       'Visualizer: verbindet sich zuverlässiger mit dem Ton und reagiert lebendiger auf leise Songs.',
@@ -4379,6 +4384,12 @@
         '<p class="lyrics-note">Songtext: LRCLIB</p>';
       return;
     }
+    if (lyricsState.lines.length && lyricsEffect() === 'kinetic') {
+      host.innerHTML = '<div class="ly-kinetic"></div><p class="lyrics-note">Songtext: LRCLIB</p>';
+      lyricsState.index = -2;
+      updateLyricLine(true);
+      return;
+    }
     if (lyricsState.lines.length) {
       host.innerHTML =
         lyricsState.lines.map((line, index) => `<p data-ly="${index}">${esc(line.text) || '♪'}</p>`).join('') +
@@ -4418,6 +4429,12 @@
 
   function showLyricLine(index, force) {
     const host = $('#fs-lyrics');
+    if (host && !host.hidden && lyricsEffect() === 'kinetic' && host.querySelector('.ly-kinetic')) {
+      renderKinetic(host, index);
+      return;
+    }
+    const current = host && host.querySelector(`[data-ly="${index}"]`);
+    if (current) current.style.setProperty('--dur', `${lineDuration(index)}s`);
     if (host && !host.hidden && state.fullscreen) {
       host.querySelectorAll('p[data-ly]').forEach((line) => {
         const at = Number(line.dataset.ly);
@@ -4436,11 +4453,48 @@
   }
 
   const LYRIC_SIZES = ['s', 'm', 'l', 'xl'];
+  const LYRIC_EFFECTS = [
+    ['none', 'Keiner'],
+    ['pop', 'Pop'],
+    ['karaoke', 'Karaoke'],
+    ['kinetic', 'Motion'],
+  ];
+
+  function lyricsEffect() {
+    return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';
+  }
+
+  function lineDuration(index) {
+    const line = lyricsState.lines[index];
+    const next = lyricsState.lines[index + 1];
+    const value = line && next ? next.time - line.time : 4;
+    return Math.max(0.6, Math.min(10, value || 4));
+  }
+
+  // Motion: one big line, the words pop in one after another (lyric-video style).
+  function renderKinetic(host, index) {
+    const stage = host.querySelector('.ly-kinetic');
+    if (!stage) return;
+    const line = lyricsState.lines[index];
+    const next = lyricsState.lines[index + 1];
+    const words = String((line && line.text) || (index < 0 ? '♪' : '♪')).split(/\s+/).filter(Boolean);
+    const span = Math.min(lineDuration(index) * 0.7, 2.6) * 1000;
+    const step = words.length > 1 ? span / words.length : 0;
+    stage.innerHTML = `
+      <p class="ly-k-line">${words
+        .map(
+          (word, at) =>
+            `<span class="${word.replace(/[^\p{L}]/gu, '').length > 6 ? 'hl' : ''}" style="animation-delay:${Math.round(at * step)}ms;--tilt:${(at % 2 ? 1 : -1) * (2 + (at % 3))}deg">${esc(word)}</span>`
+        )
+        .join(' ')}</p>
+      <p class="ly-k-next">${esc((next && next.text) || '')}</p>`;
+  }
 
   function applyLyricsStyle(host) {
     const size = LYRIC_SIZES.includes(state.settings.lyricsSize) ? state.settings.lyricsSize : 'm';
     host.dataset.size = size;
     host.dataset.align = state.settings.lyricsAlign === 'center' ? 'center' : 'left';
+    host.dataset.effect = lyricsSynced() ? lyricsEffect() : 'none';
     host.classList.toggle('dim-past', state.settings.lyricsDim !== false);
     const fullscreen = $('#fullscreen');
     if (fullscreen) fullscreen.classList.toggle('lyrics-focus', lyricsOn() && Boolean(state.settings.lyricsFocus));
@@ -4463,6 +4517,7 @@
       <button data-ly-tool="earlier" title="Songtext früher (wenn er hinterherhinkt)">« früher</button>
       <span class="ly-offset" title="Zeitversatz">${offsetLabel()}</span>
       <button data-ly-tool="later" title="Songtext später (wenn er vorausläuft)">später »</button>
+      <button data-ly-tool="effect" title="Effekt wechseln">Effekt: ${(LYRIC_EFFECTS.find(([id]) => id === lyricsEffect()) || [])[1]}</button>
       <button data-ly-tool="focus" class="${state.settings.lyricsFocus ? 'on' : ''}" title="Großansicht: nur Songtext">Großansicht</button>
       <button data-ly-tool="refresh" title="Songtext neu suchen">Neu suchen</button>`;
   }
@@ -4495,6 +4550,11 @@
       case 'focus':
         setLyricsOption({ lyricsFocus: !state.settings.lyricsFocus });
         return;
+      case 'effect': {
+        const ids = LYRIC_EFFECTS.map(([id]) => id);
+        setLyricsOption({ lyricsEffect: ids[(ids.indexOf(lyricsEffect()) + 1) % ids.length] });
+        return;
+      }
       case 'refresh':
         ensureLyrics(true);
         return;
@@ -4517,6 +4577,12 @@
               <div class="radio-tags">${sizes
                 .map(([id, label]) => `<button class="radio-tag ${size === id ? 'active' : ''}" data-ly-size="${id}">${label}</button>`)
                 .join('')}</div>
+            </div>
+            <div class="setting-line">
+              <strong>Effekt</strong>
+              <div class="radio-tags">${LYRIC_EFFECTS.map(
+                ([id, label]) => `<button class="radio-tag ${lyricsEffect() === id ? 'active' : ''}" data-ly-effect="${id}">${label}</button>`
+              ).join('')}</div>
             </div>
             <div class="setting-line">
               <strong>Ausrichtung</strong>
@@ -9918,6 +9984,11 @@ ${updatePanel()}
         setLyricsOption({ lyricsSize: lySize.dataset.lySize });
         return;
       }
+      const lyEffect = event.target.closest('[data-ly-effect]');
+      if (lyEffect) {
+        setLyricsOption({ lyricsEffect: lyEffect.dataset.lyEffect });
+        return;
+      }
       const lyAlign = event.target.closest('[data-ly-align]');
       if (lyAlign) {
         setLyricsOption({ lyricsAlign: lyAlign.dataset.lyAlign });
@@ -10820,6 +10891,18 @@ ${updatePanel()}
     playerSnapshot: () => playerSnapshot(),
     setLayout: (mode) => setLayout(mode),
     setVinyl: (on) => setVinyl(on),
+    lyricsEffectTest: (effect, index) => {
+      state.settings.lyricsEffect = effect;
+      state.nowMode = 'plugin';
+      renderLyrics();
+      showLyricLine(index, true);
+      const host = $('#fs-lyrics');
+      return {
+        effect: host ? host.dataset.effect : '',
+        words: host ? host.querySelectorAll('.ly-k-line span').length : 0,
+        dur: ((host && host.querySelector(`[data-ly="${index}"]`)) || { style: { getPropertyValue: () => '' } }).style.getPropertyValue('--dur'),
+      };
+    },
     lyricsScrollTest: (index) => {
       state.nowMode = 'plugin';
       renderLyrics();

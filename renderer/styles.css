@@ -5606,3 +5606,79 @@ html.cover-vinyl .np-art::after {
     transition: none;
   }
 }
+
+/* 1.10: lyrics effects */
+@keyframes cm-ly-pop {
+  0% { transform: scale(0.94); opacity: 0.4; }
+  55% { transform: scale(1.09); }
+  100% { transform: scale(1.04); opacity: 1; }
+}
+.fs-lyrics[data-effect='pop'] p.on {
+  animation: cm-ly-pop 0.45s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  text-shadow: 0 0 18px rgba(var(--fs-a), 0.75), 0 0 2px rgba(255, 255, 255, 0.6);
+}
+@keyframes cm-ly-fill {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
+}
+.fs-lyrics[data-effect='karaoke'] p.on {
+  color: rgba(255, 255, 255, 0.45);
+  background: linear-gradient(90deg, rgb(var(--fs-a)), rgb(var(--fs-b))) no-repeat 0 0 / 0% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: cm-ly-fill var(--dur, 3s) linear forwards;
+  transform: scale(1.04);
+}
+.fs-lyrics[data-effect='kinetic'] {
+  -webkit-mask-image: none;
+  mask-image: none;
+  overflow: hidden;
+  min-height: 34vh;
+  display: grid;
+  align-content: center;
+  padding: 2vh 0;
+}
+.ly-kinetic {
+  display: grid;
+  gap: 14px;
+}
+.ly-k-line {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 60px) !important;
+  font-weight: 900;
+  line-height: 1.12;
+  color: #fff !important;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+.fs-lyrics[data-align='center'] .ly-k-line {
+  text-align: center;
+}
+@keyframes cm-word {
+  0% { opacity: 0; transform: translateY(34px) scale(0.55) rotate(var(--tilt, -4deg)); filter: blur(6px); }
+  60% { opacity: 1; transform: translateY(-6px) scale(1.12) rotate(0deg); filter: blur(0); }
+  100% { opacity: 1; transform: none; }
+}
+.ly-k-line span {
+  display: inline-block;
+  animation: cm-word 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  text-shadow: 0 6px 26px rgba(0, 0, 0, 0.6);
+}
+.ly-k-line span.hl {
+  color: rgb(var(--fs-a));
+  text-shadow: 0 0 22px rgba(var(--fs-a), 0.8), 0 6px 26px rgba(0, 0, 0, 0.6);
+}
+.ly-k-next {
+  margin: 0;
+  font-size: 18px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ly-k-line span,
+  .fs-lyrics p.on {
+    animation: none !important;
+    opacity: 1;
+  }
+}
