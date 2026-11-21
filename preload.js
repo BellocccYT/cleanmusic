@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('cm', {
   trayGet: () => ipcRenderer.invoke('tray-get'),
   traySet: (patch) => ipcRenderer.invoke('tray-set', patch),
   backupOpen: () => ipcRenderer.invoke('backup-open'),
+  creditsSave: (text) => ipcRenderer.invoke('credits-save', text),
   pluginCharts: (id, limit) => ipcRenderer.invoke('plugin-charts', id, limit),
   cuttingDefaultFolder: () => ipcRenderer.invoke('cutting-default-folder'),
   cuttingDownload: (item) => ipcRenderer.invoke('cutting-download', item),

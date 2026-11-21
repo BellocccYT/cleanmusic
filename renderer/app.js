@@ -3252,6 +3252,11 @@
     audio.addEventListener('seeked', () => pushPresence());
 
     audio.addEventListener('ended', () => {
+      if (sleepTimer.endOfTrack) {
+        setSleepTimer(null);
+        toast('Schlaf-Timer: Wiedergabe angehalten. Gute Nacht!');
+        return;
+      }
       if (state.playback.repeat === 'one') {
         audio.currentTime = 0;
         audio.play().catch(() => {});
@@ -3357,9 +3362,87 @@
 
     volume.addEventListener('input', () => setVolume(Number(volume.value)));
     $('#btn-mute').addEventListener('click', () => setMuted(!vol.muted));
+    $('#btn-sleep').addEventListener('click', (event) => {
+      event.stopPropagation();
+      openSleepMenu($('#btn-sleep'));
+    });
     [volume, $('#btn-mute'), $('#volume-pct')].forEach((el) => {
       if (el) el.addEventListener('wheel', onVolumeWheel, { passive: false });
     });
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Sleep timer: pause after N minutes or at the end of the current title
+   * ---------------------------------------------------------------- */
+
+  const sleepTimer = { until: 0, endOfTrack: false, timer: null, tick: null };
+
+  function setSleepTimer(value) {
+    clearTimeout(sleepTimer.timer);
+    clearInterval(sleepTimer.tick);
+    sleepTimer.until = 0;
+    sleepTimer.endOfTrack = false;
+    sleepTimer.timer = null;
+    sleepTimer.tick = null;
+    if (value === 'track') {
+      sleepTimer.endOfTrack = true;
+      toast('Schlaf-Timer: Stopp am Ende des Titels');
+    } else if (Number(value) > 0) {
+      const ms = Number(value) * 60000;
+      sleepTimer.until = Date.now() + ms;
+      sleepTimer.timer = setTimeout(sleepNow, ms);
+      sleepTimer.tick = setInterval(updateSleepButton, 30000);
+      toast(`Schlaf-Timer: Stopp in ${value} Minuten`);
+    } else if (value === 'off') {
+      toast('Schlaf-Timer aus');
+    }
+    updateSleepButton();
+  }
+
+  function sleepNow() {
+    if (!audio.paused) $('#btn-play').click();
+    setSleepTimer(null);
+    toast('Schlaf-Timer: Wiedergabe angehalten. Gute Nacht!');
+  }
+
+  function sleepLabel() {
+    if (sleepTimer.endOfTrack) return 'Stopp am Ende des Titels';
+    if (sleepTimer.until) return `Stopp in ${Math.max(1, Math.ceil((sleepTimer.until - Date.now()) / 60000))} min`;
+    return '';
+  }
+
+  function updateSleepButton() {
+    const button = $('#btn-sleep');
+    if (!button) return;
+    const label = sleepLabel();
+    button.classList.toggle('active', Boolean(label));
+    button.title = label ? `Schlaf-Timer: ${label}` : 'Schlaf-Timer';
+  }
+
+  function openSleepMenu(anchor) {
+    hideMenus();
+    const menu = $('#ctx-menu');
+    const label = sleepLabel();
+    const options = [
+      ['15', '15 Minuten'],
+      ['30', '30 Minuten'],
+      ['45', '45 Minuten'],
+      ['60', '1 Stunde'],
+      ['90', '1,5 Stunden'],
+      ['track', 'Ende des Titels'],
+    ];
+    menu.innerHTML = `
+      <div class="service-menu-label">${label ? esc(`Schlaf-Timer · ${label}`) : 'Schlaf-Timer'}</div>
+      ${options
+        .map(
+          ([value, text]) => `
+            <button class="service-menu-item" data-sleep="${value}">
+              <span class="menu-text">${text}</span>
+            </button>`
+        )
+        .join('')}
+      ${label ? '<div class="menu-sep"></div><button class="service-menu-item" data-sleep="off"><span class="menu-text">Timer aus</span></button>' : ''}`;
+    positionMenu(menu, anchor);
   }
 
   /* ---------------------------------------------------------------- *
@@ -3956,6 +4039,23 @@
     toast(ok ? `Credit kopiert · „${entry.title}“ in Video-Credits` : 'Kopieren fehlgeschlagen');
   }
 
+  function creditsText() {
+    return [
+      'Musik & Sounds',
+      '',
+      ...state.credits.map((item) => item.credit),
+      '',
+      'Zusammengestellt mit CleanMusic',
+    ].join('\n\n').replace(/\n{3,}/g, '\n\n');
+  }
+
+  async function saveCredits() {
+    if (!state.credits.length || !bridge.creditsSave) return;
+    const result = await bridge.creditsSave(creditsText());
+    if (result && result.ok) toast('Credits gespeichert: ' + result.path);
+    else if (result && result.error) toast('Speichern fehlgeschlagen: ' + result.error);
+  }
+
   async function copyAllCredits() {
     if (!state.credits.length) return;
     const text = state.credits.map((item) => item.credit).join('\n\n');
@@ -4000,6 +4100,7 @@
             </ol>
             <div class="row">
               <button class="btn primary small" data-creator-action="copy-credits">${ICONS.copy} Alle kopieren</button>
+              <button class="btn ghost small" data-creator-action="save-credits">Als .txt speichern</button>
               <button class="btn ghost small" data-creator-action="clear-credits">Leeren</button>
             </div>`
           : '<p class="credits-empty">Noch leer.</p>'
@@ -5687,6 +5788,13 @@
         return;
       }
 
+      const sleepItem = event.target.closest('[data-sleep]');
+      if (sleepItem) {
+        hideMenus();
+        setSleepTimer(sleepItem.dataset.sleep);
+        return;
+      }
+
       const playlistItem = event.target.closest('[data-ctx-playlist]');
       if (playlistItem) {
         const entries = ctxEntries;
@@ -6161,6 +6269,9 @@
         case 'copy-credits':
           copyAllCredits();
           return;
+        case 'save-credits':
+          saveCredits();
+          return;
         case 'clear-credits':
           state.credits = [];
           persistCredits();
@@ -6469,6 +6580,11 @@
           }
         : null,
     importBackup: (data) => importBackup(data),
+    sleep: (value) => {
+      if (value !== undefined) setSleepTimer(value);
+      return { label: sleepLabel(), active: $('#btn-sleep').classList.contains('active') };
+    },
+    creditsText: () => creditsText(),
     history: () => history.map((row) => ({ id: row.entry.id, title: row.entry.title, plays: row.plays, last: row.last })),
     recordPlay: (id, plays = 1, daysAgo = 0) => {
       const entry = [state.charts.tracks, state.collection.favorites, state.releases.tracks]

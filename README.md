@@ -373,6 +373,9 @@ da ist, bleibt der „Im Browser öffnen"-Fallback. Details:
 - **M** stumm, **+ / −** lauter/leiser, **Mausrad** auf dem Lautstärkeregler.
 - **Infobereich (Tray):** Symbol mit aktuellem Titel, Play/Pause, Weiter, Zurück.
   Optional läuft CleanMusic beim Schließen dort weiter (*Einstellungen → Wiedergabe*).
+- **Schlaf-Timer** (Mond-Symbol in der Player-Leiste): Stopp nach 15–90 Minuten
+  oder am Ende des Titels.
+- **Video-Credits** im Cutter-Modus kopieren oder **als .txt speichern**.
 - **Medientasten** der Tastatur und das **Windows-Medien-Overlay** (mit Titel,
   Artist und Cover) steuern CleanMusic.
 - **Einstellungen → Sichern & Wiederherstellen** → Favoriten, Playlists,

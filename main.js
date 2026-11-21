@@ -912,7 +912,15 @@ function createMainWindow() {
                 settings: { theme: 'nacht' },
               });
               const rejected = await cm.importBackup({ app: 'Other' });
+              cm.sleep('30');
+              const sleepOn = cm.sleep();
+              document.querySelector('#btn-sleep').click();
+              const sleepMenu = document.querySelectorAll('#ctx-menu [data-sleep]').length;
+              document.querySelector('#ctx-menu [data-sleep="off"]').click();
+              const sleepOff = cm.sleep();
               return {
+                sleep: { on: sleepOn, menu: sleepMenu, off: sleepOff },
+                creditsText: cm.creditsText().split('\\n').length,
                 media: cm.mediaSession(),
                 counts,
                 rejected,
@@ -1797,6 +1805,23 @@ ipcMain.handle('backup-save', async (_event, text) => {
   if (result.canceled || !result.filePath) return { canceled: true };
   try {
     fs.writeFileSync(result.filePath, text, 'utf8');
+    return { ok: true, path: result.filePath };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('credits-save', async (_event, text) => {
+  if (typeof text !== 'string' || !text.trim() || text.length > 2 * 1024 * 1024) return { error: 'Keine Credits' };
+  const stamp = new Date().toISOString().slice(0, 10);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Video-Credits speichern',
+    defaultPath: path.join(app.getPath('documents'), `CleanMusic-Credits-${stamp}.txt`),
+    filters: [{ name: 'Text', extensions: ['txt'] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  try {
+    fs.writeFileSync(result.filePath, text.replace(/\r?\n/g, '\r\n'), 'utf8');
     return { ok: true, path: result.filePath };
   } catch (error) {
     return { error: error.message };
