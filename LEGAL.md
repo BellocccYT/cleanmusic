@@ -174,6 +174,21 @@ Quellen-Plugin – in CleanMusic.
   nur die passende Datei des Releases; Größe und SHA-256-Prüfsumme werden vor
   dem Start geprüft.
 
+## YouTube-Download nur für Creative Commons (ab 1.5)
+
+Das optionale Quellen-Plugin darf im Cutter-Modus nur Videos herunterladen, die YouTube
+selbst als **Creative Commons (CC BY)** ausweist; die Lizenz wird je Video geprüft, sonst
+gibt es keinen Download. Die Angabe stammt vom Uploader – CleanMusic kann nicht prüfen,
+ob er die Rechte wirklich hatte, und Content-ID-Ansprüche sind trotzdem möglich. Die
+Credit-.txt nennt Titel, Kanal, Link und Lizenz. Ob YouTubes Nutzungsbedingungen das
+Herunterladen erlauben, musst du selbst bewerten.
+
+## Songtexte (LRCLIB)
+
+CleanMusic zeigt Songtexte aus der freien Datenbank LRCLIB an, nur zur Anzeige beim
+Hören. Songtexte sind meist urheberrechtlich geschützt – sie im Stream (OBS-Stil
+„Songtext“) öffentlich zu zeigen, liegt in deiner Verantwortung.
+
 ## OBS-Overlay-Plugin
 
 - Liegt nur als **optionales Plugin** im Ordner `extras/plugins/` und ist nicht

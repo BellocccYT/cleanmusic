@@ -230,6 +230,8 @@ async function songRequest(url) {
         return [200, `${at} Das ist zu lang (höchstens ${minutes} Minuten).`];
       case 'no-source':
         return [200, `${at} Gerade gibt es keine vollen Titel – Songwünsche gehen später wieder.`];
+      case 'not-safe':
+        return [200, `${at} Gerade läuft der Stream-sicher-Modus – nur freie Musik, und dieser Wunsch gehört nicht dazu.`];
       case 'ai':
         return [200, `${at} Das ist als KI-Musik gekennzeichnet und wird nicht gespielt.`];
       case 'unsupported-link':
@@ -377,7 +379,7 @@ module.exports = {
   apiVersion: 2,
   id: 'streamerbot',
   name: 'Streamer.bot',
-  version: '1.2.0',
+  version: '1.2.1',
   description:
     'Chat-Befehle für Twitch über Streamer.bot: !song postet den aktuellen Titel, !skip und !pause steuern CleanMusic, ' +
     'optional Songwünsche mit !sr – per Suche oder Link (Spotify, YouTube, Deezer, Apple Music).',

@@ -102,6 +102,9 @@
     downloads: 'cleanmusic.downloads.v1', // entry id → { path, at }
     creatorDownloads: 'cleanmusic.creatordl.v1', // [{ path, name, service, at }]
     seenVersion: 'cleanmusic.seenversion.v1', // last version the user saw "what's new" for
+    creatorUsage: 'cleanmusic.creatorusage.v1', // { "tab:category": opens } for "Für dich"
+    localView: 'cleanmusic.localview.v1', // { sort }
+    localMoods: 'cleanmusic.localmoods.v1', // { folder: mood }
     history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
   };
 
@@ -204,7 +207,7 @@
     favFilter: 'all',
     creator: {
       tab: 'ncs',
-      category: { ncs: 'top', classics: 'lustig', sfx: 'whoosh', games: 'retro', free: 'cinematic', youtube: 'gaming' },
+      category: { foryou: 'mix', ncs: 'top', classics: 'lustig', sfx: 'whoosh', games: 'retro', free: 'cinematic', youtube: 'gaming' },
       query: { sfx: '', games: '', free: '', youtube: '' },
       lists: {},
     },
@@ -234,6 +237,10 @@
         coverAccent: false,
         autoplay: true, // suggestions after single titles (search)
         markAi: true, // "KI?" badge on labelled AI songs
+        background: 'none',
+        bgMotion: true,
+        streamSafe: false,
+        lyrics: false,
         onboarded: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
         downloadDir: '',
@@ -788,7 +795,7 @@
       case 'creator': return creatorItems();
       case 'recs': return visibleRecs();
       case 'favorites': return filteredFavorites();
-      case 'local': return state.library.entries;
+      case 'local': return visibleLocal();
       case 'radio': return state.radio.entries;
       case 'releases': return state.releases.tracks;
       case 'pcharts': return state.pluginCharts.items;
@@ -3117,15 +3124,24 @@
   }
 
   function renderLocal() {
-    const entries = state.library.entries;
-    const tracks = state.library.tracks;
+    const allEntries = state.library.entries;
+    const order = localOrder();
+    const entries = order.map((original) => allEntries[original]);
+    const tracks = order.map((original) => state.library.tracks[original]);
     const folder = state.library.folder;
+    let lastDir = null;
 
     const rows = entries
       .map((entry, index) => {
+        let group = '';
+        if (localSort === 'folder' && entry.dir !== lastDir) {
+          lastDir = entry.dir;
+          const count = entries.filter((item) => item.dir === entry.dir).length;
+          group = `<tr class="local-group"><td colspan="5"><span class="local-group-name">📁 ${esc(entry.dir || 'Ordner')}</span><span class="muted small">${count} Titel</span>${moodSelect(entry.dir || '')}</td></tr>`;
+        }
         const playing = isPlayingId(entry.id);
         const fav = favIds.has(entry.id);
-        return `
+        return group + `
           <tr data-list="local" data-index="${index}" data-track-id="${esc(entry.id)}"
             class="${playing ? 'playing' : ''}" draggable="true">
             <td class="col-idx">${playing ? EQ : index + 1}</td>
@@ -3147,7 +3163,7 @@
       })
       .join('');
 
-    const body = entries.length
+    const body = allEntries.length
       ? `<div class="table-wrap">
            <table class="track-table">
              <thead>
@@ -3181,6 +3197,7 @@
             ${entries.length ? '<button class="btn ghost" id="btn-clear-lib">Leeren</button>' : ''}
           </div>
         </div>
+        ${allEntries.length ? localToolbar() : ''}
         ${body}
       </div>`;
   }
@@ -3408,6 +3425,7 @@
 
   function schedulePrefetch() {
     clearTimeout(prefetchTimer);
+    pushPlayerState(); // the queue changed – overlays show "Als Nächstes"
     if (!anyPluginReady()) return;
 
     // Resolve the next track while this one plays – plugins may need a few
@@ -3816,6 +3834,13 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.5.0': [
+      'Hintergründe (Aurora, Verlauf, Farbwolken, Cover, Sternenhimmel) und sechs neue Themes – Einstellungen → Aussehen.',
+      'Stream-sicher-Modus: zeigt, ob der Titel frei lizenziert ist; Songwünsche kommen dann nur aus freier Musik.',
+      'Songtexte im Vollbild-Player (Knopf mit den drei Linien) – auch als OBS-Overlay-Stil.',
+      'Cutter-Modus „Für dich“ und Lokale Musik nach Ordner und Stimmung.',
+      'OBS-Overlay 1.1: sieben neue Stile und „Als Nächstes“ mit den Songwünschen.',
+    ],
     '1.4.0': [
       'Songwünsche per Link: Spotify, Deezer, Apple Music und YouTube (mit Quellen-Plugin) – als Nächstes und in einer Playlist gespeichert (Streamer.bot-Plugin 1.2.0).',
       'KI-Filter: gekennzeichnete KI-Songs (z. B. „AI Cover“, „Suno“) lassen sich bei Songwünschen ablehnen und bekommen ein „KI?“.',
@@ -4096,6 +4121,431 @@
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !$('#onboarding').hidden) closeOnboarding();
+    });
+  }
+
+  /* ---------------------------------------------------------------- *
+   * 1.5: backgrounds, stream-safe mode, lyrics, Cutter "Für dich",
+   * local moods/folders
+   * ---------------------------------------------------------------- */
+
+  const BACKGROUNDS = [
+    { id: 'none', label: 'Keiner' },
+    { id: 'aurora', label: 'Aurora' },
+    { id: 'gradient', label: 'Verlauf' },
+    { id: 'mesh', label: 'Farbwolken' },
+    { id: 'cover', label: 'Cover' },
+    { id: 'stars', label: 'Sternenhimmel' },
+  ];
+
+  let bgCoverUrl = '';
+
+  function applyBackground() {
+    const id = BACKGROUNDS.some((bg) => bg.id === state.settings.background) ? state.settings.background : 'none';
+    const root = document.documentElement;
+    if (id === 'none') delete root.dataset.bg;
+    else root.dataset.bg = id;
+    root.classList.toggle('bg-still', state.settings.bgMotion === false);
+    bgCoverUrl = '';
+    updateBackgroundCover();
+  }
+
+  function updateBackgroundCover() {
+    if (state.settings.background !== 'cover') return;
+    const item = currentItem();
+    const art = item && item.artwork ? String(item.artwork) : '';
+    const url = /^(https:|data:image\/|blob:)/i.test(art) ? art : '';
+    if (url === bgCoverUrl) return;
+    bgCoverUrl = url;
+    const layer = $('#app-bg');
+    if (layer) layer.style.setProperty('--bg-cover', url ? `url("${url.replace(/"/g, '%22')}")` : 'none');
+  }
+
+  function setBackground(id) {
+    state.settings.background = id;
+    saveSettings();
+    applyBackground();
+    renderSettings();
+  }
+
+  function backgroundPanelHtml() {
+    const active = state.settings.background || 'none';
+    return `
+        <div class="bg-picker">
+          <strong>Hintergrund</strong>
+          <div class="radio-tags">${BACKGROUNDS.map(
+            (bg) => `<button class="radio-tag ${bg.id === active ? 'active' : ''}" data-bg-id="${bg.id}">${esc(bg.label)}</button>`
+          ).join('')}</div>
+        </div>
+        <label class="toggle-row" style="margin-top:10px">
+          <span>
+            <strong>Hintergrund bewegen</strong>
+            <small>Langsame Animation. Aus = ruhiges Standbild, spart Leistung.</small>
+          </span>
+          <input type="checkbox" id="opt-bg-motion" ${state.settings.bgMotion !== false ? 'checked' : ''} />
+        </label>`;
+  }
+
+  /* --- Stream-safe mode ------------------------------------------------ */
+
+  function streamSafeOn() {
+    return Boolean(state.settings.streamSafe);
+  }
+
+  // Free licence known: NCS, CC0, CC BY, Public Domain, CC BY confirmed by the source plugin.
+  function streamSafe(entry) {
+    if (!entry) return false;
+    const key = licenseKey(entry.license);
+    return key === 'free' || key === 'by' || key === 'ncs' || entry.ytLicense === 'cc-by';
+  }
+
+  function updateStreamBadge() {
+    const badge = $('#stream-badge');
+    if (!badge) return;
+    const item = currentItem();
+    const on = streamSafeOn() && Boolean(item);
+    badge.hidden = !on;
+    if (!on) return;
+    const safe = streamSafe(item);
+    badge.dataset.safe = safe ? 'yes' : 'no';
+    badge.textContent = safe ? '✓ Stream-sicher' : '⚠ Nicht stream-sicher';
+    badge.title = safe
+      ? 'Freie Lizenz (NCS, CC0, CC BY) – mit Credit im Stream nutzbar.'
+      : 'Keine freie Lizenz bekannt – kann auf Twitch oder YouTube stummgeschaltet oder gemeldet werden.';
+  }
+
+  function setStreamSafe(on) {
+    state.settings.streamSafe = Boolean(on);
+    saveSettings();
+    updateStreamBadge();
+    renderSettings();
+    toast(on ? 'Stream-sicher-Modus an – Songwünsche nur noch aus freier Musik' : 'Stream-sicher-Modus aus');
+  }
+
+  // Song requests while streaming: only free music (CC on the source plugin, Openverse).
+  async function findSafeRequestTrack(query) {
+    const pool = [];
+    const plugin = searchPlugin();
+    if (plugin) {
+      try {
+        const found = await bridge.pluginSearch(plugin.id, query, { creativeCommons: true, limit: 15 });
+        (Array.isArray(found.results) ? found.results : [])
+          .filter((item) => item.license === 'cc-by')
+          .forEach((item) => pool.push(youtubeCutterEntry(plugin, item)));
+      } catch {
+        /* next source */
+      }
+    }
+    if (bridge.creatorOpenverse) {
+      try {
+        const found = await bridge.creatorOpenverse({ kind: 'music', query, page: 1 });
+        (Array.isArray(found.items) ? found.items : []).forEach((item) => pool.push(openverseEntry(item)));
+      } catch {
+        /* nothing */
+      }
+    }
+    const wanted = requestWords(query);
+    const fitting = pool.filter((entry) => {
+      if (!streamSafe(entry)) return false;
+      const words = new Set([...requestWords(entry.artist), ...requestWords(entry.title)]);
+      return wanted.some((word) => words.has(word));
+    });
+    return bestRequestHit(fitting, query);
+  }
+
+  /* --- Lyrics (LRCLIB) ------------------------------------------------- */
+
+  const lyricsState = { key: '', lines: [], plain: '', loading: false, error: null, index: -1 };
+
+  function lyricsOn() {
+    return Boolean(state.settings.lyrics);
+  }
+
+  async function ensureLyrics() {
+    const item = currentItem();
+    if (!lyricsOn() || !item || item.kind === 'radio' || !bridge.lyricsGet) return;
+    const key = matchKey(item);
+    if (!key || key === lyricsState.key) return;
+    Object.assign(lyricsState, { key, lines: [], plain: '', loading: true, error: null, index: -1 });
+    renderLyrics();
+    let result;
+    try {
+      result = await bridge.lyricsGet({
+        title: item.title || '',
+        artist: item.artist || '',
+        album: item.album || '',
+        duration: Math.round(item.duration || (Number.isFinite(audio.duration) ? audio.duration : 0) || 0),
+      });
+    } catch (error) {
+      result = { error: error.message };
+    }
+    if (lyricsState.key !== key) return;
+    Object.assign(lyricsState, {
+      lines: Array.isArray(result.lines) ? result.lines : [],
+      plain: result.plain || '',
+      loading: false,
+      error: result.error || null,
+      index: -1,
+    });
+    renderLyrics();
+    pushPlayerState();
+  }
+
+  function renderLyrics() {
+    const host = $('#fs-lyrics');
+    const button = $('#fs-lyrics-btn');
+    if (button) button.classList.toggle('active', lyricsOn());
+    if (!host) return;
+    host.hidden = !lyricsOn();
+    if (host.hidden) return;
+    if (lyricsState.loading) {
+      host.innerHTML = '<p class="lyrics-note">Songtext wird gesucht …</p>';
+      return;
+    }
+    if (lyricsState.lines.length) {
+      host.innerHTML =
+        lyricsState.lines.map((line, index) => `<p data-ly="${index}">${esc(line.text) || '♪'}</p>`).join('') +
+        '<p class="lyrics-note">Songtext: LRCLIB</p>';
+      lyricsState.index = -1;
+      updateLyricLine(true);
+      return;
+    }
+    if (lyricsState.plain) {
+      host.innerHTML =
+        lyricsState.plain
+          .split('\n')
+          .map((line) => `<p>${esc(line) || '&nbsp;'}</p>`)
+          .join('') + '<p class="lyrics-note">Songtext: LRCLIB (ohne Zeitangaben)</p>';
+      return;
+    }
+    host.innerHTML = `<p class="lyrics-note">${esc(lyricsState.error || 'Kein Songtext gefunden.')}</p>`;
+  }
+
+  function updateLyricLine(force = false) {
+    if (!lyricsOn() || !lyricsState.lines.length) return;
+    const time = audio.currentTime || 0;
+    let index = -1;
+    for (let at = 0; at < lyricsState.lines.length; at += 1) {
+      if (lyricsState.lines[at].time <= time + 0.2) index = at;
+      else break;
+    }
+    if (index === lyricsState.index && !force) return;
+    lyricsState.index = index;
+    const host = $('#fs-lyrics');
+    if (host && !host.hidden && state.fullscreen) {
+      host.querySelectorAll('p.on').forEach((line) => line.classList.remove('on'));
+      const line = host.querySelector(`[data-ly="${index}"]`);
+      if (line) {
+        line.classList.add('on');
+        host.scrollTo({ top: line.offsetTop - host.clientHeight / 2 + line.clientHeight / 2, behavior: force ? 'auto' : 'smooth' });
+      }
+    }
+    pushPlayerState();
+  }
+
+  function currentLyric() {
+    if (!lyricsOn() || !lyricsState.lines.length || lyricsState.index < 0) return null;
+    const line = lyricsState.lines[lyricsState.index];
+    const next = lyricsState.lines[lyricsState.index + 1];
+    return { line: line ? line.text : '', next: next ? next.text : '' };
+  }
+
+  function toggleLyrics(force) {
+    state.settings.lyrics = typeof force === 'boolean' ? force : !lyricsOn();
+    saveSettings();
+    if (lyricsOn()) {
+      lyricsState.key = '';
+      ensureLyrics();
+    }
+    renderLyrics();
+    pushPlayerState();
+  }
+
+  function upNextSnapshot() {
+    const { items, index } = state.queue;
+    return items.slice(index + 1, index + 11).map((entry) => ({
+      title: entry.title || '',
+      artist: entry.artist || '',
+      by: entry.requestedBy || '',
+    }));
+  }
+
+  /* --- Cutter: "Für dich" ---------------------------------------------- */
+
+  function bumpCreatorUsage(key, amount = 1) {
+    if (!key) return;
+    const usage = readJSON(STORAGE.creatorUsage, {}) || {};
+    usage[key] = (Number(usage[key]) || 0) + amount;
+    const keys = Object.keys(usage);
+    if (keys.length > 80) keys.sort((a, b) => usage[a] - usage[b]).slice(0, keys.length - 80).forEach((name) => delete usage[name]);
+    writeJSON(STORAGE.creatorUsage, usage);
+  }
+
+  function isSfxTab(tab) {
+    return Boolean(tab && (tab.kind === 'sfx' || tab.id === 'sfx' || tab.id === 'games'));
+  }
+
+  async function fetchCreatorCategory(tabId, catId) {
+    const tab = CREATOR.tabs.find((item) => item.id === tabId);
+    if (!tab || tab.kind === 'plugin' || tab.kind === 'foryou') return [];
+    const cached = state.creator.lists[`${tabId}:${catId}`];
+    if (cached && Array.isArray(cached.items) && cached.items.length) return shuffled(cached.items);
+    if (tab.id === 'classics') {
+      return shuffled(tab.tracks.filter((track) => catId === 'all' || track.category === catId).map(classicEntry));
+    }
+    const category = (tab.categories || []).find((item) => item.id === catId);
+    if (!category) return [];
+    if (tab.id === 'ncs') {
+      const result = await bridge.creatorPlaylist(category.playlist);
+      return shuffled((Array.isArray(result.tracks) ? result.tracks : []).map(ncsEntry));
+    }
+    if (!category.query) return [];
+    const kind = isSfxTab(tab) ? 'sfx' : 'music';
+    const cacheKey = `${kind}|${category.query.toLowerCase()}|1`;
+    let result = cachedOpenverse(cacheKey);
+    if (!result) {
+      result = await bridge.creatorOpenverse({ kind, query: category.query, page: 1 });
+      if (!result.error) storeOpenverse(cacheKey, { items: result.items, more: result.more });
+    }
+    return shuffled((Array.isArray(result.items) ? result.items : []).map(openverseEntry));
+  }
+
+  async function creatorForYou(filter) {
+    const usage = readJSON(STORAGE.creatorUsage, {}) || {};
+    let keys = Object.entries(usage)
+      .sort((a, b) => b[1] - a[1])
+      .map(([key]) => key);
+    const defaults = ['ncs:gaming', 'classics:lustig', 'free:upbeat', 'sfx:whoosh', 'classics:chill', 'free:cinematic'];
+    keys = keys.concat(defaults.filter((key) => !keys.includes(key)));
+    keys = keys
+      .filter((key) => {
+        const tab = CREATOR.tabs.find((item) => item.id === key.split(':')[0]);
+        if (!tab || tab.kind === 'plugin' || tab.kind === 'foryou') return false;
+        if (filter === 'music') return !isSfxTab(tab);
+        if (filter === 'sfx') return isSfxTab(tab);
+        return true;
+      })
+      .slice(0, 4);
+    const credited = new Set(state.credits.map((item) => item.id));
+    const lists = await Promise.all(keys.map((key) => fetchCreatorCategory(...key.split(':')).catch(() => [])));
+    const out = [];
+    const seen = new Set();
+    for (let round = 0; out.length < 30 && round < 60; round += 1) {
+      let more = false;
+      lists.forEach((list) => {
+        const entry = list[round];
+        if (!entry) return;
+        more = true;
+        if (out.length < 30 && !seen.has(entry.id) && !credited.has(entry.id)) {
+          seen.add(entry.id);
+          out.push(entry);
+        }
+      });
+      if (!more) break;
+    }
+    return out;
+  }
+
+  /* --- Local music: folders + moods ---------------------------------- */
+
+  const LOCAL_MOODS = [
+    { id: 'chill', label: 'Chill', words: ['chill', 'lofi', 'lo-fi', 'relax', 'ambient', 'calm', 'sleep', 'entspann', 'acoustic', 'jazz'] },
+    { id: 'party', label: 'Party', words: ['party', 'dance', 'club', 'edm', 'house', 'techno', 'hits', 'feier', 'remix', 'mallorca'] },
+    { id: 'workout', label: 'Workout', words: ['workout', 'gym', 'training', 'sport', 'running', 'cardio', 'power', 'hardstyle'] },
+    { id: 'fokus', label: 'Fokus', words: ['focus', 'fokus', 'study', 'lernen', 'homework', 'arbeit', 'concentration', 'piano', 'classical', 'klassik'] },
+    { id: 'gaming', label: 'Gaming', words: ['game', 'gaming', 'ost', 'soundtrack', '8bit', '8-bit', 'chiptune', 'phonk'] },
+    { id: 'traurig', label: 'Traurig', words: ['sad', 'traurig', 'melanchol', 'heartbreak', 'emotional', 'ballad'] },
+  ];
+
+  let localSort = readJSON(STORAGE.localView, {}).sort === 'folder' ? 'folder' : 'list';
+  let localMood = 'all';
+  let localMoods = readJSON(STORAGE.localMoods, {}) || {};
+
+  function guessMood(entry) {
+    const text = `${entry.dir || ''} ${entry.title || ''} ${entry.artist || ''}`.toLowerCase();
+    const mood = LOCAL_MOODS.find((item) => item.words.some((word) => text.includes(word)));
+    return mood ? mood.id : '';
+  }
+
+  function moodOf(entry) {
+    return localMoods[entry.dir] || guessMood(entry);
+  }
+
+  // Original indices of the local titles in display order (mood filter, folder grouping).
+  function localOrder() {
+    const entries = state.library.entries;
+    let order = entries.map((_entry, index) => index);
+    if (localMood !== 'all') {
+      order = order.filter((index) => (moodOf(entries[index]) || 'none') === localMood);
+    }
+    if (localSort === 'folder') {
+      order = order.slice().sort((a, b) => {
+        const dir = String(entries[a].dir || '').localeCompare(String(entries[b].dir || ''), 'de');
+        return dir || a - b;
+      });
+    }
+    return order;
+  }
+
+  function visibleLocal() {
+    return localOrder().map((index) => state.library.entries[index]);
+  }
+
+  function localToolbar() {
+    const entries = state.library.entries;
+    const counts = { all: entries.length, none: 0 };
+    entries.forEach((entry) => {
+      const mood = moodOf(entry) || 'none';
+      counts[mood] = (counts[mood] || 0) + 1;
+    });
+    const chips = [{ id: 'all', label: 'Alle' }, ...LOCAL_MOODS, { id: 'none', label: 'Ohne Stimmung' }]
+      .filter((mood) => mood.id === 'all' || counts[mood.id])
+      .map(
+        (mood) =>
+          `<button class="radio-tag ${localMood === mood.id ? 'active' : ''}" data-local-mood="${mood.id}">${esc(mood.label)} <small>${counts[mood.id] || 0}</small></button>`
+      )
+      .join('');
+    return `
+      <div class="local-toolbar">
+        <div class="radio-tags">${chips}</div>
+        <div class="local-sort">
+          <button class="radio-tag ${localSort === 'list' ? 'active' : ''}" data-local-sort="list">Liste</button>
+          <button class="radio-tag ${localSort === 'folder' ? 'active' : ''}" data-local-sort="folder">Nach Ordner</button>
+        </div>
+      </div>`;
+  }
+
+  function moodSelect(dir) {
+    const current = localMoods[dir] || '';
+    return `<select class="local-mood-select" data-local-mood-dir="${esc(dir)}" title="Stimmung für diesen Ordner">
+      <option value="" ${current ? '' : 'selected'}>Stimmung: automatisch</option>
+      ${LOCAL_MOODS.map((mood) => `<option value="${mood.id}" ${current === mood.id ? 'selected' : ''}>Stimmung: ${esc(mood.label)}</option>`).join('')}
+    </select>`;
+  }
+
+  function wireLocalExtras() {
+    document.addEventListener('click', (event) => {
+      const mood = event.target.closest('#view-local [data-local-mood]');
+      if (mood) {
+        localMood = mood.dataset.localMood;
+        renderLocal();
+        return;
+      }
+      const sort = event.target.closest('#view-local [data-local-sort]');
+      if (sort) {
+        localSort = sort.dataset.localSort === 'folder' ? 'folder' : 'list';
+        writeJSON(STORAGE.localView, { sort: localSort });
+        renderLocal();
+      }
+    });
+    document.addEventListener('change', (event) => {
+      const select = event.target.closest && event.target.closest('#view-local [data-local-mood-dir]');
+      if (!select) return;
+      const dir = select.dataset.localMoodDir;
+      if (select.value) localMoods[dir] = select.value;
+      else delete localMoods[dir];
+      writeJSON(STORAGE.localMoods, localMoods);
+      renderLocal();
     });
   }
 
@@ -4769,6 +5219,11 @@
 
   function canDownload(entry) {
     if (!entry || state.settings.downloads !== 'cutting') return false;
+    // YouTube via the source plugin: only CC BY (the plugin verifies it again per video).
+    if (entry.kind === 'plugin') {
+      const plugin = pluginById(entry.pluginId);
+      return entry.ytLicense === 'cc-by' && Boolean(plugin && isPluginReady(plugin) && plugin.capabilities.download);
+    }
     if (entry.kind !== 'stream' || !entry.url) return false;
     const key = licenseKey(entry.license);
     return key === 'free' || key === 'by';
@@ -4809,7 +5264,16 @@
     refreshDownloadButtons();
     let result;
     try {
-      result = await bridge.cuttingDownload({
+      result =
+        entry.kind === 'plugin'
+          ? await bridge.pluginDownload(entry.pluginId, {
+              refId: entry.refId,
+              title: entry.title,
+              artist: entry.artist,
+              link: entry.link,
+              folder: state.settings.downloadDir,
+            })
+          : await bridge.cuttingDownload({
         url: entry.url,
         title: entry.title,
         artist: entry.artist,
@@ -4954,6 +5418,9 @@
     if (!tab) return;
 
     const key = creatorKey();
+    if (tab.kind !== 'foryou' && tab.kind !== 'plugin' && !(tab.search && state.creator.query[tab.id])) {
+      bumpCreatorUsage(`${tab.id}:${state.creator.category[tab.id] || (tab.id === 'classics' ? 'lustig' : '')}`);
+    }
     const existing = state.creator.lists[key];
     if (existing && !options.more && !options.force) {
       renderCreatorList();
@@ -4993,6 +5460,26 @@
         items: (Array.isArray(result.tracks) ? result.tracks : []).map(ncsEntry),
         loading: false,
         error: result.error || null,
+        more: false,
+        page: 1,
+      };
+      if (creatorKey() === key) renderCreatorList();
+      return;
+    }
+
+    if (tab.kind === 'foryou') {
+      state.creator.lists[key] = { items: [], loading: true, error: null, more: false, page: 1 };
+      renderCreatorList();
+      let picks = [];
+      try {
+        picks = await creatorForYou(state.creator.category.foryou || 'mix');
+      } catch {
+        picks = [];
+      }
+      state.creator.lists[key] = {
+        items: picks,
+        loading: false,
+        error: picks.length ? null : 'Noch keine Vorschläge – stöbere ein bisschen in den anderen Tabs.',
         more: false,
         page: 1,
       };
@@ -5071,6 +5558,7 @@
 
   function creatorNote(tab) {
     if (tab.kind === 'plugin') return 'Über dein Quellen-Plugin · nicht lizenzgeprüft · kein Download';
+    if (tab.kind === 'foryou') return 'Aus deinen meistgenutzten Kategorien · Lizenz an jedem Titel';
     if (tab.kind === 'sfx') return 'CC0 & CC BY · Freesound';
     switch (tab.id) {
       case 'ncs':
@@ -5195,7 +5683,7 @@
       host.innerHTML = `
         <div class="search-status">
           <span class="spinner small"></span>
-          <span>${tab.id === 'ncs' ? 'NCS-Playlist wird geladen …' : tab.kind === 'plugin' ? 'Suche über dein Quellen-Plugin …' : 'Suche bei Openverse …'}</span>
+          <span>${tab.id === 'ncs' ? 'NCS-Playlist wird geladen …' : tab.kind === 'plugin' ? 'Suche über dein Quellen-Plugin …' : tab.kind === 'foryou' ? 'Vorschläge werden zusammengestellt …' : 'Suche bei Openverse …'}</span>
         </div>`;
       return;
     }
@@ -5349,6 +5837,7 @@
   const DEFAULT_B = [53, 224, 192];
 
   function openFullscreen() {
+    setTimeout(() => renderLyrics(), 80);
     const root = $('#fullscreen');
     if (!root || state.fullscreen) return;
 
@@ -5763,6 +6252,7 @@
           </span>
           <input type="checkbox" id="opt-cover-accent" ${state.settings.coverAccent ? 'checked' : ''} />
         </label>
+        ${backgroundPanelHtml()}
         <p class="muted small" style="margin-top:10px">
           Farbpaletten von Catppuccin, Dracula, Nord, Tokyo Night, Rosé Pine, Gruvbox und Everforest,
           jeweils unter MIT-Lizenz (siehe THIRD-PARTY-NOTICES.md).
@@ -6110,7 +6600,10 @@
     ['loadedmetadata', 'seeked', 'durationchange'].forEach((name) =>
       audio.addEventListener(name, () => updateMediaPosition(true))
     );
-    audio.addEventListener('timeupdate', () => updateMediaPosition());
+    audio.addEventListener('timeupdate', () => {
+      updateMediaPosition();
+      updateLyricLine();
+    });
   }
 
   /* ---------------------------------------------------------------- *
@@ -6296,10 +6789,15 @@
       live: Boolean(item && item.kind === 'radio'),
       volume: volumeLevel(),
       muted: vol.muted,
+      lyric: currentLyric(),
+      upNext: upNextSnapshot(),
     };
   }
 
   function pushPlayerState(immediate = false) {
+    updateStreamBadge();
+    updateBackgroundCover();
+    ensureLyrics();
     if (!bridge.playerState) return;
     clearTimeout(playerStateTimer);
     playerStateTimer = setTimeout(() => {
@@ -6478,13 +6976,14 @@
       found = result.entry;
       if (maxSeconds && found.kind === 'plugin' && found.duration > maxSeconds) return { ok: false, reason: 'too-long' };
     } else {
-      if (source === 'full' && !searchPlugin()) return { ok: false, reason: 'no-source' };
-      found = await findRequestTrack(query, source, maxSeconds);
+      if (!streamSafeOn() && source === 'full' && !searchPlugin()) return { ok: false, reason: 'no-source' };
+      found = streamSafeOn() ? await findSafeRequestTrack(query) : await findRequestTrack(query, source, maxSeconds);
       if (!found) return { ok: false, reason: 'not-found' };
       if (found.tooLong) return { ok: false, reason: 'too-long' };
     }
     const track = { title: found.title, artist: found.artist, source: found.sourceLabel || '', preview: found.kind === 'preview' };
     if (blockAi && aiSuspect(found, extraAi)) return { ok: false, reason: 'ai', track };
+    if (streamSafeOn() && !streamSafe(found)) return { ok: false, reason: 'not-safe', track };
 
     const key = matchKey(found);
     const { items, index } = state.queue;
@@ -7035,6 +7534,20 @@
               <small>Titel mit KI-Hinweis (z. B. „AI Cover“, „Suno“, „KI-generiert“) bekommen ein „KI?“. Erkennt nur, was gekennzeichnet ist.</small>
             </span>
             <input type="checkbox" id="opt-markai" ${state.settings.markAi !== false ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>Stream-sicher-Modus (Ich streame)</strong>
+              <small>Zeigt in der Player-Leiste, ob der Titel frei lizenziert ist (NCS, CC0, CC BY), und Songwünsche kommen nur noch aus freier Musik.</small>
+            </span>
+            <input type="checkbox" id="opt-streamsafe" ${streamSafeOn() ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>Songtexte laden</strong>
+              <small>Mitlaufender Songtext im Vollbild-Player (und im OBS-Overlay-Stil „Songtext“). Fragt Titel und Artist bei der freien Datenbank LRCLIB an.</small>
+            </span>
+            <input type="checkbox" id="opt-lyrics" ${lyricsOn() ? 'checked' : ''} />
           </label>
           <label class="toggle-row">
             <span>
@@ -7758,6 +8271,12 @@ ${updatePanel()}
         return;
       }
 
+      const bgButton = event.target.closest('[data-bg-id]');
+      if (bgButton) {
+        setBackground(bgButton.dataset.bgId);
+        return;
+      }
+
       if (event.target.closest('[data-onboarding]')) {
         openOnboarding();
         return;
@@ -7922,6 +8441,23 @@ ${updatePanel()}
         state.settings.markAi = event.target.checked;
         saveSettings();
         toast(event.target.checked ? 'KI-Songs werden markiert' : 'KI-Markierung aus');
+        return;
+      }
+
+      if (event.target.id === 'opt-bg-motion') {
+        state.settings.bgMotion = event.target.checked;
+        saveSettings();
+        applyBackground();
+        return;
+      }
+
+      if (event.target.id === 'opt-streamsafe') {
+        setStreamSafe(event.target.checked);
+        return;
+      }
+
+      if (event.target.id === 'opt-lyrics') {
+        toggleLyrics(event.target.checked);
         return;
       }
 
@@ -8135,6 +8671,9 @@ ${updatePanel()}
         case 'close':
           closeFullscreen();
           return;
+        case 'lyrics':
+          toggleLyrics();
+          return;
         case 'play':
           $('#btn-play').click();
           return;
@@ -8254,6 +8793,7 @@ ${updatePanel()}
 
   function init() {
     applyTheme();
+    applyBackground();
     window.addEventListener('error', (event) => {
       console.error(`Renderer error: ${event.message}`);
     });
@@ -8269,6 +8809,7 @@ ${updatePanel()}
     wirePlayer();
     wireQueuePanel();
     wireOnboarding();
+    wireLocalExtras();
     wireGlobal();
 
     // Visualizer: analyses the <audio> element, draws in the player bar
@@ -8561,6 +9102,10 @@ ${updatePanel()}
       refreshDownloadButtons();
     },
     playerSnapshot: () => playerSnapshot(),
+    setBackground: (id) => setBackground(id),
+    setStreamSafe: (on) => setStreamSafe(on),
+    creatorForYou: (filter) => creatorForYou(filter || 'mix'),
+    guessMood: (entry) => guessMood(entry || {}),
     aiCheck: (text) => aiSuspect({ title: String(text || '') }),
     creatorTabs: () => creatorTabs().map((tab) => tab.id),
     playlistCount: (name) => {

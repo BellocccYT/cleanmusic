@@ -4822,3 +4822,202 @@ body.fs-open .toast {
   border-color: rgba(var(--danger-rgb), 0.45);
   background: rgba(var(--danger-rgb), 0.1);
 }
+
+/* ------------------------------------------------------------------ *
+ * 1.5: backgrounds, stream-safe badge, lyrics, local moods
+ * ------------------------------------------------------------------ */
+#app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+  overflow: hidden;
+}
+#app {
+  position: relative;
+  z-index: 1;
+}
+html[data-bg] #app-bg {
+  display: block;
+}
+html[data-bg='gradient'] #app-bg {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb), 0.22), transparent 60%),
+    radial-gradient(110% 90% at 100% 100%, rgba(var(--accent-2-rgb), 0.18), transparent 60%),
+    var(--bg);
+}
+html[data-bg='mesh'] #app-bg {
+  background:
+    radial-gradient(40% 50% at 20% 30%, rgba(var(--accent-rgb), 0.28), transparent 70%),
+    radial-gradient(45% 55% at 80% 20%, rgba(var(--accent-2-rgb), 0.22), transparent 70%),
+    radial-gradient(50% 60% at 60% 85%, rgba(var(--warn-rgb), 0.14), transparent 70%),
+    var(--bg);
+}
+html[data-bg='aurora'] #app-bg {
+  background: var(--bg);
+}
+html[data-bg='aurora'] #app-bg::before,
+html[data-bg='aurora'] #app-bg::after {
+  content: '';
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.32;
+  animation: cm-aurora 38s ease-in-out infinite alternate;
+}
+html[data-bg='aurora'] #app-bg::before {
+  background: rgb(var(--accent-rgb));
+  left: -20vmax;
+  top: -25vmax;
+}
+html[data-bg='aurora'] #app-bg::after {
+  background: rgb(var(--accent-2-rgb));
+  right: -25vmax;
+  bottom: -30vmax;
+  animation-delay: -12s;
+}
+@keyframes cm-aurora {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(12vmax, 8vmax) scale(1.15); }
+  100% { transform: translate(-6vmax, 14vmax) scale(0.95); }
+}
+html[data-bg='cover'] #app-bg {
+  background: var(--bg);
+}
+html[data-bg='cover'] #app-bg::before {
+  content: '';
+  position: absolute;
+  inset: -80px;
+  background: var(--bg-cover, none) center / cover no-repeat;
+  filter: blur(70px) saturate(1.4);
+  opacity: 0.38;
+}
+html[data-bg='stars'] #app-bg {
+  background: radial-gradient(ellipse at 50% 120%, rgba(var(--accent-rgb), 0.18), transparent 60%), var(--bg);
+}
+html[data-bg='stars'] #app-bg::before,
+html[data-bg='stars'] #app-bg::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background-image:
+    radial-gradient(1.2px 1.2px at 20px 30px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 90px 120px, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 160px 60px, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 230px 180px, rgba(255, 255, 255, 0.6), transparent);
+  background-size: 260px 220px;
+  opacity: 0.55;
+  animation: cm-stars 120s linear infinite;
+}
+html[data-bg='stars'] #app-bg::after {
+  background-size: 410px 330px;
+  opacity: 0.35;
+  animation-duration: 200s;
+}
+html[data-mode='light'][data-bg='stars'] #app-bg::before,
+html[data-mode='light'][data-bg='stars'] #app-bg::after {
+  filter: invert(1);
+  opacity: 0.22;
+}
+@keyframes cm-stars {
+  to { transform: translate(-260px, -220px); }
+}
+html.bg-still #app-bg::before,
+html.bg-still #app-bg::after {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #app-bg::before,
+  #app-bg::after {
+    animation: none !important;
+  }
+}
+.bg-picker {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.stream-badge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.stream-badge[data-safe='yes'] {
+  color: var(--ok);
+  background: rgba(var(--ok-rgb), 0.14);
+}
+.stream-badge[data-safe='no'] {
+  color: var(--warn);
+  background: rgba(var(--warn-rgb), 0.14);
+}
+
+.fs-lyrics {
+  margin-top: 14px;
+  max-height: 34vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 6vh 0;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
+}
+.fs-lyrics p {
+  margin: 6px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.42);
+  transition: color 0.25s ease, transform 0.25s ease;
+  transform-origin: left center;
+}
+.fs-lyrics p.on {
+  color: #fff;
+  transform: scale(1.04);
+}
+.fs-lyrics .lyrics-note {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+}
+#fs-lyrics-btn.active {
+  color: rgb(var(--fs-a));
+}
+
+.local-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 0 12px;
+}
+.local-toolbar .radio-tag small {
+  opacity: 0.6;
+  margin-left: 4px;
+}
+.local-sort {
+  display: flex;
+  gap: 6px;
+}
+.track-table tr.local-group td {
+  padding: 16px 8px 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.local-group-name {
+  font-weight: 700;
+  margin-right: 10px;
+}
+.local-mood-select {
+  margin-left: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px 6px;
+  font-size: 12px;
+}

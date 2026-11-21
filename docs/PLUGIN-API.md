@@ -59,6 +59,18 @@ Plugin-eigene Referenz (`refId`), `artwork` muss `https://` sein.
 wahr ist. Alle Rückgaben werden von CleanMusic gekürzt und auf gültige URLs
 geprüft.
 
+### Download nur für Creative Commons, Player-Zustand (CleanMusic 1.5.0+)
+
+- `download(refId, { dir })` (optional): lädt einen Titel als `.m4a` nach `dir` und gibt
+  `{ file, title, artist, license, link }` zurück. **Nur** erlaubt, wenn die Quelle das
+  einzelne Video als Creative Commons ausweist – das Plugin muss das pro Video prüfen und
+  sonst einen Fehler werfen. CleanMusic bietet den Download nur bei Items mit
+  `license: 'cc-by'` im Modus „Nur Cutting“ an, prüft `license` und den Zielordner noch
+  einmal und schreibt die Credit-.txt.
+- `player.state()` / `onEvent` enthalten zusätzlich `lyric` (`{ line, next }` bei
+  eingeschalteten Songtexten, sonst `null`) und `upNext` (`[{ title, artist, by }]`,
+  die nächsten bis zu 10 Titel; `by` = Name bei Songwünschen).
+
 ### Suche mit Optionen, Link-Lookup, Hinweise (CleanMusic 1.4.0+)
 
 - `search(query, options)` bekommt als zweiten Parameter `{ limit, creativeCommons }`.

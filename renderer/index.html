@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="app-bg" aria-hidden="true"></div>
   <div id="app">
     <header id="topbar">
       <div class="brand">
@@ -139,6 +140,7 @@
           <div class="np-title" id="np-title">Nichts ausgewählt</div>
           <div class="np-artist" id="np-artist">Lokale Wiedergabe</div>
           <span class="np-badge" id="np-badge" hidden></span>
+          <span class="stream-badge" id="stream-badge" hidden></span>
         </div>
         <div class="np-actions">
           <button class="icon-btn fav" id="btn-np-fav" title="Zu Favoriten" disabled>
@@ -237,6 +239,7 @@
         <span class="fs-badge" id="fs-badge" hidden></span>
         <h1 class="fs-title" id="fs-title">Nichts ausgewählt</h1>
         <div class="fs-artist" id="fs-artist"></div>
+        <div class="fs-lyrics" id="fs-lyrics" hidden></div>
 
         <div class="fs-progress" id="fs-progress">
           <span id="fs-cur">0:00</span>
@@ -270,6 +273,9 @@
           </button>
           <button class="fs-ctrl" id="fs-add" data-fs-act="add" title="Zur Playlist hinzufügen">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+          </button>
+          <button class="fs-ctrl" id="fs-lyrics-btn" data-fs-act="lyrics" title="Songtext ein/aus">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h10"></path><path d="M4 18h13"></path></svg>
           </button>
           <div class="fs-volume">
             <button class="fs-mute vol-btn" id="fs-mute" title="Stumm schalten (M)" data-level="high">

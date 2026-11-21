@@ -61,6 +61,21 @@
   window.CM_CREATOR = {
     tabs: [
       {
+        id: 'foryou',
+        kind: 'foryou',
+        label: 'Für dich',
+        icon: 'spark',
+        title: 'Für dich',
+        info:
+          'Vorschläge aus den Kategorien, die du am meisten nutzt – ohne Titel, die du schon gecreditet hast. Alles frei für Videos, Lizenz an jedem Titel.',
+        license: null,
+        categories: [
+          { id: 'mix', label: 'Mix' },
+          { id: 'music', label: 'Nur Musik' },
+          { id: 'sfx', label: 'Nur Sounds' },
+        ],
+      },
+      {
         id: 'ncs',
         label: 'NCS',
         icon: 'bolt',

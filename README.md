@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.4.0**
+**Version 1.5.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -106,6 +106,12 @@ Suche erscheinen zusätzlich die aktuellen Deezer-Charts.
   Amazon Music … suchen". So springst du mit einem Klick vom 30-s-Treffer in
   den vollen Song im Dienst.
 
+### Lokale Musik nach Ordner und Stimmung
+
+*Lokale Musik* filtert nach **Stimmung** (Chill, Party, Workout, Fokus, Gaming, Traurig –
+geraten aus Ordner- und Dateinamen, pro Ordner selbst festlegbar) und sortiert auf
+Wunsch **nach Ordner**.
+
 ### Favoriten, Playlists & Vorschläge
 
 - **♥** an jedem Titel, jeder Vorschau, jedem Plugin-Treffer, jeder lokalen
@@ -153,6 +159,15 @@ volle Titel des aktiven Plugins übernommen. Spotify kann über den öffentliche
 bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import verwenden.
 
 ### Cutter-Modus (für Videos)
+
+> **Für dich (ab 1.5):** Vorschläge aus den Kategorien, die du am meisten nutzt – ohne
+> Titel, die du schon gecreditet hast (Mix, nur Musik, nur Sounds).
+>
+> **YouTube-Download nur für Creative Commons (ab 1.5, Quellen-Plugin ab 1.4.0):** Im
+> YouTube-Tab bekommen Titel mit „CC BY laut Uploader“ im Modus „Nur Cutting“ einen
+> Download-Knopf. Das Plugin prüft die Lizenz bei **jedem** Video noch einmal; nur wenn
+> YouTube es als Creative Commons ausweist, landet die m4a mit Credit-.txt in
+> `CleanMusic Cutting\YouTube (Creative Commons)`. Alles andere bleibt ohne Download.
 
 > **YouTube-Tab (ab 1.4, nur mit aktivem Quellen-Plugin):** zeigt YouTube-Treffer
 > (Gaming-Musik, Phonk, Lo-Fi, Meme-Sounds …) mit dem Hinweis **„⚠ Content ID möglich“** –
@@ -212,7 +227,12 @@ Taste **F**, der Knopf ⤢ in der Player-Leiste oder Doppelklick aufs Cover:
 - Tasten: **Leertaste** Play/Pause · **← →** ±5 s · **↑ ↓** Lautstärke ·
   **N / P** weiter/zurück · **Esc** schließen
 
-### Themes
+### Themes & Hintergründe
+
+Seit 1.5 sechzehn Themes (neu: Synthwave, Ozean, Sonnenuntergang, Terminal,
+Mitternacht Gold, Kirschblüte) und **Hintergründe**: Aurora, Verlauf, Farbwolken,
+Cover (unscharfes Cover des laufenden Titels) und Sternenhimmel – langsam animiert oder
+als ruhiges Standbild (*Einstellungen → Aussehen*).
 
 Zehn Farbschemata unter *Einstellungen → Aussehen*: **CleanMusic Nacht** (Standard),
 **CleanMusic Tag** (hell), **Catppuccin Mocha / Latte**, **Dracula**, **Nord**,
@@ -221,6 +241,20 @@ der Community-Themes stehen unter MIT-Lizenz (siehe
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)). Optional übernimmt die
 **Akzentfarbe das Cover** des laufenden Titels – automatisch so angepasst, dass
 sie auf hellen und dunklen Themes lesbar bleibt.
+
+### Stream-sicher-Modus
+
+*Einstellungen → Wiedergabe → Stream-sicher-Modus (Ich streame)*: Die Player-Leiste
+zeigt **✓ Stream-sicher** (NCS, CC0, CC BY) oder **⚠ Nicht stream-sicher**, und
+Songwünsche aus dem Chat kommen nur noch aus freier Musik (Creative Commons über das
+Quellen-Plugin, Openverse). Erkennt nur bekannte Lizenzen – im Zweifel gilt ein Titel
+als nicht sicher.
+
+### Songtexte
+
+Im Vollbild-Player blendet der Knopf mit den drei Linien den **mitlaufenden Songtext**
+ein (aus der freien Datenbank [LRCLIB](https://lrclib.net); dabei werden nur Titel,
+Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“.
 
 ### Lautstärke
 
@@ -375,6 +409,11 @@ was gekennzeichnet ist. Anleitung:
 [extras/plugins/README.md](extras/plugins/README.md#streamerbot-streamerbotjs).
 
 ### OBS Now-Playing (optionales Plugin)
+
+Ab Plugin 1.1.0: zehn Stile – Karte, Leiste, Nur Text, **Plattenspieler** (Cover dreht
+sich), **Neon**, **Glas**, **Equalizer**, **Laufschrift**, **großes Cover** und
+**Songtext** – plus eine zweite Quelle **„Als Nächstes“** (`/upnext`, nur Wünsche:
+`/upnext?only=requests`), die die kommenden Titel und Songwünsche mit Namen zeigt.
 
 Im Repository liegt unter [`extras/plugins/obs-overlay.js`](extras/plugins/)
 ein fertiges Plugin für Streamer: Es zeigt den laufenden Titel als

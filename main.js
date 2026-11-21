@@ -1591,6 +1591,31 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_AI_FILTER:', JSON.stringify(aiResult));
+
+          // 1.5: backgrounds, themes, stream-safe badge, "Für dich", moods, lyrics, up next.
+          const v15 = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const out = {};
+              cm.setBackground('aurora');
+              out.background = document.documentElement.dataset.bg || '';
+              cm.setBackground('none');
+              out.backgroundOff = !document.documentElement.dataset.bg;
+              out.themes = window.CM_THEMES.length;
+              cm.setStreamSafe(true);
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              const badge = document.querySelector('#stream-badge');
+              out.streamBadge = badge && !badge.hidden ? badge.textContent : '';
+              cm.setStreamSafe(false);
+              out.forYou = (await cm.creatorForYou('mix')).length;
+              out.moods = ['Chill Lofi Beats', 'Party Hits 2024', 'Gym Workout Mix', 'Urlaub'].map((dir) => cm.guessMood({ dir, title: '' }) || '-');
+              const lyrics = await window.cm.lyricsGet({ title: 'One More Time', artist: 'Daft Punk', duration: 320 });
+              out.lyrics = { synced: lyrics.lines.length, plain: Boolean(lyrics.plain), error: lyrics.error };
+              out.upNext = Array.isArray(cm.playerSnapshot().upNext);
+              return out;
+            })()
+          `);
+          console.log('SMOKE_V15:', JSON.stringify(v15));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -3331,6 +3356,8 @@ const playerState = {
   volume: 1,
   muted: false,
   at: Date.now(),
+  lyric: null, // { line, next } while lyrics are on
+  upNext: [], // [{ title, artist, by }] – the next titles, by = song request from
 };
 
 function sendPlayerCommand(command, value) {
@@ -3429,6 +3456,15 @@ ipcMain.on('player-state', (_event, raw) => {
   playerState.volume = Math.min(1.5, Math.max(0, Number(raw.volume) || 0));
   playerState.muted = Boolean(raw.muted);
   playerState.at = Date.now();
+  playerState.lyric =
+    raw.lyric && typeof raw.lyric === 'object'
+      ? { line: cleanText(raw.lyric.line, 300), next: cleanText(raw.lyric.next, 300) }
+      : null;
+  playerState.upNext = (Array.isArray(raw.upNext) ? raw.upNext : []).slice(0, 10).map((entry) => ({
+    title: cleanText(entry && entry.title, 200),
+    artist: cleanText(entry && entry.artist, 200),
+    by: cleanText(entry && entry.by, 40),
+  }));
 
   updateTray();
   if (trackChanged) emitPluginEvent('nowplaying');
@@ -3686,6 +3722,7 @@ async function pluginInfo(plugin, enabled, refresh) {
       charts: Boolean(mod && typeof mod.charts === 'function'),
       playlist: Boolean(mod && typeof mod.playlist === 'function'),
       lookup: Boolean(mod && typeof mod.lookup === 'function'),
+      download: Boolean(mod && typeof mod.download === 'function'),
       events: Boolean(mod && typeof mod.onEvent === 'function'),
       search: Boolean(mod && typeof mod.search === 'function'),
       resolve: Boolean(mod && typeof mod.resolve === 'function'),
@@ -3940,6 +3977,60 @@ ipcMain.handle('request-link', async (_event, url) => {
   }
 });
 
+// Cutter mode: a source plugin may download ONLY titles whose Creative Commons
+// licence it verified for this very video (plugin "download"). The file must
+// land in the Cutting folder; a credit .txt is written next to it.
+ipcMain.handle('plugin-download', async (_event, id, input) => {
+  const plugin = readyPlugin(id, 'download');
+  if (!plugin) return { error: 'Das Quellen-Plugin kann nicht herunterladen.' };
+  const item = input && typeof input === 'object' ? input : {};
+  const folder = path.join(downloadBase(item.folder), 'YouTube (Creative Commons)');
+  let timeout;
+  try {
+    fs.mkdirSync(folder, { recursive: true });
+    const result = await Promise.race([
+      plugin.module.download(cleanText(item.refId, 64), { dir: folder }),
+      new Promise((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Zeitüberschreitung')), 330000);
+      }),
+    ]);
+    const file = path.resolve(String((result && result.file) || ''));
+    const inside = file.toLowerCase().startsWith((path.resolve(folder) + path.sep).toLowerCase());
+    if (!inside || !fs.existsSync(file) || !/\.m4a$/i.test(file)) {
+      throw new Error('Das Plugin hat keine Audiodatei im Cutting-Ordner geliefert.');
+    }
+    const license = cleanText(result.license, 120);
+    if (!/creative commons/i.test(license)) {
+      fs.rmSync(file, { force: true });
+      throw new Error('Keine Creative-Commons-Lizenz bestätigt – Datei verworfen.');
+    }
+    const title = cleanText(result.title || item.title, 200);
+    const artist = cleanText(result.artist || item.artist, 200);
+    const link = cleanUrl(result.link || item.link);
+    const credit = [
+      `Titel: ${title}`,
+      artist ? `Von: ${artist}` : '',
+      `Lizenz: CC BY (laut YouTube: ${license})`,
+      link ? `Quelle: ${link}` : '',
+      '',
+      'Credit für deine Videobeschreibung:',
+      `"${title}" von ${artist || 'YouTube'} – ${link} – lizenziert unter CC BY (https://creativecommons.org/licenses/by/3.0/)`,
+      '',
+      'Hinweis: Die Lizenzangabe stammt vom Uploader. Content-ID-Ansprüche sind trotzdem möglich.',
+      `Heruntergeladen mit CleanMusic am ${new Date().toLocaleDateString('de-DE')}.`,
+    ]
+      .filter((line, index, lines) => line !== '' || (lines[index - 1] && lines[index - 1] !== ''))
+      .join('\r\n');
+    fs.writeFileSync(file.replace(/\.[^.]+$/, '') + '.txt', credit + '\r\n', 'utf8');
+    downloadedFiles.add(file);
+    return { ok: true, path: file, name: path.basename(file), folder, existed: false, size: fs.statSync(file).size };
+  } catch (error) {
+    return { error: cleanText(error.message || String(error), 240) };
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
 ipcMain.handle('plugin-lookup', async (_event, id, url) => {
   const plugin = readyPlugin(id, 'lookup');
   if (!plugin) return { item: null, error: 'Plugin nicht aktiv' };
@@ -3957,6 +4048,83 @@ ipcMain.handle('plugin-lookup', async (_event, id, url) => {
   } finally {
     clearTimeout(timeout);
   }
+});
+
+/* --- Lyrics (1.5): LRCLIB, a free community lyrics database ---------- *
+ * Only title, artist, album and length are sent; results are cached for
+ * the session. Synced lyrics come as LRC ("[mm:ss.xx] line"). */
+
+const lyricsCache = new Map();
+
+function parseLrc(text) {
+  const lines = [];
+  String(text || '')
+    .split(/\r?\n/)
+    .forEach((row) => {
+      const stamps = Array.from(row.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g));
+      if (!stamps.length) return;
+      const words = cleanText(row.replace(/\[[^\]]*\]/g, '').trim(), 300);
+      stamps.forEach((stamp) => {
+        const fraction = stamp[3] ? Number(`0.${stamp[3]}`) : 0;
+        lines.push({ time: Number(stamp[1]) * 60 + Number(stamp[2]) + fraction, text: words });
+      });
+    });
+  return lines.sort((a, b) => a.time - b.time).slice(0, 1500);
+}
+
+async function lrclibJson(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await net.fetch(url, {
+      signal: controller.signal,
+      headers: { 'user-agent': `CleanMusic/${app.getVersion()} (https://github.com/BellocccYT/cleanmusic)` },
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+ipcMain.handle('lyrics-get', async (_event, query) => {
+  const input = query && typeof query === 'object' ? query : {};
+  const title = cleanText(input.title, 200).trim();
+  const artist = cleanText(input.artist, 200)
+    .split(/,|;| & | feat\.? | ft\.? /i)[0]
+    .trim();
+  if (!title) return { lines: [], plain: '', error: 'Kein Titel.' };
+  const duration = Math.round(Number(input.duration) || 0);
+  const key = `${artist}|${title}`.toLowerCase();
+  if (lyricsCache.has(key)) return lyricsCache.get(key);
+
+  const pick = (entry) =>
+    entry && typeof entry === 'object'
+      ? { lines: parseLrc(entry.syncedLyrics), plain: cleanText(entry.plainLyrics || '', 20000), instrumental: Boolean(entry.instrumental) }
+      : null;
+  let result = null;
+  try {
+    const params = new URLSearchParams({ track_name: title, artist_name: artist });
+    if (input.album) params.set('album_name', cleanText(input.album, 200));
+    if (duration) params.set('duration', String(duration));
+    result = pick(await lrclibJson(`https://lrclib.net/api/get?${params}`));
+    if (!result || (!result.lines.length && !result.plain)) {
+      const list = await lrclibJson(`https://lrclib.net/api/search?${new URLSearchParams({ track_name: title, artist_name: artist })}`);
+      const entries = Array.isArray(list) ? list : [];
+      const best = entries.find((entry) => entry && entry.syncedLyrics) || entries.find((entry) => entry && entry.plainLyrics);
+      if (best) result = pick(best);
+    }
+  } catch {
+    return { lines: [], plain: '', error: 'Die Songtext-Suche ist gerade nicht erreichbar.' };
+  }
+  const out =
+    result && (result.lines.length || result.plain)
+      ? { lines: result.lines, plain: result.plain, error: null }
+      : { lines: [], plain: '', error: result && result.instrumental ? 'Instrumental – kein Songtext.' : 'Kein Songtext gefunden.' };
+  lyricsCache.set(key, out);
+  if (lyricsCache.size > 200) lyricsCache.delete(lyricsCache.keys().next().value);
+  return out;
 });
 
 // Charts from a plugin (e.g. a top list of its source) for the home page.

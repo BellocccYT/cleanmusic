@@ -16,6 +16,13 @@ Zeigt den laufenden Titel als Overlay in OBS oder Streamlabs.
    (Standard: `http://127.0.0.1:4787/overlay`).
 3. In OBS: **Quelle hinzufügen → Browser**, URL einfügen, Breite **600** und Höhe **160**.
 
+**Ab 1.1.0** zusätzlich: **Plattenspieler** (Cover dreht sich), **Neon**, **Glas**,
+**Equalizer**, **Laufschrift** (ganze Breite, z. B. 1920 × 60), **Großes Cover**
+(Ecke, 260 × 330) und **Songtext** (aktuelle Zeile, 1000 × 170; Songtexte in CleanMusic
+einschalten). Zweite Browserquelle **„Als Nächstes“** über „„Als Nächstes“-URL
+kopieren“ (`http://127.0.0.1:4787/upnext`, 520 × 320) – zeigt die nächsten Titel und
+Songwünsche mit Namen; `?only=requests` nur Wünsche, `?count=3` weniger Zeilen.
+
 Stile: **Karte mit Cover** (Standard), **Schmale Leiste**, **Nur Text**. Den Stil
 kannst du in der Plugin-Karte wählen oder pro Quelle mit `?style=card`,
 `?style=bar` oder `?style=minimal` an der URL festlegen.
