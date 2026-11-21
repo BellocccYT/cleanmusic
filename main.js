@@ -26,6 +26,7 @@ const ROOT = __dirname;
 const isDev = process.argv.includes('--dev');
 const isSmoke = process.argv.includes('--smoke');
 const isSmokePlugin = process.argv.includes('--smoke-plugin');
+const isSmokeObs = process.argv.includes('--smoke-obs');
 
 // The smoke test favourites, creates playlists etc. – never in the real profile.
 if (isSmoke) {
@@ -876,6 +877,15 @@ function createMainWindow() {
           console.error('SMOKE_PLUGIN_IMPORT_FAIL:', error.message);
         }
 
+        // Optional: the OBS overlay plugin from extras/ (API v2 end to end).
+        if (isSmokeObs) {
+          try {
+            console.log('SMOKE_OBS:', JSON.stringify(await smokeObsPlugin()));
+          } catch (error) {
+            console.error('SMOKE_OBS_FAIL:', error.message);
+          }
+        }
+
         // Optional: exercise the first source plugin found in the plugin folders.
         if (isSmokePlugin) {
           try {
@@ -1553,6 +1563,102 @@ function writeConfig(patch) {
   return next;
 }
 
+/* Smoke test for extras/plugins/obs-overlay.js (npm run smoke:obs). */
+async function smokeObsPlugin() {
+  const http = require('node:http');
+  const port = 4798;
+  const textDir = path.join(app.getPath('temp'), 'cleanmusic-smoke-obs');
+  fs.rmSync(textDir, { recursive: true, force: true });
+  const target = path.join(pluginDirs()[0], 'obs-overlay.js');
+  fs.copyFileSync(path.join(ROOT, 'extras', 'plugins', 'obs-overlay.js'), target);
+
+  const stored = readConfig().pluginSettings || {};
+  writeConfig({
+    pluginSettings: Object.assign({}, stored, { 'obs-overlay': { port, textFiles: true, folder: textDir } }),
+  });
+  discoverPlugins();
+  const config = pluginConfig();
+  config.enabled = config.enabled.filter((id) => id !== 'obs-overlay').concat('obs-overlay');
+  savePluginConfig(config);
+  const plugin = plugins.get('obs-overlay');
+  await loadPlugin(plugin);
+
+  const js = (code) => mainWindow.webContents.executeJavaScript(code);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const get = (pathname, host) =>
+    new Promise((resolve) => {
+      const req = http.request(
+        { host: '127.0.0.1', port, path: pathname, headers: host ? { Host: host } : {} },
+        (res) => {
+          let body = '';
+          res.on('data', (chunk) => {
+            body += chunk;
+            if (pathname === '/events' && body.includes('\n\n')) req.destroy();
+          });
+          res.on('end', () => resolve({ status: res.statusCode, body }));
+          res.on('close', () => resolve({ status: res.statusCode, body }));
+        }
+      );
+      req.on('error', (error) => resolve({ status: 0, body: error.message }));
+      req.end();
+    });
+
+  // Something playing: the earlier steps leave a title in the player.
+  await js("window.CleanMusic.setVolume(0.7); true");
+  await wait(1500);
+  const snapshot = await js('window.CleanMusic.playerSnapshot()');
+  const json = await get('/nowplaying.json');
+  const data = json.status === 200 ? JSON.parse(json.body) : null;
+  const overlay = await get('/overlay?style=bar');
+  const foreign = await get('/nowplaying.json', 'evil.example');
+  const events = await get('/events');
+
+  sendPlayerCommand('pause');
+  await wait(700);
+  const pausedByCommand = await js("document.querySelector('#audio').paused");
+  sendPlayerCommand('play');
+  await wait(1200);
+  const playingAgain = await js("!document.querySelector('#audio').paused");
+
+  const settingsResult = await js("window.cm.pluginSettingsSet('obs-overlay', { style: 'minimal' })");
+  const info = (settingsResult.plugins || []).find((entry) => entry.id === 'obs-overlay');
+  const after = await get('/nowplaying.json');
+  const files = fs.existsSync(path.join(textDir, 'nowplaying.txt'))
+    ? fs.readFileSync(path.join(textDir, 'nowplaying.txt'), 'utf8')
+    : null;
+
+  // Clean up: switch off, remove, port must be free again.
+  const cleanup = pluginConfig();
+  cleanup.enabled = cleanup.enabled.filter((id) => id !== 'obs-overlay');
+  savePluginConfig(cleanup);
+  unloadPlugin(plugin);
+  plugins.delete('obs-overlay');
+  fs.rmSync(target, { force: true });
+  discoverPlugins();
+  await wait(300);
+  const closed = await get('/nowplaying.json');
+
+  return {
+    loaded: !plugin.error,
+    error: plugin.error,
+    snapshotTitle: snapshot && snapshot.track ? snapshot.track.title : null,
+    json: json.status,
+    title: data && data.track ? data.track.title : null,
+    colors: data && data.track ? data.track.colors.length : 0,
+    overlay: overlay.status === 200 && overlay.body.includes('Now Playing'),
+    foreignHost: foreign.status,
+    events: events.body.startsWith('retry:') && events.body.includes('data: {'),
+    pausedByCommand,
+    playingAgain,
+    status: info && info.status ? info.status.text : null,
+    fields: info && info.settings ? info.settings.fields.length : 0,
+    style: info && info.settings ? info.settings.values.style : null,
+    styleServed: after.status === 200 ? JSON.parse(after.body).style : null,
+    textFile: files,
+    closedAfterUnload: closed.status === 0,
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Plugins
  *
@@ -1568,6 +1674,15 @@ function writeConfig(patch) {
  *   setup(ctx), dispose(), status(refresh), runAction(id),
  *   search(query), resolve(refId, force), match(track, force),
  *   related(refId, limit)
+ *
+ * API v2 adds (v1 plugins keep working unchanged):
+ *   settings: [{ id, label, type, default, ... }] – fields CleanMusic
+ *     shows in the plugin card; onSettings(values) is called on change
+ *   onEvent(type, player) – 'nowplaying' | 'state' | 'volume'
+ *   ctx.player (state + play/pause/next/previous/volume), ctx.settings,
+ *   ctx.copyText, ctx.openExternal, ctx.openPath, ctx.notify,
+ *   ctx.refresh, ctx.dataDir, ctx.getPath
+ * See docs/PLUGIN-API.md.
  * ------------------------------------------------------------------ */
 
 const PLUGIN_ID = /^[a-z0-9][a-z0-9_-]{0,40}$/;
@@ -1637,8 +1752,9 @@ function discoverPlugins() {
 }
 
 function pluginContext(id) {
+  const dataDir = path.join(app.getPath('userData'), 'plugin-data', id);
   return {
-    apiVersion: 1,
+    apiVersion: 2,
     appVersion: app.getVersion(),
     platform: process.platform,
     userAgent: app.userAgentFallback,
@@ -1663,8 +1779,216 @@ function pluginContext(id) {
     log: (...args) => {
       if (isDev || isSmoke) console.log(`[plugin:${id}]`, ...args);
     },
+
+    // --- API v2 ---
+    dataDir,
+    getPath: (name) => {
+      const allowed = ['documents', 'music', 'pictures', 'videos', 'downloads', 'temp'];
+      return allowed.includes(name) ? app.getPath(name) : dataDir;
+    },
+    settings: {
+      get: () => pluginSettingValues(id),
+    },
+    player: {
+      state: () => JSON.parse(JSON.stringify(playerState)),
+      play: () => sendPlayerCommand('play'),
+      pause: () => sendPlayerCommand('pause'),
+      toggle: () => sendPlayerCommand('toggle'),
+      next: () => sendPlayerCommand('next'),
+      previous: () => sendPlayerCommand('previous'),
+      setVolume: (level) => sendPlayerCommand('volume', Number(level)),
+      setMuted: (muted) => sendPlayerCommand('mute', Boolean(muted)),
+    },
+    copyText: (text) => clipboard.writeText(String(text == null ? '' : text).slice(0, 10000)),
+    openExternal: (url) => {
+      const target = String(url || '');
+      if (!/^https?:\/\//i.test(target)) return false;
+      shell.openExternal(target);
+      return true;
+    },
+    openPath: async (target) => {
+      const resolved = path.resolve(String(target || ''));
+      try {
+        if (!fs.statSync(resolved).isDirectory()) return 'Nur Ordner können geöffnet werden.';
+      } catch {
+        return 'Ordner nicht gefunden.';
+      }
+      return shell.openPath(resolved);
+    },
+    notify: (text) => {
+      const plugin = plugins.get(id);
+      const name = plugin && plugin.module && plugin.module.name ? plugin.module.name : id;
+      sendToRenderer('plugin-notify', { id, name: cleanText(name, 80), text: cleanText(text, 300) });
+    },
+    refresh: () => sendToRenderer('plugins-changed', { id }),
   };
 }
+
+function sendToRenderer(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+}
+
+/* --- Player state for plugins (API v2) ------------------------------ */
+
+const playerState = {
+  track: null, // { id, title, artist, album, source, kind, artwork, link, license, colors }
+  playing: false,
+  position: 0,
+  duration: 0,
+  live: false,
+  volume: 1,
+  muted: false,
+  at: Date.now(),
+};
+
+function sendPlayerCommand(command, value) {
+  sendToRenderer('player-command', { command, value });
+  return true;
+}
+
+function emitPluginEvent(type) {
+  const snapshot = JSON.parse(JSON.stringify(playerState));
+  for (const plugin of plugins.values()) {
+    if (!plugin.module || typeof plugin.module.onEvent !== 'function') continue;
+    try {
+      const result = plugin.module.onEvent(type, snapshot);
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    } catch {
+      /* a plugin error must never break playback */
+    }
+  }
+}
+
+function cleanColors(colors) {
+  return (Array.isArray(colors) ? colors : [])
+    .filter((color) => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color))
+    .slice(0, 2);
+}
+
+ipcMain.on('player-state', (_event, raw) => {
+  if (!raw || typeof raw !== 'object') return;
+  const track =
+    raw.track && typeof raw.track === 'object'
+      ? {
+          id: cleanText(raw.track.id, 200),
+          title: cleanText(raw.track.title, 200),
+          artist: cleanText(raw.track.artist, 200),
+          album: cleanText(raw.track.album, 200),
+          source: cleanText(raw.track.source, 60),
+          kind: cleanText(raw.track.kind, 20),
+          artwork: cleanUrl(raw.track.artwork, /^https:\/\//i),
+          link: cleanUrl(raw.track.link),
+          license: cleanText(raw.track.license, 60),
+          colors: cleanColors(raw.track.colors),
+        }
+      : null;
+
+  const trackChanged = JSON.stringify(track) !== JSON.stringify(playerState.track);
+  const volumeChanged =
+    Number(raw.volume) !== playerState.volume || Boolean(raw.muted) !== playerState.muted;
+
+  playerState.track = track;
+  playerState.playing = Boolean(raw.playing);
+  playerState.position = Math.max(0, Number(raw.position) || 0);
+  playerState.duration = Math.max(0, Number(raw.duration) || 0);
+  playerState.live = Boolean(raw.live);
+  playerState.volume = Math.min(1.5, Math.max(0, Number(raw.volume) || 0));
+  playerState.muted = Boolean(raw.muted);
+  playerState.at = Date.now();
+
+  if (trackChanged) emitPluginEvent('nowplaying');
+  if (volumeChanged) emitPluginEvent('volume');
+  emitPluginEvent('state');
+});
+
+/* --- Plugin settings fields (API v2) -------------------------------- */
+
+const SETTING_TYPES = ['text', 'number', 'toggle', 'select', 'folder'];
+
+function pluginSettingFields(mod) {
+  return (mod && Array.isArray(mod.settings) ? mod.settings : [])
+    .filter((field) => field && PLUGIN_ID.test(String(field.id || '').toLowerCase()) && SETTING_TYPES.includes(field.type))
+    .slice(0, 12)
+    .map((field) => ({
+      id: String(field.id),
+      type: field.type,
+      label: cleanText(field.label || field.id, 80),
+      help: cleanText(field.help || '', 300),
+      placeholder: cleanText(field.placeholder || '', 80),
+      min: Number.isFinite(Number(field.min)) ? Number(field.min) : null,
+      max: Number.isFinite(Number(field.max)) ? Number(field.max) : null,
+      options: (Array.isArray(field.options) ? field.options : [])
+        .filter((option) => option && option.value != null)
+        .slice(0, 20)
+        .map((option) => ({ value: cleanText(option.value, 60), label: cleanText(option.label || option.value, 60) })),
+      default: field.default,
+    }));
+}
+
+function coerceSetting(field, value) {
+  switch (field.type) {
+    case 'toggle':
+      return Boolean(value);
+    case 'number': {
+      let number = Number(value);
+      if (!Number.isFinite(number)) number = Number(field.default) || 0;
+      if (field.min != null) number = Math.max(field.min, number);
+      if (field.max != null) number = Math.min(field.max, number);
+      return number;
+    }
+    case 'select': {
+      const text = String(value == null ? '' : value);
+      return field.options.some((option) => option.value === text) ? text : String(field.default == null ? '' : field.default);
+    }
+    default:
+      return cleanText(value == null ? '' : value, 400);
+  }
+}
+
+function pluginSettingValues(id) {
+  const plugin = plugins.get(id);
+  const fields = pluginSettingFields(plugin && (plugin.module || plugin.candidate));
+  const config = readConfig();
+  const stored =
+    config.pluginSettings && typeof config.pluginSettings === 'object' && config.pluginSettings[id]
+      ? config.pluginSettings[id]
+      : {};
+  const values = {};
+  fields.forEach((field) => {
+    values[field.id] = coerceSetting(field, field.id in stored ? stored[field.id] : field.default);
+  });
+  return values;
+}
+
+ipcMain.handle('plugin-pick-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Ordner auswählen',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+});
+
+ipcMain.handle('plugin-settings-set', async (_event, id, patch) => {
+  const plugin = readyPlugin(id);
+  if (plugin && patch && typeof patch === 'object') {
+    const fields = pluginSettingFields(plugin.module);
+    const config = readConfig();
+    const all = config.pluginSettings && typeof config.pluginSettings === 'object' ? config.pluginSettings : {};
+    const current = Object.assign({}, all[plugin.id]);
+    fields.forEach((field) => {
+      if (field.id in patch) current[field.id] = coerceSetting(field, patch[field.id]);
+    });
+    writeConfig({ pluginSettings: Object.assign({}, all, { [plugin.id]: current }) });
+    if (typeof plugin.module.onSettings === 'function') {
+      try {
+        await plugin.module.onSettings(pluginSettingValues(plugin.id));
+      } catch (error) {
+        return Object.assign({ error: cleanText(error.message || String(error)) }, await pluginList(false));
+      }
+    }
+  }
+  return pluginList(false);
+});
 
 function loadPlugin(plugin) {
   if (plugin.module) return Promise.resolve(plugin);
@@ -1681,12 +2005,18 @@ async function loadPluginNow(plugin) {
     delete require.cache[require.resolve(plugin.file)];
     const mod = require(plugin.file);
     if (!mod || typeof mod !== 'object') throw new Error('Plugin exportiert kein Objekt');
-    if (mod.apiVersion !== 1) throw new Error('Nicht unterstützte Plugin-API (erwartet apiVersion 1)');
+    if (mod.apiVersion !== 1 && mod.apiVersion !== 2) {
+      throw new Error('Nicht unterstützte Plugin-API (erwartet apiVersion 1 oder 2)');
+    }
+    // Settings fields must already be readable inside setup().
+    plugin.candidate = mod;
     if (typeof mod.setup === 'function') await mod.setup(pluginContext(plugin.id));
+    plugin.candidate = null;
     plugin.module = mod;
     plugin.error = null;
   } catch (error) {
     plugin.module = null;
+    plugin.candidate = null;
     plugin.error = error.message || String(error);
   }
 
@@ -1808,7 +2138,14 @@ async function pluginInfo(plugin, enabled, refresh) {
         when: action.when ? cleanText(action.when, 40) : null,
       }))
       .slice(0, 6),
+    settings: mod
+      ? {
+          fields: pluginSettingFields(mod).map((field) => ({ ...field, default: undefined })),
+          values: pluginSettingValues(plugin.id),
+        }
+      : { fields: [], values: {} },
     capabilities: {
+      events: Boolean(mod && typeof mod.onEvent === 'function'),
       search: Boolean(mod && typeof mod.search === 'function'),
       resolve: Boolean(mod && typeof mod.resolve === 'function'),
       match: Boolean(mod && typeof mod.match === 'function'),

@@ -2896,6 +2896,7 @@
     applyArtworkColors(item ? item.artwork : '');
     syncFullscreen();
     pushPresence();
+    pushPlayerState();
   }
 
   function updateNowPlayingActions() {
@@ -3172,6 +3173,7 @@
       audio.muted = vol.muted;
     }
     updateVolumeUi();
+    pushPlayerState();
   }
 
   function setVolume(level, { unmute = true } = {}) {
@@ -3792,6 +3794,7 @@
     coverRgb = a === DEFAULT_A ? null : a;
     state.coverColors = coverRgb ? [rgbToHex(a), rgbToHex(b)] : null;
     applyAccent();
+    pushPlayerState();
   }
 
   function rgbToHsl(r, g, b) {
@@ -4081,6 +4084,84 @@
     }, immediate ? 0 : 700);
   }
 
+  /* ---------------------------------------------------------------- *
+   * Player state for plugins (API v2)
+   *
+   * The main process forwards it to plugins as 'nowplaying' / 'state' /
+   * 'volume' events; plugins can steer the player through commands.
+   * ---------------------------------------------------------------- */
+
+  let playerStateTimer = null;
+  let playerStateAt = 0;
+
+  function playerSnapshot() {
+    const item = currentItem();
+    const hasSource = Boolean(audio.getAttribute('src'));
+    return {
+      track: item
+        ? {
+            id: item.id,
+            title: item.title || '',
+            artist: item.artist || '',
+            album: item.album || '',
+            source: item.sourceLabel || '',
+            kind: item.kind || '',
+            artwork: item.artwork || '',
+            link: item.link || '',
+            license: item.license || '',
+            colors: state.coverColors || [],
+          }
+        : null,
+      playing: hasSource && !audio.paused,
+      position: audio.currentTime || 0,
+      duration: Number.isFinite(audio.duration) ? audio.duration : (item && item.duration) || 0,
+      live: Boolean(item && item.kind === 'radio'),
+      volume: volumeLevel(),
+      muted: vol.muted,
+    };
+  }
+
+  function pushPlayerState(immediate = false) {
+    if (!bridge.playerState) return;
+    clearTimeout(playerStateTimer);
+    playerStateTimer = setTimeout(() => {
+      playerStateAt = Date.now();
+      try {
+        bridge.playerState(playerSnapshot());
+      } catch {
+        /* ignore */
+      }
+    }, immediate ? 0 : 120);
+  }
+
+  function onPlayerCommand(message) {
+    const { command, value } = message || {};
+    switch (command) {
+      case 'play':
+        if (audio.paused) $('#btn-play').click();
+        break;
+      case 'pause':
+        if (!audio.paused) $('#btn-play').click();
+        break;
+      case 'toggle':
+        $('#btn-play').click();
+        break;
+      case 'next':
+        stepQueue(1);
+        break;
+      case 'previous':
+        $('#btn-prev').click();
+        break;
+      case 'volume':
+        setVolume(Number(value));
+        break;
+      case 'mute':
+        setMuted(Boolean(value));
+        break;
+      default:
+    }
+  }
+
   async function loadDiscord() {
     try {
       state.discord = await bridge.discordGet();
@@ -4311,6 +4392,66 @@
    * Settings
    * ---------------------------------------------------------------- */
 
+  function pluginSettingsForm(plugin) {
+    const settings = plugin.settings;
+    if (!plugin.enabled || !plugin.loaded || !settings || !Array.isArray(settings.fields) || !settings.fields.length) {
+      return '';
+    }
+    const values = settings.values || {};
+    const rows = settings.fields
+      .map((field) => {
+        const id = `ps-${plugin.id}-${field.id}`;
+        const data = `data-plugin-setting="${esc(plugin.id)}" data-field="${esc(field.id)}" data-type="${esc(field.type)}"`;
+        const value = values[field.id];
+        const help = field.help ? `<small>${esc(field.help)}</small>` : '';
+        if (field.type === 'toggle') {
+          return `
+            <label class="toggle-row ps-row">
+              <span><strong>${esc(field.label)}</strong>${help}</span>
+              <input type="checkbox" id="${id}" ${data} ${value ? 'checked' : ''} />
+            </label>`;
+        }
+        let control;
+        if (field.type === 'select') {
+          control = `<select id="${id}" ${data}>${field.options
+            .map(
+              (option) =>
+                `<option value="${esc(option.value)}" ${option.value === value ? 'selected' : ''}>${esc(option.label)}</option>`
+            )
+            .join('')}</select>`;
+        } else if (field.type === 'number') {
+          control = `<input type="number" id="${id}" ${data} value="${esc(value)}"${
+            field.min != null ? ` min="${field.min}"` : ''
+          }${field.max != null ? ` max="${field.max}"` : ''} />`;
+        } else if (field.type === 'folder') {
+          control = `<span class="ps-folder">
+              <input type="text" id="${id}" ${data} value="${esc(value)}" placeholder="${esc(field.placeholder)}" spellcheck="false" />
+              <button class="btn ghost small" data-plugin-folder="${esc(plugin.id)}" data-field="${esc(field.id)}">Ordner …</button>
+            </span>`;
+        } else {
+          control = `<input type="text" id="${id}" ${data} value="${esc(value)}" placeholder="${esc(field.placeholder)}" spellcheck="false" />`;
+        }
+        return `
+          <div class="ps-row">
+            <label for="${id}"><strong>${esc(field.label)}</strong>${help}</label>
+            ${control}
+          </div>`;
+      })
+      .join('');
+    return `<div class="plugin-settings"><div class="ps-title">Einstellungen</div>${rows}</div>`;
+  }
+
+  async function savePluginSetting(id, field, value) {
+    try {
+      const result = await bridge.pluginSettingsSet(id, { [field]: value });
+      if (result && result.error) toast(`Plugin-Einstellung: ${result.error}`);
+      applyPluginList(result);
+    } catch (error) {
+      toast(`Plugin-Einstellung: ${error.message}`);
+    }
+    renderSettings();
+  }
+
   function pluginCard(plugin) {
     const status = plugin.status;
     const ready = isPluginReady(plugin);
@@ -4369,6 +4510,7 @@
         </label>
         ${line ? `<div class="plugin-status">${line}</div>` : ''}
         ${actions ? `<div class="row">${actions}</div>` : ''}
+        ${pluginSettingsForm(plugin)}
         ${plugin.enabled && plugin.help ? `<p class="muted small plugin-help">${esc(plugin.help)}</p>` : ''}
         ${plugin.enabled && plugin.notice ? `<p class="muted small plugin-notice">${esc(plugin.notice)}</p>` : ''}
       </div>`;
@@ -5086,6 +5228,13 @@
         return;
       }
 
+      const folderButton = event.target.closest('[data-plugin-folder]');
+      if (folderButton) {
+        const picked = bridge.pluginPickFolder ? await bridge.pluginPickFolder() : null;
+        if (picked) savePluginSetting(folderButton.dataset.pluginFolder, folderButton.dataset.field, picked);
+        return;
+      }
+
       const themeCard = event.target.closest('[data-theme-id]');
       if (themeCard) {
         setTheme(themeCard.dataset.themeId);
@@ -5137,6 +5286,15 @@
         saveSettings();
         updateStatusChips();
         toast(event.target.checked ? 'Dienste öffnen im System-Browser' : 'Dienste öffnen eingebettet');
+        return;
+      }
+
+      const pluginSetting = event.target.closest('[data-plugin-setting]');
+      if (pluginSetting) {
+        const type = pluginSetting.dataset.type;
+        const value =
+          type === 'toggle' ? pluginSetting.checked : type === 'number' ? Number(pluginSetting.value) : pluginSetting.value;
+        savePluginSetting(pluginSetting.dataset.pluginSetting, pluginSetting.dataset.field, value);
         return;
       }
 
@@ -5464,6 +5622,21 @@
     applyVisualizerVisibility();
     applyVolume();
 
+    // Plugins (API v2): player events, commands, messages.
+    ['play', 'pause', 'ended', 'seeked', 'loadedmetadata', 'emptied'].forEach((name) =>
+      audio.addEventListener(name, () => pushPlayerState())
+    );
+    audio.addEventListener('timeupdate', () => {
+      if (Date.now() - playerStateAt > 10000) pushPlayerState();
+    });
+    if (bridge.onPlayerCommand) bridge.onPlayerCommand(onPlayerCommand);
+    if (bridge.onPluginNotify) {
+      bridge.onPluginNotify((message) => {
+        if (message && message.text) toast(`${message.name}: ${message.text}`);
+      });
+    }
+    if (bridge.onPluginsChanged) bridge.onPluginsChanged(() => refreshPlugins(false));
+
     bridge.onDiscordStatus((status) => {
       state.discord.status = status || {};
       renderDiscordStatus();
@@ -5530,6 +5703,7 @@
       showView('creator');
     },
     collectCreditAt: (key, index) => collectCredit(entryAt(key, index)),
+    playerSnapshot: () => playerSnapshot(),
     theme: () => ({
       id: currentTheme() ? currentTheme().id : null,
       themes: THEMES.map((theme) => theme.id),

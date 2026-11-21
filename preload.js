@@ -25,6 +25,18 @@ contextBridge.exposeInMainWorld('cm', {
   discordSet: (patch) => ipcRenderer.invoke('discord-set', patch),
   discordUpdate: (track) => ipcRenderer.send('discord-update', track || null),
   setTitleBar: (colors) => ipcRenderer.send('set-titlebar', colors || null),
+  playerState: (snapshot) => ipcRenderer.send('player-state', snapshot || null),
+  onPlayerCommand: (listener) => {
+    ipcRenderer.on('player-command', (_event, command) => listener(command));
+  },
+  pluginSettingsSet: (id, patch) => ipcRenderer.invoke('plugin-settings-set', id, patch),
+  pluginPickFolder: () => ipcRenderer.invoke('plugin-pick-folder'),
+  onPluginNotify: (listener) => {
+    ipcRenderer.on('plugin-notify', (_event, message) => listener(message));
+  },
+  onPluginsChanged: (listener) => {
+    ipcRenderer.on('plugins-changed', (_event, info) => listener(info));
+  },
   onDiscordStatus: (listener) => {
     ipcRenderer.on('discord-status', (_event, status) => listener(status));
   },

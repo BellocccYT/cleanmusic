@@ -4018,3 +4018,88 @@ body.fs-open .toast {
   left: calc(34% + 20px);
   background: var(--t-accent-2);
 }
+
+/* Plugin settings (API v2) ------------------------------------------ */
+
+.plugin-settings {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--tint), 0.03);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plugin-settings .ps-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ps-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.ps-row > label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ps-row strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ps-row small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ps-row input[type="text"],
+.ps-row input[type="number"],
+.ps-row select {
+  flex: 0 0 auto;
+  width: 220px;
+  max-width: 50%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-3);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  outline: 0;
+}
+
+.ps-row input[type="number"] {
+  width: 110px;
+}
+
+.ps-row input:focus,
+.ps-row select:focus {
+  border-color: var(--accent);
+}
+
+.ps-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+}
+
+.ps-folder input[type="text"] {
+  max-width: none;
+  width: 260px;
+  min-width: 0;
+}
