@@ -212,6 +212,8 @@
         miniViz: true,
         normalize: false,
         volumeBoost: false,
+        bass: 0, // dB, −6 … +9
+        treble: 0, // dB, −6 … +6
         theme: 'nacht',
         coverAccent: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
@@ -3465,6 +3467,24 @@
     return { level: Number.isFinite(old) ? Math.sqrt(Math.min(1, Math.max(0, old))) : 0.92, muted: false };
   }
 
+  function toneLabel(value) {
+    const db = Math.round(Number(value) || 0);
+    return db > 0 ? `+${db} dB` : `${db} dB`;
+  }
+
+  function setTone(bass, treble) {
+    if (Number.isFinite(bass)) state.settings.bass = Math.max(-6, Math.min(9, Math.round(bass)));
+    if (Number.isFinite(treble)) state.settings.treble = Math.max(-6, Math.min(6, Math.round(treble)));
+    saveSettings();
+    applyVolume();
+    ['bass', 'treble'].forEach((key) => {
+      const input = $(`#opt-${key}`);
+      const label = $(`#opt-${key}-value`);
+      if (input && Number(input.value) !== state.settings[key]) input.value = String(state.settings[key]);
+      if (label) label.textContent = toneLabel(state.settings[key]);
+    });
+  }
+
   function maxVolume() {
     return state.settings.volumeBoost ? 1.5 : 1;
   }
@@ -3486,7 +3506,14 @@
         ? viz.setOutput({
             gain: vol.muted ? 0 : gain,
             normalize: Boolean(state.settings.normalize),
-            want: Boolean(state.settings.normalize || state.settings.volumeBoost),
+            bass: Number(state.settings.bass) || 0,
+            treble: Number(state.settings.treble) || 0,
+            want: Boolean(
+              state.settings.normalize ||
+                state.settings.volumeBoost ||
+                Number(state.settings.bass) ||
+                Number(state.settings.treble)
+            ),
           })
         : false;
     if (engine) {
@@ -5354,6 +5381,28 @@
             </span>
             <input type="checkbox" id="opt-boost" ${state.settings.volumeBoost ? 'checked' : ''} />
           </label>
+          <div class="tone-row">
+            <div class="tone-head">
+              <strong>Klang</strong>
+              <small>Bass und Höhen anheben oder absenken. 0 dB = unverändert.</small>
+            </div>
+            <label class="tone-control">
+              <span>Bass</span>
+              <input type="range" id="opt-bass" min="-6" max="9" step="1" value="${Number(state.settings.bass) || 0}" />
+              <output id="opt-bass-value">${toneLabel(state.settings.bass)}</output>
+            </label>
+            <label class="tone-control">
+              <span>Höhen</span>
+              <input type="range" id="opt-treble" min="-6" max="6" step="1" value="${Number(state.settings.treble) || 0}" />
+              <output id="opt-treble-value">${toneLabel(state.settings.treble)}</output>
+            </label>
+            <div class="row tone-presets">
+              <button class="radio-tag" data-tone-preset="0,0">Neutral</button>
+              <button class="radio-tag" data-tone-preset="5,0">Mehr Bass</button>
+              <button class="radio-tag" data-tone-preset="-2,4">Stimme klar</button>
+              <button class="radio-tag" data-tone-preset="4,3">Laptop-Lautsprecher</button>
+            </div>
+          </div>
         </div>
 
         ${themePanel()}
@@ -6019,6 +6068,14 @@
         return;
       }
 
+      const tonePreset = event.target.closest('[data-tone-preset]');
+      if (tonePreset) {
+        const [bass, treble] = tonePreset.dataset.tonePreset.split(',').map(Number);
+        setTone(bass, treble);
+        toast(`Klang: ${tonePreset.textContent}`);
+        return;
+      }
+
       const dlMode = event.target.closest('[data-dl-mode]');
       if (dlMode) {
         state.settings.downloads = dlMode.dataset.dlMode === 'cutting' ? 'cutting' : 'off';
@@ -6104,6 +6161,11 @@
         const done = await bridge.clearServiceData(clear.dataset.clear);
         toast(done ? `${service ? service.name : 'Dienst'} zurückgesetzt` : 'Zurücksetzen fehlgeschlagen');
       }
+    });
+
+    $('#view-settings').addEventListener('input', (event) => {
+      if (event.target.id === 'opt-bass') setTone(Number(event.target.value), undefined);
+      else if (event.target.id === 'opt-treble') setTone(undefined, Number(event.target.value));
     });
 
     $('#view-settings').addEventListener('change', (event) => {
@@ -6643,6 +6705,7 @@
     }),
     setVolume: (level) => setVolume(Number(level)),
     setMuted: (muted) => setMuted(muted),
+    setTone: (bass, treble) => setTone(Number(bass), Number(treble)),
     visualizer: () => ({
       enabled: window.CMVisualizer.isEnabled(),
       analysing: window.CMVisualizer.isAnalysing(),

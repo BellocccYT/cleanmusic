@@ -963,7 +963,13 @@ function createMainWindow() {
               const sleepMenu = document.querySelectorAll('#ctx-menu [data-sleep]').length;
               document.querySelector('#ctx-menu [data-sleep="off"]').click();
               const sleepOff = cm.sleep();
+              cm.setTone(4, 2);
+              await new Promise((resolve) => setTimeout(resolve, 600));
+              const tone = cm.volume().engine;
+              const toneUi = document.querySelector('#opt-bass-value') ? document.querySelector('#opt-bass-value').textContent : null;
+              cm.setTone(0, 0);
               return {
+                tone: { bass: tone && tone.bass, treble: tone && tone.treble, label: toneUi },
                 sleep: { on: sleepOn, menu: sleepMenu, off: sleepOff },
                 creditsText: cm.creditsText().split('\\n').length,
                 media: cm.mediaSession(),

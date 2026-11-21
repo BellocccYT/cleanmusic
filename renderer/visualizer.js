@@ -24,7 +24,7 @@ window.CMVisualizer = (function () {
   let source = null; // MediaStreamSource from captureStream() – owned here
   let tapped = false; // analyser hangs on the engine source instead
   let engine = null; // { source, level, makeup, gain, limiter }
-  const output = { gain: 1, normalize: false };
+  const output = { gain: 1, normalize: false, bass: 0, treble: 0 };
   let freq = null;
   let wave = null;
   let enabled = false;
@@ -140,12 +140,21 @@ window.CMVisualizer = (function () {
       limiter.ratio.value = 20;
       limiter.attack.value = 0.002;
       limiter.release.value = 0.12;
-      src.connect(level);
+      // Tone: low shelf (bass) and high shelf (treble), flat at 0 dB.
+      const bass = ctx.createBiquadFilter();
+      bass.type = 'lowshelf';
+      bass.frequency.value = 120;
+      const treble = ctx.createBiquadFilter();
+      treble.type = 'highshelf';
+      treble.frequency.value = 7500;
+      src.connect(bass);
+      bass.connect(treble);
+      treble.connect(level);
       level.connect(makeup);
       makeup.connect(gain);
       gain.connect(limiter);
       limiter.connect(ctx.destination);
-      engine = { source: src, level, makeup, gain, limiter };
+      engine = { source: src, bass, treble, level, makeup, gain, limiter };
     } catch {
       engine = null;
       return null;
@@ -159,6 +168,8 @@ window.CMVisualizer = (function () {
   function applyOutput() {
     if (!engine) return;
     const now = ctx.currentTime;
+    engine.bass.gain.setTargetAtTime(output.bass, now, 0.05);
+    engine.treble.gain.setTargetAtTime(output.treble, now, 0.05);
     engine.gain.gain.setTargetAtTime(output.gain, now, 0.02);
     const { level, makeup } = engine;
     if (output.normalize) {
@@ -186,6 +197,8 @@ window.CMVisualizer = (function () {
   function setOutput(options = {}) {
     if (Number.isFinite(options.gain)) output.gain = Math.max(0, Math.min(3, options.gain));
     if (typeof options.normalize === 'boolean') output.normalize = options.normalize;
+    if (Number.isFinite(options.bass)) output.bass = Math.max(-12, Math.min(12, options.bass));
+    if (Number.isFinite(options.treble)) output.treble = Math.max(-12, Math.min(12, options.treble));
     if (options.want && !engine) buildEngine();
     applyOutput();
     return Boolean(engine);
@@ -464,7 +477,16 @@ window.CMVisualizer = (function () {
     isAnalysing: () => Boolean(source) || tapped,
     setOutput,
     hasEngine: () => Boolean(engine),
-    engineState: () => (engine ? { context: ctx.state, gain: output.gain, normalize: output.normalize } : null),
+    engineState: () =>
+      engine
+        ? {
+            context: ctx.state,
+            gain: output.gain,
+            normalize: output.normalize,
+            bass: Number(engine.bass.gain.value.toFixed(1)),
+            treble: Number(engine.treble.gain.value.toFixed(1)),
+          }
+        : null,
     register,
     setStyle,
     setColors,

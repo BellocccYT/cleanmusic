@@ -4145,3 +4145,47 @@ body.fs-open .toast {
 #home-rediscover-section[hidden] {
   display: none;
 }
+
+/* Tone controls ------------------------------------------------------- */
+
+.tone-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tone-head {
+  display: flex;
+  flex-direction: column;
+}
+
+.tone-head small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tone-control {
+  display: grid;
+  grid-template-columns: 60px 1fr 56px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.tone-control input[type="range"] {
+  width: 100%;
+}
+
+.tone-control output {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tone-presets {
+  margin-top: 4px;
+}

@@ -163,6 +163,8 @@ sie auf hellen und dunklen Themes lesbar bleibt.
 - Optional unter *Einstellungen → Wiedergabe*: **Lautstärke angleichen** (sanfter
   Kompressor gleicht laute und leise Titel an) und **Boost bis 150 %** mit
   Limiter gegen Übersteuern. Beides ist standardmäßig aus.
+- **Klang:** Bass und Höhen (Regler und Voreinstellungen wie *Mehr Bass*, *Stimme klar*,
+  *Laptop-Lautsprecher*) unter *Einstellungen → Wiedergabe*. 0 dB = unverändert.
 
 ### Visualizer (optional)
 
