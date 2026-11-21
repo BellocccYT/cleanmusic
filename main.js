@@ -17,6 +17,7 @@ const {
   clipboard,
   nativeImage,
   Tray,
+  screen,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -435,10 +436,42 @@ function interleaveTracks(first, second) {
 let mainWindow = null;
 let musicKitWindow = null;
 
+// Last window size/position – only reused if it is still on a connected screen.
+function savedBounds() {
+  if (isSmoke) return null;
+  const stored = readConfig().window;
+  if (!stored || typeof stored !== 'object') return null;
+  const bounds = {
+    x: Math.round(Number(stored.x)),
+    y: Math.round(Number(stored.y)),
+    width: Math.round(Number(stored.width)),
+    height: Math.round(Number(stored.height)),
+  };
+  if (!Object.values(bounds).every(Number.isFinite) || bounds.width < 1024 || bounds.height < 640) return null;
+  try {
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const visibleX = Math.min(bounds.x + bounds.width, area.x + area.width) - Math.max(bounds.x, area.x);
+    const visibleY = Math.min(bounds.y + bounds.height, area.y + area.height) - Math.max(bounds.y, area.y);
+    if (visibleX < 200 || visibleY < 120) return null;
+  } catch {
+    return null;
+  }
+  return Object.assign(bounds, { maximized: Boolean(stored.maximized) });
+}
+
+function rememberBounds() {
+  if (isSmoke || !mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
+  const maximized = mainWindow.isMaximized();
+  const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+  writeConfig({ window: Object.assign({}, bounds, { maximized }) });
+}
+
 function createMainWindow() {
+  const bounds = savedBounds();
   mainWindow = new BrowserWindow({
-    width: 1380,
-    height: 880,
+    width: bounds ? bounds.width : 1380,
+    height: bounds ? bounds.height : 880,
+    ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
     minWidth: 1024,
     minHeight: 640,
     icon: path.join(ROOT, 'renderer', 'assets', 'icon.png'),
@@ -463,7 +496,19 @@ function createMainWindow() {
   mainWindow.webContents.setBackgroundThrottling(false);
 
   mainWindow.once('ready-to-show', () => {
+    if (bounds && bounds.maximized) mainWindow.maximize();
     if (!isSmoke) mainWindow.show();
+  });
+
+  let boundsTimer = null;
+  const scheduleBounds = () => {
+    clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(rememberBounds, 600);
+  };
+  ['resize', 'move', 'maximize', 'unmaximize'].forEach((name) => mainWindow.on(name, scheduleBounds));
+  mainWindow.on('close', () => {
+    clearTimeout(boundsTimer);
+    rememberBounds();
   });
 
   // Never stay invisible: show the window after a few seconds even if the
