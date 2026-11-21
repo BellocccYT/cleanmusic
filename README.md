@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.1.0**
+**Version 1.2.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -133,19 +133,24 @@ Suche erscheinen zusätzlich die aktuellen Deezer-Charts.
 
 Alles bleibt lokal (im Profil der App); es gibt kein Konto und keine Cloud.
 
-### Playlists von Spotify übertragen
+### Playlists übertragen
 
-Unter **Bibliothek → Von Spotify übertragen** kannst du eine öffentliche Spotify-Playlist
-per `open.spotify.com/playlist/...`-Link oder Spotify-URI übernehmen. Für private
-Playlists kannst du bei exportify.app mit deinem Spotify-Konto eine CSV-Datei exportieren
-und in CleanMusic laden. Auch CSV-Dateien von TuneMyMusic und Soundiiz sowie Spotifys
+Unter **Bibliothek → Playlist übertragen** kannst du Spotify-Playlists per öffentlichem
+`open.spotify.com/playlist/...`-Link oder Spotify-URI sowie YouTube-/YouTube-Music-Playlists
+per Link übertragen (`music.youtube.com/playlist?list=…`, `youtube.com/playlist?list=…`
+oder ein Video mit `&list=…`). Für YouTube Music brauchst du ein aktives Quellen-Plugin
+mit Playlist-Import (ab Version 1.2.0). Ohne Plugin kannst du die Playlist auf
+[TuneMyMusic](https://www.tunemymusic.com/) als CSV exportieren und in CleanMusic laden.
+
+Für private Spotify-Playlists kannst du bei exportify.app mit deinem Spotify-Konto eine
+CSV-Datei exportieren. Auch CSV-Dateien von TuneMyMusic und Soundiiz sowie Spotifys
 Playlist-JSON aus dem persönlichen Datenexport werden unterstützt. Bei JSON-Exporten
-mit mehreren Playlists kannst du auswählen, welche importiert werden.
+mit mehreren Playlists kannst du auswählen, welche du übertragen möchtest.
 
-CleanMusic übernimmt nur Titelnamen und Artists und sucht dazu öffentliche
-30-Sekunden-Vorschauen im Deezer-Katalog. Spotify kann über den öffentlichen Link nur
+Spotify-Playlists werden wie bisher mit öffentlichen Deezer-Vorschauen abgeglichen;
+nicht gefundene Titel zeigt CleanMusic am Ende an. YouTube-Playlists werden direkt als
+volle Titel des aktiven Plugins übernommen. Spotify kann über den öffentlichen Link nur
 bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import verwenden.
-Nicht gefundene Titel zeigt CleanMusic am Ende an und kann sie in die Zwischenablage kopieren.
 
 ### Cutter-Modus (für Videos)
 

@@ -137,6 +137,7 @@
     clearServiceData: async () => false,
     openMusickit: async () => toast('MusicKit gibt es nur in der Desktop-App.'),
     spotifyPlaylistLink: async () => ({ error: 'Nur in der Desktop-App verfügbar.' }),
+    pluginPlaylist: async () => ({ name: '', items: [], error: 'Nur in der Desktop-App verfügbar.' }),
     playlistImportFile: async () => ({ error: 'Nur in der Desktop-App verfügbar.' }),
     playlistMatch: async () => ({ matches: [] }),
     searchCatalog: async () => ({
@@ -1066,6 +1067,31 @@
     return openDialog(Object.assign({ input: false }, options));
   }
 
+  function isYouTubePlaylistLink(value) {
+    try {
+      const url = new URL(String(value || ''));
+      return ['music.youtube.com', 'www.youtube.com', 'youtube.com', 'm.youtube.com'].includes(url.hostname.toLowerCase()) &&
+        Boolean(url.searchParams.get('list'));
+    } catch {
+      return false;
+    }
+  }
+
+  const YOUTUBE_PLAYLIST_PLUGIN_MESSAGE = 'Für YouTube-Music-Links brauchst du ein aktives Quellen-Plugin mit Playlist-Import. Alternativ die Playlist auf tunemymusic.com als CSV exportieren und hier über Datei wählen laden.';
+
+  function uniquePlaylistName(value, fallback) {
+    const baseName = String(value || fallback).trim().slice(0, 80) || fallback;
+    let name = baseName;
+    let suffix = 2;
+    const known = new Set(state.collection.playlists.map((playlist) => playlist.name.toLocaleLowerCase()));
+    while (known.has(name.toLocaleLowerCase())) {
+      const ending = ` (${suffix})`;
+      name = `${baseName.slice(0, 80 - ending.length)}${ending}`;
+      suffix += 1;
+    }
+    return name;
+  }
+
   async function importSpotifyPlaylist(data, cancelled = () => false, onProgress = () => {}) {
     const sourceTracks = Array.isArray(data && data.tracks) ? data.tracks.slice(0, 2000) : [];
     const entries = [];
@@ -1086,15 +1112,7 @@
     }
     if (cancelled()) return { cancelled: true };
 
-    const baseName = String((data && data.name) || 'Spotify-Playlist').trim().slice(0, 80) || 'Spotify-Playlist';
-    let name = baseName;
-    let suffix = 2;
-    const known = new Set(state.collection.playlists.map((playlist) => playlist.name.toLocaleLowerCase()));
-    while (known.has(name.toLocaleLowerCase())) {
-      const ending = ` (${suffix})`;
-      name = `${baseName.slice(0, 80 - ending.length)}${ending}`;
-      suffix += 1;
-    }
+    const name = uniquePlaylistName(data && data.name, 'Spotify-Playlist');
     const playlist = createPlaylist(name);
     if (entries.length) addToPlaylist(playlist.id, entries);
     return {
@@ -1108,15 +1126,24 @@
     };
   }
 
+  function importPluginPlaylist(plugin, data) {
+    const items = Array.isArray(data && data.items) ? data.items.slice(0, 2000) : [];
+    const entries = items.map((item) => pluginEntry(plugin, item)).filter(Boolean);
+    const name = uniquePlaylistName(data && data.name, 'YouTube Music Playlist');
+    const playlist = createPlaylist(name);
+    if (entries.length) addToPlaylist(playlist.id, entries);
+    return { playlistId: playlist.id, name: playlist.name, requested: items.length, imported: entries.length };
+  }
+
   function spotifyImportProgressHtml(progress) {
     return `<p class="spotify-progress-head">${esc(progress.found)} / ${esc(progress.total)} gefunden …</p>
       <small class="muted">${esc(progress.processed)} von ${esc(progress.total)} Titeln geprüft</small>
       <div class="spotify-progress"><i style="width:${progress.total ? Math.round((progress.processed / progress.total) * 100) : 0}%"></i></div>`;
   }
 
-  function openSpotifyImportDialog() {
+  function openPlaylistImportDialog() {
     if (!bridge.isElectron) {
-      toast('Der Spotify-Import ist nur in der Desktop-App verfügbar.');
+      toast('Der Playlist-Import ist nur in der Desktop-App verfügbar.');
       return;
     }
     const root = $('#dialog');
@@ -1162,17 +1189,17 @@
       cancel.textContent = cancelLabel;
       root.hidden = false;
     };
-    const showStart = (message = '') => setView('Von Spotify übertragen', `
+    const showStart = (message = '') => setView('Playlist übertragen', `
       ${message ? `<p class="spotify-import-error">${esc(message)}</p>` : ''}
-      <p>Öffentliche Playlists per Link oder eine exportierte CSV-/JSON-Datei übertragen.</p>
-      <label class="spotify-link-label" for="spotify-playlist-link">Spotify-Playlist-Link</label>
-      <div class="spotify-link-row"><input id="spotify-playlist-link" type="url" placeholder="https://open.spotify.com/playlist/…" autocomplete="off" />
+      <p>Spotify- oder YouTube-Music-Link einfügen – oder eine CSV-/JSON-Datei wählen.</p>
+      <label class="spotify-link-label" for="spotify-playlist-link">Playlist-Link</label>
+      <div class="spotify-link-row"><input id="spotify-playlist-link" type="url" placeholder="https://music.youtube.com/playlist?list=…" autocomplete="off" />
       <button class="btn primary small" data-spotify-action="link">Übertragen</button></div>
       <div class="spotify-import-divider">oder</div>
       <button class="btn ghost" data-spotify-action="file">Datei wählen …</button>
-      <p class="muted small">Private Playlist? Auf exportify.app mit Spotify anmelden, Playlist als CSV speichern und hier laden.</p>`);
+      <p class="muted small">Private Spotify-Playlist? Auf exportify.app als CSV exportieren. YouTube Music kannst du auf tunemymusic.com als CSV exportieren und hier laden.</p>`);
 
-    const showError = (message) => setView('Von Spotify übertragen', `
+    const showError = (message) => setView('Playlist übertragen', `
       <p class="spotify-import-error">${esc(message || 'Der Import ist fehlgeschlagen.')}</p>
       <button class="btn ghost small" data-spotify-action="back">Zurück</button>`);
 
@@ -1185,10 +1212,40 @@
           ${result.limited ? `<p class="muted small">${esc(result.limitMessage || 'Der Import wurde auf 2000 Titel begrenzt.')}</p>` : ''}
           ${result.missing.length ? `<details><summary>${result.missing.length} nicht gefundene Titel</summary><ul>${result.missing.map((track) => `<li>${esc(track.title)}${track.artist ? ` · ${esc(track.artist)}` : ''}</li>`).join('')}</ul></details>` : ''}
         </section>`).join('');
-      setView('Spotify-Import abgeschlossen', `${reports}
+      setView('Playlist-Import abgeschlossen', `${reports}
         ${allMissing.length ? '<button class="btn ghost small" data-spotify-action="copy-missing">Kopieren</button>' : ''}
         <button class="btn primary small" data-spotify-action="done">Fertig</button>`);
       textEl._spotifyMissingText = allMissing.map((track) => `${track.title}${track.artist ? ` – ${track.artist}` : ''}`).join('\n');
+    };
+
+    const loadYouTubeLink = async (url) => {
+      const plugin = readyPlugins('playlist')[0];
+      if (!plugin) {
+        showError(YOUTUBE_PLAYLIST_PLUGIN_MESSAGE);
+        return;
+      }
+      const token = ++generation;
+      cancelled = false;
+      setView('Playlist wird gelesen …', '<p>Die Playlist wird über das aktive Quellen-Plugin gelesen.</p>', 'Abbrechen');
+      let result;
+      try {
+        result = await bridge.pluginPlaylist(plugin.id, url);
+      } catch (error) {
+        if (!done && !cancelled && token === generation) showError(error && error.message || 'Playlist konnte nicht gelesen werden.');
+        return;
+      }
+      if (done || cancelled || token !== generation) return;
+      if (!result || result.error || !Array.isArray(result.items) || !result.items.length) {
+        showError(result && result.error ? result.error : 'Die Playlist enthält keine importierbaren Titel.');
+        return;
+      }
+      const imported = importPluginPlaylist(plugin, result);
+      setView('Playlist-Import abgeschlossen', `
+        <section class="spotify-import-result">
+          <strong>${esc(imported.name)}</strong>
+          <p>${esc(imported.imported)} Titel übertragen</p>
+        </section>
+        <button class="btn primary small" data-spotify-action="done">Fertig</button>`);
     };
 
     const startImport = async (playlists, token) => {
@@ -1224,6 +1281,10 @@
       }
       const token = ++generation;
       cancelled = false;
+      if (isYouTubePlaylistLink(url)) {
+        await loadYouTubeLink(url);
+        return;
+      }
       setView('Spotify-Playlist wird geladen …', '<p>Öffentliche Playlist wird abgerufen.</p>', 'Abbrechen');
       let result;
       try {
@@ -2228,7 +2289,7 @@
             }</p>
           </div>
           <div class="page-actions">
-            <button class="btn ghost small" data-fav-action="spotify-import">Von Spotify übertragen</button>
+            <button class="btn ghost small" data-fav-action="spotify-import">Playlist übertragen</button>
             ${
               list.length
                 ? `<button class="btn ghost small" data-fav-action="add-all">${ICONS.plus} Zur Playlist</button>
@@ -3723,6 +3784,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.2.0': [
+      'YouTube-Music-Playlists lassen sich jetzt per Link mit einem aktiven Quellen-Plugin übertragen.',
+      'Spotify-Links und CSV-/JSON-Dateien funktionieren weiterhin wie bisher.',
+    ],
     '1.1.0': [
       'Spotify-Playlists per öffentlichem Link oder CSV-/JSON-Datei übertragen.',
       'Titel werden mit Deezer-Vorschauen abgeglichen; nicht gefundene Titel kannst du kopieren.',
@@ -7233,7 +7298,7 @@ ${updatePanel()}
 
     $('#sidebar').addEventListener('click', (event) => {
       if (event.target.closest('#btn-spotify-import')) {
-        openSpotifyImportDialog();
+        openPlaylistImportDialog();
         return;
       }
       if (event.target.closest('#btn-new-playlist')) {
@@ -7432,7 +7497,7 @@ ${updatePanel()}
           focusSearch();
           return;
         case 'spotify-import':
-          openSpotifyImportDialog();
+          openPlaylistImportDialog();
           return;
         default:
       }
@@ -8122,15 +8187,45 @@ ${updatePanel()}
     openPlaylist,
     toggleFavoriteAt: (key, index) => toggleFavorite(entryAt(key, index)),
     createPlaylist: (name) => createPlaylist(name).id,
-    spotifyImportDialogSmoke: () => {
-      openSpotifyImportDialog();
+    playlistImportDialogSmoke: async () => {
+      openPlaylistImportDialog();
       const result = {
         open: !$('#dialog').hidden,
         linkField: Boolean($('#dialog-text #spotify-playlist-link')),
         fileButton: Boolean($('#dialog-text [data-spotify-action="file"]')),
+        youtubeDetected: isYouTubePlaylistLink('https://music.youtube.com/playlist?list=PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i'),
       };
+      if (result.youtubeDetected && !readyPlugins('playlist').length) {
+        const input = $('#dialog-text #spotify-playlist-link');
+        input.value = 'https://music.youtube.com/playlist?list=PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i';
+        $('#dialog-text [data-spotify-action="link"]').click();
+        result.noPluginMessage = $('#dialog-text .spotify-import-error')?.textContent === YOUTUBE_PLAYLIST_PLUGIN_MESSAGE;
+      } else {
+        result.noPluginMessage = false;
+      }
       $('#dialog-cancel').click();
       return Object.assign(result, { closed: $('#dialog').hidden });
+    },
+    youtubePlaylistSmoke: async (url = 'https://music.youtube.com/playlist?list=PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i') => {
+      const plugin = readyPlugins('playlist')[0];
+      if (!plugin) return { available: false };
+      const data = await bridge.pluginPlaylist(plugin.id, url);
+      if (!data || data.error || !Array.isArray(data.items)) return { available: true, error: data && data.error || 'Playlist konnte nicht geladen werden.' };
+      if (!data.items.length) return { available: true, name: data.name || '', count: 0, moreThan20: false, playback: false };
+      const imported = importPluginPlaylist(plugin, data);
+      const playlist = playlistById(imported.playlistId);
+      const first = playlist && playlist.items[0];
+      if (first) playList(`playlist:${imported.playlistId}`, 0);
+      state.collection.playlists = state.collection.playlists.filter((item) => item.id !== imported.playlistId);
+      onCollectionChanged({ playlists: true });
+      return {
+        available: true,
+        name: imported.name,
+        count: imported.imported,
+        moreThan20: imported.imported > 20,
+        firstId: first && first.id || '',
+        firstTitle: first && first.title || '',
+      };
     },
     importSpotifySmoke: async () => {
       const sample = {

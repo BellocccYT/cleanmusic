@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('cm', {
   backupOpen: () => ipcRenderer.invoke('backup-open'),
   creditsSave: (text) => ipcRenderer.invoke('credits-save', text),
   pluginCharts: (id, limit) => ipcRenderer.invoke('plugin-charts', id, limit),
+  pluginPlaylist: (id, url) => ipcRenderer.invoke('plugin-playlist', id, url),
   cuttingDefaultFolder: () => ipcRenderer.invoke('cutting-default-folder'),
   creatorDownloadsConfig: (config) => ipcRenderer.invoke('creator-downloads-config', config),
   onCreatorDownload: (listener) => {

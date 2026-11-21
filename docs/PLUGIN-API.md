@@ -31,6 +31,7 @@ module.exports = {
 
   // Fähigkeiten – alle optional:
   async search(query) { return [/* Item */]; },
+  async playlist(url) { return { name: 'Meine Playlist', items: [/* Item */] }; },
   async resolve(refId, force) { return { refId, url: 'https://…', duration: 0 }; },
   async match({ title, artist, album, duration }, force) { return { refId, url: 'https://…' }; },
   async related(refId, limit) { return [/* Item */]; },
@@ -57,6 +58,22 @@ Plugin-eigene Referenz (`refId`), `artwork` muss `https://` sein.
 `actions[].when` blendet eine Aktion nur ein, wenn `status().flags[when]`
 wahr ist. Alle Rückgaben werden von CleanMusic gekürzt und auf gültige URLs
 geprüft.
+
+### Playlist-Import (CleanMusic 1.2.0+)
+
+`playlist(url)` ist eine optionale Fähigkeit. Sie wird für Playlist-Links angeboten
+und liefert die Playlist mit Items in derselben Form wie `search()` zurück:
+
+```js
+async playlist(url) {
+  // URL prüfen; bei fremden oder ungültigen Links einen verständlichen Fehler werfen.
+  return { name: 'Meine Playlist', items: [{ id, title, artist, duration, artwork, link }] };
+}
+```
+
+CleanMusic begrenzt den Namen auf 100 Zeichen und die Rückgabe auf 2000 Items.
+Der Link selbst wird vom Plugin geprüft; CleanMusic kennt keine quellenspezifischen
+Details und importiert die Items als Titel des Plugins.
 
 ## v2: Ereignisse, Player-Steuerung, Einstellungsfelder
 

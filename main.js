@@ -1515,7 +1515,7 @@ function createMainWindow() {
           try {
             playlistImportUi = await mainWindow.webContents.executeJavaScript(`
               (async () => ({
-                dialog: window.CleanMusic.spotifyImportDialogSmoke(),
+                dialog: await window.CleanMusic.playlistImportDialogSmoke(),
                 import: await window.CleanMusic.importSpotifySmoke(),
               }))()
             `);
@@ -1623,7 +1623,8 @@ function createMainWindow() {
               (async () => {
                 const cm = window.CleanMusic;
                 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-                const candidate = cm.plugins().find((plugin) => plugin.file);
+                const candidates = cm.plugins().filter((plugin) => plugin.file);
+                const candidate = candidates.find((plugin) => plugin.id === 'ytdlp') || candidates[0];
                 if (!candidate) return { found: false };
 
                 await cm.enablePlugin(candidate.id);
@@ -1683,6 +1684,25 @@ function createMainWindow() {
                   cm.setTrend('charts');
                 }
 
+                let youtubePlaylist = null;
+                try {
+                  youtubePlaylist = await cm.youtubePlaylistSmoke();
+                  if (youtubePlaylist && youtubePlaylist.available && !youtubePlaylist.error) {
+                    let playback = null;
+                    for (let i = 0; i < 100; i += 1) {
+                      await wait(500);
+                      playback = cm.nowPlaying();
+                      if (playback && playback.mode !== 'loading' && playback.time > 0.5) break;
+                    }
+                    youtubePlaylist.playback = Boolean(
+                      youtubePlaylist.moreThan20 && playback && playback.id === youtubePlaylist.firstId &&
+                      playback.mode !== 'loading' && playback.time > 0.5
+                    );
+                  }
+                } catch (error) {
+                  youtubePlaylist = { available: true, error: String(error && error.message || error) };
+                }
+
                 return {
                   found: true,
                   plugin: { id: plugin.id, name: plugin.name, status: plugin.statusText },
@@ -1692,6 +1712,7 @@ function createMainWindow() {
                   recs: st.recs,
                   pluginRecs: document.querySelectorAll('#home-recs [data-track-id^="p:"]').length,
                   charts,
+                  youtubePlaylist,
                 };
               })()
             `);
@@ -3474,10 +3495,10 @@ function cleanUrl(value, pattern = /^https?:\/\//i) {
   return pattern.test(url) ? url : '';
 }
 
-function cleanItems(items) {
+function cleanItems(items, maxItems = 50) {
   return (Array.isArray(items) ? items : [])
     .filter((item) => item && item.id != null)
-    .slice(0, 50)
+    .slice(0, Math.max(0, Math.min(2000, Number(maxItems) || 50)))
     .map((item) => ({
       id: cleanText(item.id, 200),
       title: cleanText(item.title || 'Unbekannt'),
@@ -3557,6 +3578,7 @@ async function pluginInfo(plugin, enabled, refresh) {
     chartsLabel: cleanText((mod && mod.chartsLabel) || '', 40),
     capabilities: {
       charts: Boolean(mod && typeof mod.charts === 'function'),
+      playlist: Boolean(mod && typeof mod.playlist === 'function'),
       events: Boolean(mod && typeof mod.onEvent === 'function'),
       search: Boolean(mod && typeof mod.search === 'function'),
       resolve: Boolean(mod && typeof mod.resolve === 'function'),
@@ -3726,6 +3748,32 @@ ipcMain.handle('plugin-charts', async (_event, id, limit) => {
     return { items: cleanItems(items), error: null };
   } catch (error) {
     return { items: [], error: cleanText(error.message || String(error)) };
+  }
+});
+
+ipcMain.handle('plugin-playlist', async (_event, id, url) => {
+  const plugin = readyPlugin(id, 'playlist');
+  if (!plugin) return { name: '', items: [], error: 'Plugin nicht aktiv' };
+  const input = typeof url === 'string' ? url.trim().slice(0, 2048) : '';
+  if (!input) return { name: '', items: [], error: 'Bitte einen Playlist-Link eingeben.' };
+
+  let timeout;
+  try {
+    const result = await Promise.race([
+      plugin.module.playlist(input),
+      new Promise((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Zeitüberschreitung beim Lesen der Playlist')), 180000);
+      }),
+    ]);
+    return {
+      name: cleanText(result && result.name, 100),
+      items: cleanItems(result && result.items, 2000),
+      error: null,
+    };
+  } catch (error) {
+    return { name: '', items: [], error: cleanText(error && error.message || String(error)) };
+  } finally {
+    clearTimeout(timeout);
   }
 });
 
