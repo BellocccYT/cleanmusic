@@ -4982,6 +4982,28 @@ app.whenReady().then(() => {
   if (!isSmoke) cleanupSetupUpdate();
   if (!isSmoke && updateConfig().auto) {
     setTimeout(() => checkForUpdates().catch(() => {}), 4000);
+    // While CleanMusic stays open: look again every 2 hours. A new version
+    // also shows a Windows notification, in case the window is in the tray.
+    let announced = null;
+    setInterval(async () => {
+      if (!updateConfig().auto || updateState.status === 'downloading' || updateState.status === 'ready') return;
+      const result = await checkForUpdates().catch(() => null);
+      if (!result || result.status !== 'available' || !result.latest || announced === result.latest) return;
+      announced = result.latest;
+      try {
+        const { Notification } = require('electron');
+        if (Notification.isSupported()) {
+          const note = new Notification({
+            title: `CleanMusic ${result.latest} ist da`,
+            body: 'Klicke hier und dann auf „Updaten“.',
+          });
+          note.on('click', () => showMainWindow());
+          note.show();
+        }
+      } catch {
+        /* the card in the window is enough */
+      }
+    }, 2 * 60 * 60 * 1000);
   }
   // Close button → tray (only if the user switched it on).
   // Windows shutting down / logging off must never be blocked by the tray mode.

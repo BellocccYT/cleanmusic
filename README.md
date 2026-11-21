@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.10.0**
+**Version 1.10.1**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -390,7 +390,7 @@ Die Plugin-Karte zeigt dann „schneller Start (Python)“.
 
 ## Updates
 
-CleanMusic sucht **bei jedem Start** nach einer neuen Version (abschaltbar unter
+CleanMusic sucht **bei jedem Start und danach alle 2 Stunden** nach einer neuen Version (mit hörbarem Gong und Windows-Benachrichtigung) (abschaltbar unter
 *Einstellungen → Updates*, dort gibt es auch **Jetzt suchen**). Ist eine da,
 erscheint unten rechts ein Hinweis:
 

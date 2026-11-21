@@ -3871,6 +3871,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.10.1': [
+      'Updates auch im Hintergrund: CleanMusic sucht alle 2 Stunden, solange es läuft – mit Windows-Benachrichtigung.',
+      'Neuer, deutlich hörbarer Update-Gong (nur stumm, wenn du CleanMusic stummgeschaltet hast).',
+    ],
     '1.10.0': [
       'Songtext-Effekte: Pop (Zeile springt hoch), Karaoke (füllt sich im Takt) und Motion (große Zeile, Wörter poppen einzeln rein – wie in Lyric-Videos).',
       'Umschalten im Vollbild-Player („Effekt: …“) oder unter Einstellungen → Wiedergabe → Songtexte.',
@@ -7992,24 +7996,34 @@
       const Ctx = window.AudioContext || window.webkitAudioContext;
       const ctx = new Ctx();
       const now = ctx.currentTime + 0.02;
-      const peak = 0.05 + 0.08 * Math.min(1, Math.max(0.3, volumeLevel()));
+      // Clearly audible, independent of the music volume: a bright rising
+      // three-note chime (C6 – E6 – G6, then C7) with a soft bell overtone.
+      const peak = 0.32;
       [
-        [784, 0],
-        [1175, 0.13],
-      ].forEach(([freq, at]) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.0001, now + at);
-        gain.gain.exponentialRampToValueAtTime(peak, now + at + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.7);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now + at);
-        osc.stop(now + at + 0.75);
+        [1047, 0],
+        [1319, 0.14],
+        [1568, 0.28],
+        [2093, 0.46],
+      ].forEach(([freq, at], index) => {
+        [
+          [freq, 'triangle', peak],
+          [freq * 2, 'sine', peak * 0.18],
+        ].forEach(([tone, type, level]) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = type;
+          osc.frequency.value = tone;
+          const length = index === 3 ? 1.4 : 0.6;
+          gain.gain.setValueAtTime(0.0001, now + at);
+          gain.gain.exponentialRampToValueAtTime(level, now + at + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + at + length);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + at);
+          osc.stop(now + at + length + 0.05);
+        });
       });
-      setTimeout(() => ctx.close().catch(() => {}), 1500);
+      setTimeout(() => ctx.close().catch(() => {}), 2500);
     } catch {
       /* no audio device – the card is enough */
     }
