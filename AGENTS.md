@@ -1,8 +1,8 @@
 # CleanMusic – Projekthinweise
 
-## Stand (Version 0.8.0)
+## Stand (Version 0.9.0)
 
-Electron-App für Windows, die Musik-Streamingdienste als offizielle Web-Player einbettet und selbst abspielt: lokale Dateien, 30-Sekunden-Vorschauen (Apple Music, Deezer), Live-Radio, Favoriten, Playlists, Vorschläge, Cutter-Modus (NCS, Kevin-MacLeod-Klassiker, Soundeffekte und freie Musik über Openverse, mit Lizenz und Credit), Vollbild-Player mit Visualizer, optionale Discord Rich Presence und optionale Quellen-Plugins. Seit 0.8: gehörrichtiger Lautstärkeregler (optional Angleichen und Boost über eine Web-Audio-Kette), zehn Themes plus Akzent aus dem Cover, Plugin-API v2 (Ereignisse, Player-Steuerung, Einstellungsfelder) und ein optionales OBS-Overlay-Plugin in `extras/plugins/`.
+Electron-App für Windows, die Musik-Streamingdienste als offizielle Web-Player einbettet und selbst abspielt: lokale Dateien, 30-Sekunden-Vorschauen (Apple Music, Deezer), Live-Radio, Favoriten, Playlists, Vorschläge, Cutter-Modus (NCS, Kevin-MacLeod-Klassiker, Soundeffekte und freie Musik über Openverse, mit Lizenz und Credit), Vollbild-Player mit Visualizer, optionale Discord Rich Presence und optionale Quellen-Plugins. Seit 0.8: gehörrichtiger Lautstärkeregler (optional Angleichen und Boost über eine Web-Audio-Kette), zehn Themes plus Akzent aus dem Cover, Plugin-API v2 (Ereignisse, Player-Steuerung, Einstellungsfelder) und ein optionales OBS-Overlay-Plugin in `extras/plugins/`. Seit 0.9: Downloads nur „Nur Cutting“ (freie Lizenzen, Credit-.txt, Drag ins Schnittprogramm), lokaler Hör-Verlauf, Startseite mit „Neu für dich“, „Trending & Neuheiten“ (Charts, Neuerscheinungen, Plugin-Charts über `charts()`) und „Wiederentdecken“. Als Nächstes (1.0, mit dem User): Streamer.bot als eigenes Plugin.
 
 ## Aufbau
 

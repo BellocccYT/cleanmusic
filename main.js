@@ -1014,6 +1014,19 @@ function createMainWindow() {
                 await wait(300);
                 const st = cm.state();
 
+                // Plugin charts on the home page (only if the plugin offers them).
+                let charts = null;
+                if (cm.home().pluginChartsTab) {
+                  cm.setTrend('plugin');
+                  for (let i = 0; i < 120 && !cm.home().pluginCharts && !cm.home().pluginChartsError; i += 1) await wait(500);
+                  charts = {
+                    items: cm.home().pluginCharts,
+                    cards: document.querySelectorAll('#home-charts [data-list="pcharts"]').length,
+                    error: cm.home().pluginChartsError,
+                  };
+                  cm.setTrend('charts');
+                }
+
                 return {
                   found: true,
                   plugin: { id: plugin.id, name: plugin.name, status: plugin.statusText },
@@ -1022,6 +1035,7 @@ function createMainWindow() {
                   matched,
                   recs: st.recs,
                   pluginRecs: document.querySelectorAll('#home-recs [data-track-id^="p:"]').length,
+                  charts,
                 };
               })()
             `);
@@ -1956,6 +1970,7 @@ async function smokeObsPlugin() {
  *   settings: [{ id, label, type, default, ... }] – fields CleanMusic
  *     shows in the plugin card; onSettings(values) is called on change
  *   onEvent(type, player) – 'nowplaying' | 'state' | 'volume'
+ *   charts(limit) + chartsLabel – a top list for the home page
  *   ctx.player (state + play/pause/next/previous/volume), ctx.settings,
  *   ctx.copyText, ctx.openExternal, ctx.openPath, ctx.notify,
  *   ctx.refresh, ctx.dataDir, ctx.getPath
@@ -2421,7 +2436,9 @@ async function pluginInfo(plugin, enabled, refresh) {
           values: pluginSettingValues(plugin.id),
         }
       : { fields: [], values: {} },
+    chartsLabel: cleanText((mod && mod.chartsLabel) || '', 40),
     capabilities: {
+      charts: Boolean(mod && typeof mod.charts === 'function'),
       events: Boolean(mod && typeof mod.onEvent === 'function'),
       search: Boolean(mod && typeof mod.search === 'function'),
       resolve: Boolean(mod && typeof mod.resolve === 'function'),
@@ -2575,6 +2592,22 @@ ipcMain.handle('plugin-search', async (_event, id, query) => {
     return { results: cleanItems(await plugin.module.search(query.trim().slice(0, 120))), error: null };
   } catch (error) {
     return { results: [], error: cleanText(error.message || String(error)) };
+  }
+});
+
+// Charts from a plugin (e.g. a top list of its source) for the home page.
+ipcMain.handle('plugin-charts', async (_event, id, limit) => {
+  const plugin = readyPlugin(id, 'charts');
+  if (!plugin) return { items: [], error: 'Plugin nicht aktiv' };
+  const count = Math.max(5, Math.min(50, Number(limit) || 30));
+  try {
+    const items = await Promise.race([
+      plugin.module.charts(count),
+      new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Zeitüberschreitung')), 90000)),
+    ]);
+    return { items: cleanItems(items), error: null };
+  } catch (error) {
+    return { items: [], error: cleanText(error.message || String(error)) };
   }
 });
 

@@ -172,6 +172,7 @@
     search: { query: '', tracks: [], loading: false, errors: [], sources: null },
     charts: { tracks: [], loading: false, loaded: false, errors: [] },
     releases: { tracks: [], loading: false, loaded: false, error: null },
+    pluginCharts: { pluginId: null, items: [], loading: false, loaded: false, error: null },
     trend: 'charts', // 'charts' | 'releases' on the home page
     radio: { stations: [], entries: [], loading: false, loaded: false, error: null, tag: '', query: '' },
     plugins: { list: [], dirs: [], loading: false, loaded: false },
@@ -766,6 +767,7 @@
       case 'local': return state.library.entries;
       case 'radio': return state.radio.entries;
       case 'releases': return state.releases.tracks;
+      case 'pcharts': return state.pluginCharts.items;
       case 'rediscover': return rediscoverEntries();
       default:
         if (key && key.startsWith('playlist:')) {
@@ -1254,6 +1256,33 @@
     host.innerHTML = list.map((entry, index) => chartCard(entry, index, 'rediscover')).join('');
   }
 
+  function chartsPlugin() {
+    return readyPlugins('charts')[0] || null;
+  }
+
+  async function loadPluginCharts(force = false) {
+    const plugin = chartsPlugin();
+    if (!plugin || !bridge.pluginCharts) return;
+    const current = state.pluginCharts;
+    if (current.loading) return;
+    if (current.loaded && current.pluginId === plugin.id && !force) return;
+    state.pluginCharts = { pluginId: plugin.id, items: current.pluginId === plugin.id ? current.items : [], loading: true, loaded: false, error: null };
+    renderHomeCharts();
+    try {
+      const result = await bridge.pluginCharts(plugin.id, 30);
+      state.pluginCharts = {
+        pluginId: plugin.id,
+        items: (Array.isArray(result.items) ? result.items : []).map((item) => pluginEntry(plugin, item)),
+        loading: false,
+        loaded: true,
+        error: result.error || null,
+      };
+    } catch (error) {
+      state.pluginCharts = { pluginId: plugin.id, items: [], loading: false, loaded: true, error: error.message };
+    }
+    renderHomeCharts();
+  }
+
   async function loadReleases(force = false) {
     if (!bridge.newReleases || state.releases.loading) return;
     if (state.releases.loaded && !force) return;
@@ -1359,6 +1388,13 @@
             <div class="row trend-tabs">
               <button class="radio-tag ${state.trend === 'charts' ? 'active' : ''}" data-home-action="trend-charts">Charts</button>
               <button class="radio-tag ${state.trend === 'releases' ? 'active' : ''}" data-home-action="trend-releases">Neuerscheinungen</button>
+              ${
+                chartsPlugin()
+                  ? `<button class="radio-tag ${state.trend === 'plugin' ? 'active' : ''}" data-home-action="trend-plugin">${esc(
+                      chartsPlugin().chartsLabel || `${chartsPlugin().source.label} Charts`
+                    )}</button>`
+                  : ''
+              }
               <button class="btn ghost small" data-home-action="refresh">Neu laden</button>
             </div>
           </div>
@@ -1460,6 +1496,31 @@
     $$('[data-home-action^="trend-"]').forEach((button) =>
       button.classList.toggle('active', button.dataset.homeAction === `trend-${state.trend}`)
     );
+
+    if (state.trend === 'plugin' && !chartsPlugin()) state.trend = 'charts';
+    if (state.trend === 'plugin') {
+      const charts = state.pluginCharts;
+      const plugin = chartsPlugin();
+      if (charts.pluginId !== plugin.id || (!charts.loaded && !charts.loading)) {
+        host.innerHTML = skeletonCards(8);
+        loadPluginCharts();
+        return;
+      }
+      if (charts.loading && !charts.items.length) {
+        host.innerHTML = skeletonCards(8);
+        return;
+      }
+      if (!charts.items.length) {
+        host.innerHTML = `
+          <div class="charts-empty">
+            <span>${esc(charts.error || 'Gerade keine Charts vom Plugin.')}</span>
+            <button class="btn ghost small" data-home-action="refresh">Erneut versuchen</button>
+          </div>`;
+        return;
+      }
+      host.innerHTML = charts.items.map((entry, index) => chartCard(entry, index, 'pcharts')).join('');
+      return;
+    }
 
     if (state.trend === 'releases') {
       const releases = state.releases;
@@ -5409,11 +5470,13 @@
             return;
           case 'refresh':
             if (state.trend === 'releases') loadReleases(true);
+            else if (state.trend === 'plugin') loadPluginCharts(true);
             else loadCharts(true);
             return;
           case 'trend-charts':
           case 'trend-releases':
-            state.trend = action.dataset.homeAction === 'trend-releases' ? 'releases' : 'charts';
+          case 'trend-plugin':
+            state.trend = action.dataset.homeAction.slice(6);
             renderHomeCharts();
             return;
           case 'recs':
@@ -6123,12 +6186,15 @@
       releases: state.releases.tracks.length,
       releasesError: state.releases.error,
       releaseCards: document.querySelectorAll('#home-charts [data-list="releases"]').length,
+      pluginCharts: state.pluginCharts.items.length,
+      pluginChartsError: state.pluginCharts.error,
+      pluginChartsTab: Boolean(document.querySelector('[data-home-action="trend-plugin"]')),
       rediscover: document.querySelectorAll('#home-rediscover .chart-card').length,
       rediscoverHidden: ($('#home-rediscover-section') || {}).hidden,
       recSeeds: recSeeds().artists.map((artist) => artist.name),
     }),
     setTrend: (trend) => {
-      state.trend = trend === 'releases' ? 'releases' : 'charts';
+      state.trend = ['releases', 'plugin'].includes(trend) ? trend : 'charts';
       renderHomeCharts();
     },
     downloads: () => ({ mode: state.settings.downloads, count: Object.keys(downloads).length }),

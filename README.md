@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 0.8.0**
+**Version 0.9.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -235,6 +235,8 @@ Ein aktives Plugin kann:
 Was ein Plugin tut und ob das bei der jeweiligen Quelle erlaubt ist, liegt in
 der Verantwortung von dir bzw. der Person, die das Plugin geschrieben hat.
 Die Schnittstelle ist in [docs/PLUGIN-API.md](docs/PLUGIN-API.md) beschrieben.
+Ein Plugin mit `charts()` bekommt auf der Startseite unter *Trending & Neuheiten*
+einen eigenen Reiter (z. B. Top-Listen seiner Quelle).
 Seit **API v2** können Plugins auf Titelwechsel reagieren, den Player steuern
 und eigene Einstellungsfelder in ihrer Plugin-Karte anzeigen; v1-Plugins laufen
 unverändert. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
@@ -317,7 +319,7 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-0.8.0-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-0.9.0-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
@@ -339,7 +341,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-0.8.0.AppImage`.
+Ergebnis: `release/CleanMusic-0.9.0.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die
@@ -496,6 +498,9 @@ THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 ```
 
 ## Nächste sinnvolle Schritte
+
+0. **Streamer.bot-Plugin** (für 1.0 geplant): Befehle wie !song / !skip und
+   Titelwechsel als Ereignisse – als eigenes, optionales Plugin über die Plugin-API v2.
 
 1. **Export/Import** von Favoriten, Playlists und Video-Credits (JSON-Backup).
 2. **Medientasten & Windows-Media-Overlay** (`navigator.mediaSession`), Tray-Icon.

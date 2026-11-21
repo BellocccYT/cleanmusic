@@ -117,6 +117,17 @@ hochrechnen.
 Einstellungen werden schon während `setup()` geliefert. Fehler in `onEvent`
 werden abgefangen und stören die Wiedergabe nie.
 
+### Charts für die Startseite
+
+```js
+chartsLabel: 'YouTube Top 100',          // Name des Reiters (optional)
+async charts(limit) { return [/* Item */]; },
+```
+
+Hat ein aktives Plugin `charts()`, bekommt *Trending & Neuheiten* auf der
+Startseite einen eigenen Reiter. Die Items werden wie Suchtreffer behandelt
+(abspielen über `resolve`). `charts` funktioniert auch mit `apiVersion: 1`.
+
 ## Beispiel: OBS-Overlay
 
 `extras/plugins/obs-overlay.js` ist ein vollständiges v2-Plugin: ein lokaler
