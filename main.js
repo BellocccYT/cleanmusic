@@ -1697,6 +1697,10 @@ function createMainWindow() {
               const hidden = getComputedStyle(document.querySelector('.nav-item[data-view="creator"]')).display === 'none';
               cm.setLayout('advanced');
               const shown = getComputedStyle(document.querySelector('.nav-item[data-view="creator"]')).display !== 'none';
+              cm.setVinyl(true);
+              const vinyl = document.documentElement.classList.contains('cover-vinyl') && getComputedStyle(document.querySelector('.fs-tonearm')).display === 'block';
+              cm.setVinyl(false);
+              if (!vinyl) return { hiddenInSimple: hidden, shownInAdvanced: shown, vinyl: false };
               return { hiddenInSimple: hidden, shownInAdvanced: shown };
             })()
           `);

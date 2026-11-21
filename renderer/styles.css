@@ -5440,3 +5440,169 @@ html[data-layout='simple'] .advanced-only {
 #fs-lyrics-btn:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* ------------------------------------------------------------------ *
+ * Turntable (cover as a spinning record)
+ * ------------------------------------------------------------------ */
+@keyframes cm-spin {
+  to { transform: rotate(360deg); }
+}
+.fs-cover-wrap {
+  position: relative;
+}
+html.cover-vinyl .fs-cover {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 22%, rgba(255, 255, 255, 0.06) 22.5%, transparent 23.5%),
+    radial-gradient(circle, transparent 0 46%, rgba(255, 255, 255, 0.05) 46.5%, transparent 47.5%),
+    repeating-radial-gradient(circle, #101012 0 2px, #19191c 2px 3px),
+    #0c0c0e;
+}
+/* the light reflection stays still while the record turns */
+html.cover-vinyl .fs-cover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+  background: conic-gradient(from 20deg, transparent 0 8%, rgba(255, 255, 255, 0.1) 13%, transparent 19% 50%, rgba(255, 255, 255, 0.08) 63%, transparent 69%);
+}
+/* spindle */
+html.cover-vinyl .fs-cover::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3.4%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  z-index: 3;
+  background: radial-gradient(circle at 35% 35%, #f4f4f4, #9a9a9a 70%);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+}
+html.cover-vinyl .fs-cover img,
+html.cover-vinyl #fs-cover-letter {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55), 0 0 0 5px rgba(255, 255, 255, 0.08);
+  animation: cm-spin 1.8s linear infinite;
+  animation-play-state: paused;
+  z-index: 1;
+}
+html.cover-vinyl #fs-cover-letter {
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, rgba(var(--fs-a), 0.95), rgba(var(--fs-b), 0.85));
+}
+html.cover-vinyl.is-playing .fs-cover img,
+html.cover-vinyl.is-playing #fs-cover-letter {
+  animation-play-state: running;
+}
+
+/* tonearm: lifts off the record on pause, sets down when playing */
+.fs-tonearm {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(240px, 40vh, 470px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 4;
+}
+html.cover-vinyl .fs-tonearm {
+  display: block;
+}
+.fs-tonearm .pivot {
+  position: absolute;
+  right: -11%;
+  top: -3%;
+  width: 15%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f2f2f2, #8c8c8c 60%, #4d4d4d);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+}
+.fs-tonearm .arm {
+  position: absolute;
+  right: -2.6%;
+  top: 4%;
+  width: 2.4%;
+  height: 62%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #a9a9a9, #f5f5f5 50%, #a0a0a0);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+  transform-origin: 50% 0;
+  transform: rotate(-7deg);
+  transition: transform 0.9s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+/* headshell */
+.fs-tonearm .arm::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5%;
+  width: 360%;
+  height: 10%;
+  transform: translateX(-50%) rotate(-14deg);
+  border-radius: 4px;
+  background: linear-gradient(180deg, #3a3a3a, #1b1b1b);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+html.cover-vinyl.is-playing .fs-tonearm .arm {
+  transform: rotate(20deg);
+}
+#fs-vinyl.active {
+  color: rgb(var(--fs-a));
+}
+
+/* player bar: small record */
+html.cover-vinyl .np-art {
+  position: relative;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, #101012 0 1px, #1c1c1f 1px 2px), #0c0c0e;
+}
+html.cover-vinyl .np-art img,
+html.cover-vinyl #np-art-letter {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 58%;
+  height: 58%;
+  border-radius: 50%;
+  animation: cm-spin 1.8s linear infinite;
+  animation-play-state: paused;
+}
+html.cover-vinyl.is-playing .np-art img,
+html.cover-vinyl.is-playing #np-art-letter {
+  animation-play-state: running;
+}
+html.cover-vinyl .np-art::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #d9d9d9;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.cover-vinyl .fs-cover img,
+  html.cover-vinyl .np-art img {
+    animation: none;
+  }
+  .fs-tonearm .arm {
+    transition: none;
+  }
+}

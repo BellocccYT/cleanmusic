@@ -47,6 +47,11 @@ window.CMVisualizer = (function () {
       analyser.maxDecibels = -18;
       freq = new Uint8Array(analyser.frequencyBinCount);
       wave = new Uint8Array(analyser.fftSize);
+      // Windows may suspend/interrupt the context (output device changed, e.g.
+      // Wave Link or Bluetooth) – wake it up again while music plays.
+      ctx.addEventListener('statechange', () => {
+        if (ctx.state !== 'running' && audioEl && !audioEl.paused) ctx.resume().catch(() => {});
+      });
     }
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   }
@@ -414,6 +419,35 @@ window.CMVisualizer = (function () {
     g.shadowBlur = 0;
   }
 
+  // Watchdog: music plays but the analyser has been flat for a while (tap lost
+  // after a device change or a stream rebuffer) – resume the context and tap again.
+  let silentSince = 0;
+  let lastRecover = 0;
+  function watchdog(t) {
+    if (!audioEl || audioEl.paused || audioEl.ended || !audioEl.getAttribute('src')) {
+      silentSince = 0;
+      return;
+    }
+    let flat = !(source || tapped) || !ctx || ctx.state !== 'running';
+    if (!flat) {
+      let max = 0;
+      for (let k = 0; k < 96; k += 1) if (freq[k] > max) max = freq[k];
+      flat = max === 0;
+    }
+    if (!flat) {
+      silentSince = 0;
+      return;
+    }
+    if (!silentSince) {
+      silentSince = t;
+      return;
+    }
+    if (t - silentSince < 1500 || t - lastRecover < 3000) return;
+    lastRecover = t;
+    if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+    if (!engine) connect();
+  }
+
   function loop() {
     if (raf || !enabled) return;
 
@@ -444,6 +478,7 @@ window.CMVisualizer = (function () {
       } else {
         energy *= 0.9;
       }
+      watchdog(t);
 
       active.forEach(([canvas, target]) => {
         const ratio = fit(canvas);
@@ -494,6 +529,11 @@ window.CMVisualizer = (function () {
     wake,
     energy: () => energy,
     // RMS of what the analyser hears right now (null = nothing connected).
+    // Test only: drop the analyser tap as a lost device/stream would.
+    _dropTap: () => {
+      disconnectSource();
+      return true;
+    },
     signal: () => {
       if (!(source || tapped) || !analyser) return null;
       const buffer = new Float32Array(analyser.fftSize);

@@ -239,6 +239,9 @@
           <button data-fs-style="wave">Welle</button>
           <button data-fs-style="off">Aus</button>
         </div>
+        <button class="fs-icon" id="fs-vinyl" data-fs-act="vinyl" title="Plattenspieler an/aus">
+          <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="2.5"></circle><path d="M12 5.5a6.5 6.5 0 0 1 6.5 6.5"></path></svg>
+        </button>
         <button class="fs-icon" data-fs-act="close" title="Schließen (Esc)">
           <svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
         </button>
@@ -247,6 +250,7 @@
 
     <main class="fs-main">
       <div class="fs-cover-wrap">
+        <div class="fs-tonearm" aria-hidden="true"><i class="pivot"></i><i class="arm"></i></div>
         <div class="fs-cover" id="fs-cover">
           <img id="fs-cover-img" alt="" hidden />
           <span id="fs-cover-letter">♪</span>

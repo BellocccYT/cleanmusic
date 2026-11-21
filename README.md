@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.8.0**
+**Version 1.9.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -287,6 +287,10 @@ als nicht sicher.
 ### Downloads-Liste
 
 In der Seitenleiste **Downloads**: alles aus deinem Cutting-Ordner (auch YouTube-CC, Schnitte und Abo-Downloads) – abspielen, ins Schnittprogramm ziehen, Credit kopieren, im Ordner zeigen. Die **Suchleiste** findet Downloads nach Wörtern in Titel, Künstler, Ordner, Lizenz und Credit; **„Ordner ändern …“** wählt deinen Wunschordner.
+
+### Plattenspieler
+
+*Einstellungen → Aussehen → Plattenspieler* (oder im Vollbild-Player oben rechts): Das Cover dreht sich als Schallplatte mit Rillen, im Vollbild-Player setzt ein Tonarm beim Abspielen auf und hebt bei Pause ab. Auch in der Player-Leiste dreht sich eine kleine Platte.
 
 ### Ansicht: Einfach oder Erweitert
 

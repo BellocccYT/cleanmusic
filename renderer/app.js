@@ -252,6 +252,7 @@
         lyricsScroll: true,
         lyricsDim: true,
         lyricsFocus: false, // big lyrics, no cover
+        vinyl: false, // cover as a spinning record + tonearm
         crossfadeSecs: 6,
         onboarded: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
@@ -3869,6 +3870,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.9.0': [
+      'Plattenspieler: Das Cover dreht sich als Schallplatte, im Vollbild-Player setzt der Tonarm beim Abspielen auf und hebt bei Pause ab.',
+      'Einschalten: Einstellungen → Aussehen → Plattenspieler, oder im Vollbild oben rechts das Platten-Symbol.',
+      'Visualizer: Friert er ein (z. B. nach einem Wechsel des Ausgabegeräts), verbindet er sich nach wenigen Sekunden von selbst neu.',
+    ],
     '1.8.0': [
       'Downloads-Liste (Seitenleiste): alles aus deinem Cutting-Ordner – abspielen, ins Schnittprogramm ziehen, Credit kopieren, im Ordner zeigen.',
       'Suchleiste dort: findet Downloads nach Wörtern in Titel, Künstler, Ordner, Lizenz und Credit. Wunschordner direkt dort wählbar.',
@@ -6079,6 +6085,32 @@
     loadDownloads();
   }
 
+  /* --- Turntable ------------------------------------------------------- */
+
+  function applyVinyl() {
+    document.documentElement.classList.toggle('cover-vinyl', Boolean(state.settings.vinyl));
+    const button = $('#fs-vinyl');
+    if (button) button.classList.toggle('active', Boolean(state.settings.vinyl));
+  }
+
+  function setVinyl(on) {
+    state.settings.vinyl = Boolean(on);
+    saveSettings();
+    applyVinyl();
+    if (state.view === 'settings') renderSettings();
+  }
+
+  // The record turns only while music plays (the arm lifts on pause).
+  function syncPlayingClass() {
+    document.documentElement.classList.toggle('is-playing', Boolean(audio.getAttribute('src')) && !audio.paused);
+  }
+
+  function wireVinyl() {
+    ['play', 'playing', 'pause', 'ended', 'emptied'].forEach((name) => audio.addEventListener(name, syncPlayingClass));
+    applyVinyl();
+    syncPlayingClass();
+  }
+
   function wireDownloadsView() {
     const view = $('#view-downloads');
     if (!view) return;
@@ -7823,6 +7855,13 @@
           <input type="checkbox" id="opt-cover-accent" ${state.settings.coverAccent ? 'checked' : ''} />
         </label>
         ${layoutPanelHtml()}
+        <label class="toggle-row" style="margin-top:14px">
+          <span>
+            <strong>Plattenspieler</strong>
+            <small>Das Cover dreht sich als Schallplatte – im Vollbild-Player mit Tonarm, der beim Abspielen aufsetzt. Auch im Vollbild oben rechts umschaltbar.</small>
+          </span>
+          <input type="checkbox" id="opt-vinyl" ${state.settings.vinyl ? 'checked' : ''} />
+        </label>
         ${backgroundPanelHtml()}
         <p class="muted small" style="margin-top:10px">
           Farbpaletten von Catppuccin, Dracula, Nord, Tokyo Night, Rosé Pine, Gruvbox und Everforest,
@@ -10077,6 +10116,11 @@ ${updatePanel()}
         return;
       }
 
+      if (event.target.id === 'opt-vinyl') {
+        setVinyl(event.target.checked);
+        return;
+      }
+
       if (event.target.id === 'opt-ly-offset') {
         state.settings.lyricsOffset = Math.round(Number(event.target.value) * 10) / 10 || 0;
         saveSettings();
@@ -10331,6 +10375,10 @@ ${updatePanel()}
           toggleLyrics();
           act.blur();
           return;
+        case 'vinyl':
+          setVinyl(!state.settings.vinyl);
+          act.blur();
+          return;
         case 'play':
           $('#btn-play').click();
           return;
@@ -10472,6 +10520,7 @@ ${updatePanel()}
     wireCutterExtras();
     wireDownloadsView();
     wireLyricsTools();
+    wireVinyl();
     wireReview();
     wireGlobal();
 
@@ -10766,6 +10815,7 @@ ${updatePanel()}
     },
     playerSnapshot: () => playerSnapshot(),
     setLayout: (mode) => setLayout(mode),
+    setVinyl: (on) => setVinyl(on),
     lyricsScrollTest: (index) => {
       state.nowMode = 'plugin';
       renderLyrics();
