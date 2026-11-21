@@ -422,9 +422,9 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-1.0.2-setup.exe` – **Installer** (ein Klick, pro Benutzer,
+- `release\CleanMusic-1.1.0-setup.exe` – **Installer** (ein Klick, pro Benutzer,
   ohne Admin-Rechte; installiert nach `%LOCALAPPDATA%\Programs\cleanmusic`)
-- `release\CleanMusic-1.0.2-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-1.1.0-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
@@ -447,7 +447,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-1.0.2.AppImage`.
+Ergebnis: `release/CleanMusic-1.1.0.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die

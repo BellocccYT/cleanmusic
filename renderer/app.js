@@ -1109,7 +1109,7 @@
   }
 
   function spotifyImportProgressHtml(progress) {
-    return `<p>${esc(progress.found)} / ${esc(progress.total)} gefunden …</p>
+    return `<p class="spotify-progress-head">${esc(progress.found)} / ${esc(progress.total)} gefunden …</p>
       <small class="muted">${esc(progress.processed)} von ${esc(progress.total)} Titeln geprüft</small>
       <div class="spotify-progress"><i style="width:${progress.total ? Math.round((progress.processed / progress.total) * 100) : 0}%"></i></div>`;
   }
@@ -1197,12 +1197,13 @@
       for (const data of playlists) {
         if (done || cancelled || token !== generation) return;
         let progress = { found: 0, processed: 0, total: (data.tracks || []).length };
-        setView(`„${data.name}“ wird übertragen`, `${spotifyImportProgressHtml(progress)}<p class="muted small">Du kannst den Import abbrechen.</p>`, 'Abbrechen');
+        setView(`„${data.name}“ wird übertragen`, `<div class="spotify-progress-box">${spotifyImportProgressHtml(progress)}</div><p class="muted small">Du kannst den Import abbrechen.</p>`, 'Abbrechen');
         let result;
         try {
           result = await importSpotifyPlaylist(data, () => cancelled || done || token !== generation, (next) => {
             progress = next;
-            if (!done && !cancelled && token === generation) textEl.querySelector('p').outerHTML = spotifyImportProgressHtml(progress);
+            const box = textEl.querySelector('.spotify-progress-box');
+            if (box && !done && !cancelled && token === generation) box.innerHTML = spotifyImportProgressHtml(progress);
           });
         } catch (error) {
           if (!done && !cancelled && token === generation) showError(error && error.message || 'Deezer-Suche fehlgeschlagen.');

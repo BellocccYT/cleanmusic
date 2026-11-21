@@ -431,7 +431,7 @@ function spotifyPlaylistId(input) {
     try {
       const url = new URL(value);
       if (url.protocol !== 'https:' || url.hostname !== 'open.spotify.com' || url.username || url.password) return '';
-      const match = url.pathname.match(/^\/playlist\/([A-Za-z0-9]{6,64})\/?$/i);
+      const match = url.pathname.match(/^(?:\/intl-[a-z]{2}(?:-[a-z]{2,4})?)?\/playlist\/([A-Za-z0-9]{6,64})\/?$/i);
       if (match) id = match[1];
     } catch {
       return '';
@@ -649,8 +649,19 @@ function spotifyArtistForSearch(value) {
   return String(value || '').split(/[;,]/, 1)[0].trim().slice(0, 120);
 }
 
+// "Calm Down (with Selena Gomez)" → "Calm Down"; "Seven (feat. Latto) (Explicit Ver.)" → "Seven".
+// Remixes stay ("From The Back (Remix)"), they are a different recording.
+function spotifyCoreTitle(value) {
+  const title = String(value || '');
+  const core = title
+    .replace(/\s*[([][^)\]]*\b(feat|ft|featuring|with|explicit|clean|from|remaster|remastered|version|ver|radio edit|mono|stereo)\b[^)\]]*[)\]]/gi, '')
+    .replace(/\s+-\s+[^-]*\b(remaster|remastered|version|from|edit|mono|stereo)\b.*$/i, '')
+    .trim();
+  return core || title.trim();
+}
+
 function spotifyMatchScore(hit, wanted) {
-  const titleWords = looseKey(wanted.title).split(' ').filter(Boolean);
+  const titleWords = looseKey(spotifyCoreTitle(wanted.title)).split(' ').filter(Boolean);
   const artistWords = looseKey(spotifyArtistForSearch(wanted.artist)).split(' ').filter(Boolean);
   const hitTitle = new Set(looseKey(hit.title).split(' ').filter(Boolean));
   const hitArtist = new Set(looseKey(hit.artist).split(' ').filter(Boolean));
@@ -669,8 +680,9 @@ function spotifyMatchScore(hit, wanted) {
 
 async function searchDeezerPlaylistTrack(track) {
   const artist = spotifyArtistForSearch(track.artist);
-  const query = `artist:"${artist.replace(/["\\]/g, '')}" track:"${String(track.title).replace(/["\\]/g, '')}"`;
-  for (const term of [query, `${artist} ${track.title}`.trim()]) {
+  const title = spotifyCoreTitle(track.title);
+  const query = `artist:"${artist.replace(/["\\]/g, '')}" track:"${title.replace(/["\\]/g, '')}"`;
+  for (const term of [query, `${artist} ${title}`.trim()]) {
     const json = await fetchDeezerPlaylistJson(`https://api.deezer.com/search?q=${encodeURIComponent(term)}&limit=12`);
     const hits = normalizeDeezer(json);
     const ranked = hits.map((hit, index) => ({ hit, index, ...spotifyMatchScore(hit, track) }))
@@ -684,10 +696,17 @@ async function searchDeezerPlaylistTrack(track) {
 let deezerPlaylistRequestAt = 0;
 
 async function fetchDeezerPlaylistJson(url) {
-  const delay = Math.max(0, deezerPlaylistRequestAt - Date.now());
-  if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-  deezerPlaylistRequestAt = Date.now() + 125;
-  return fetchJson(url, 15000);
+  const now = Date.now();
+  const slot = Math.max(now, deezerPlaylistRequestAt);
+  deezerPlaylistRequestAt = slot + 125;
+  if (slot > now) await new Promise((resolve) => setTimeout(resolve, slot - now));
+  const json = await fetchJson(url, 15000);
+  // Deezer quota (code 4): wait a moment and try once more.
+  if (json && json.error && Number(json.error.code) === 4) {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    return fetchJson(url, 15000);
+  }
+  return json;
 }
 
 async function matchSpotifyTracks(tracks) {
