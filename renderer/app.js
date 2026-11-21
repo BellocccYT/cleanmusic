@@ -4600,6 +4600,170 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Updates (check runs in the main process on every start)
+   * ---------------------------------------------------------------- */
+
+  let updateInfo = null;
+  let updateDismissed = null; // version the user clicked "Später" for
+
+  function formatSize(bytes) {
+    const mb = (Number(bytes) || 0) / (1024 * 1024);
+    return mb ? `${mb.toFixed(0)} MB` : '';
+  }
+
+  function onUpdateState(info) {
+    updateInfo = info || null;
+    renderUpdateCard();
+    renderUpdateStatus();
+  }
+
+  function renderUpdateCard() {
+    const card = $('#update-card');
+    if (!card) return;
+    const info = updateInfo;
+    const show =
+      info &&
+      ((info.status === 'available' && updateDismissed !== info.latest) ||
+        info.status === 'downloading' ||
+        info.status === 'ready' ||
+        (info.status === 'error' && info.asset));
+    card.hidden = !show;
+    if (!show) return;
+
+    let body = '';
+    if (info.status === 'available') {
+      body = `
+        <div class="update-text">
+          <strong>CleanMusic ${esc(info.latest)} ist da</strong>
+          <small>Du hast ${esc(info.current)}.${
+            info.installable && info.asset ? ` Download ${esc(formatSize(info.asset.size))}, danach Neustart.` : ''
+          }</small>
+        </div>
+        <div class="update-actions">
+          ${
+            info.installable && info.asset
+              ? '<button class="btn primary small" data-update="download">Aktualisieren</button>'
+              : '<button class="btn primary small" data-update="open">Zur Download-Seite</button>'
+          }
+          ${info.notes ? '<button class="btn ghost small" data-update="notes">Was ist neu?</button>' : ''}
+          <button class="btn ghost small" data-update="later">Später</button>
+        </div>`;
+    } else if (info.status === 'downloading') {
+      const pct = Math.round((info.progress || 0) * 100);
+      body = `
+        <div class="update-text">
+          <strong>Update ${esc(info.latest)} wird geladen …</strong>
+          <small>${pct} %</small>
+          <span class="update-progress"><i style="width:${pct}%"></i></span>
+        </div>`;
+    } else if (info.status === 'ready') {
+      body = `
+        <div class="update-text">
+          <strong>Update ${esc(info.latest)} ist bereit</strong>
+          <small>Geprüft und neben deiner jetzigen Version gespeichert. Die alte EXE kannst du danach löschen.</small>
+        </div>
+        <div class="update-actions">
+          <button class="btn primary small" data-update="install">Jetzt neu starten</button>
+          <button class="btn ghost small" data-update="later">Beim nächsten Mal</button>
+        </div>`;
+    } else {
+      body = `
+        <div class="update-text">
+          <strong>Update ${esc(info.latest || '')} hat nicht geklappt</strong>
+          <small>${esc(info.error || '')}</small>
+        </div>
+        <div class="update-actions">
+          <button class="btn primary small" data-update="open">Zur Download-Seite</button>
+          <button class="btn ghost small" data-update="later">Schließen</button>
+        </div>`;
+    }
+    card.innerHTML = `<span class="update-icon">${ICONS.download}</span>${body}`;
+  }
+
+  function updateStatusText() {
+    const info = updateInfo;
+    if (!info) return '';
+    switch (info.status) {
+      case 'checking':
+        return 'Suche nach Updates …';
+      case 'current':
+        return info.latest
+          ? `Du bist auf dem neuesten Stand (${info.current}).`
+          : `Version ${info.current} – noch keine Veröffentlichung gefunden.`;
+      case 'available':
+        return `Version ${info.latest} ist verfügbar (du hast ${info.current}).`;
+      case 'downloading':
+        return `Update ${info.latest} wird geladen …`;
+      case 'ready':
+        return `Update ${info.latest} ist bereit – Neustart genügt.`;
+      case 'error':
+        return info.error || 'Update-Prüfung fehlgeschlagen.';
+      default:
+        return '';
+    }
+  }
+
+  function renderUpdateStatus() {
+    const line = $('#update-status');
+    if (line) line.textContent = updateStatusText();
+    const toggle = $('#opt-update');
+    if (toggle && updateInfo) toggle.checked = Boolean(updateInfo.auto);
+  }
+
+  function updatePanel() {
+    const auto = updateInfo ? updateInfo.auto : true;
+    return `
+      <div class="panel" id="update-panel">
+        <h3>Updates</h3>
+        <label class="toggle-row">
+          <span>
+            <strong>Beim Start nach Updates suchen</strong>
+            <small>Fragt die Veröffentlichungen von CleanMusic auf GitHub ab. Es werden keine persönlichen Daten gesendet.</small>
+          </span>
+          <input type="checkbox" id="opt-update" ${auto ? 'checked' : ''} />
+        </label>
+        <div class="row" style="margin-top:10px">
+          <button class="btn ghost small" data-update="check">Jetzt suchen</button>
+          <span class="muted small" id="update-status">${esc(updateStatusText())}</span>
+        </div>
+      </div>`;
+  }
+
+  async function onUpdateAction(action) {
+    if (!bridge.updateCheck) return;
+    switch (action) {
+      case 'check':
+        onUpdateState(await bridge.updateCheck());
+        if (updateInfo && updateInfo.status === 'available') updateDismissed = null;
+        renderUpdateCard();
+        return;
+      case 'download':
+        onUpdateState(await bridge.updateDownload());
+        return;
+      case 'install':
+        if (!(await bridge.updateInstall())) toast('Neustart nicht möglich – Datei fehlt.');
+        return;
+      case 'open':
+        bridge.updateOpen();
+        return;
+      case 'notes': {
+        const ok = await askConfirm({
+          title: `Neu in CleanMusic ${updateInfo.latest}`,
+          text: updateInfo.notes,
+          confirm: updateInfo.installable && updateInfo.asset ? 'Aktualisieren' : 'Zur Download-Seite',
+        });
+        if (ok) onUpdateAction(updateInfo.installable && updateInfo.asset ? 'download' : 'open');
+        return;
+      }
+      case 'later':
+        updateDismissed = updateInfo ? updateInfo.latest : null;
+        $('#update-card').hidden = true;
+        return;
+      default:
+    }
+  }
+
+  /* ---------------------------------------------------------------- *
    * Media keys + Windows media overlay (navigator.mediaSession)
    * ---------------------------------------------------------------- */
 
@@ -5439,6 +5603,8 @@
           </dl>
         </div>
 
+${updatePanel()}
+
         <div class="panel" id="backup-panel">
           <h3>Sichern & Wiederherstellen</h3>
           <p>
@@ -6061,6 +6227,12 @@
         return;
       }
 
+      const updateButton = event.target.closest('[data-update]');
+      if (updateButton) {
+        onUpdateAction(updateButton.dataset.update);
+        return;
+      }
+
       const backup = event.target.closest('[data-backup]');
       if (backup) {
         if (backup.dataset.backup === 'export') exportBackup();
@@ -6196,6 +6368,17 @@
         setVisualizerEnabled(event.target.checked);
         renderSettings();
         syncFullscreen();
+        return;
+      }
+
+      if (event.target.id === 'opt-update') {
+        if (bridge.updateSet) {
+          bridge
+            .updateSet({ auto: event.target.checked })
+            .then(onUpdateState)
+            .catch(() => {});
+        }
+        toast(event.target.checked ? 'Sucht beim Start nach Updates' : 'Keine automatische Update-Suche');
         return;
       }
 
@@ -6544,6 +6727,13 @@
     }
     if (bridge.onPluginsChanged) bridge.onPluginsChanged(() => refreshPlugins(false));
 
+    if (bridge.onUpdateState) bridge.onUpdateState(onUpdateState);
+    if (bridge.updateGet) bridge.updateGet().then(onUpdateState).catch(() => {});
+    $('#update-card').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-update]');
+      if (button) onUpdateAction(button.dataset.update);
+    });
+
     if (bridge.trayGet) {
       bridge
         .trayGet()
@@ -6642,6 +6832,13 @@
           }
         : null,
     importBackup: (data) => importBackup(data),
+    update: () => ({
+      info: updateInfo,
+      card: !$('#update-card').hidden,
+      panel: Boolean($('#update-panel')),
+      status: ($('#update-status') || {}).textContent || '',
+    }),
+    showUpdate: (info) => onUpdateState(info),
     sleep: (value) => {
       if (value !== undefined) setSleepTimer(value);
       return { label: sleepLabel(), active: $('#btn-sleep').classList.contains('active') };

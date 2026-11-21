@@ -212,6 +212,23 @@ Unter **Radio** findest du tausende öffentliche Sender über die
 
 ---
 
+## Updates
+
+CleanMusic sucht **bei jedem Start** nach einer neuen Version (abschaltbar unter
+*Einstellungen → Updates*, dort gibt es auch **Jetzt suchen**). Ist eine da,
+erscheint unten rechts ein Hinweis:
+
+- **Portable EXE und AppImage** aktualisieren sich selbst: *Aktualisieren* lädt
+  die neue Datei neben deine jetzige, prüft Größe und SHA-256-Prüfsumme und
+  startet sie nach *Jetzt neu starten*. Deine Daten bleiben, weil sie im
+  App-Profil liegen. Die alte EXE kannst du danach löschen.
+- Aus dem Quellcode gestartet gibt es einen Link zur Download-Seite.
+
+Gefragt wird nur die öffentliche Release-Liste dieses Repositorys auf GitHub,
+ohne persönliche Daten.
+
+---
+
 ## Plugins (optional)
 
 CleanMusic kann **Quellen-Plugins** laden – einzelne `.js`-Dateien, die weitere

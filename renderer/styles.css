@@ -4200,3 +4200,99 @@ body.fs-open .toast {
 .tone-presets {
   margin-top: 4px;
 }
+
+/* Update card --------------------------------------------------------- */
+
+.update-card {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(420px, calc(100% - 40px));
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: rgba(var(--panel-rgb), 0.97);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.35), var(--shadow);
+  backdrop-filter: blur(14px);
+  animation: update-in 0.25s ease both;
+}
+
+.update-card[hidden] {
+  display: none;
+}
+
+@keyframes update-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.update-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--on-accent);
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+}
+
+.update-icon .ic {
+  width: 18px;
+  height: 18px;
+}
+
+.update-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.update-text strong {
+  font-size: 13.5px;
+}
+
+.update-text small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.update-card {
+  flex-wrap: wrap;
+}
+
+.update-actions {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 46px;
+}
+
+.update-progress {
+  display: block;
+  height: 5px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  overflow: hidden;
+}
+
+.update-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.2s ease;
+}

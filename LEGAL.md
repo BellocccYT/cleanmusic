@@ -139,6 +139,16 @@ Quellen-Plugin – in CleanMusic.
   anlegst; es gelten die Discord-Developer-Bedingungen. Name und Bild der
   Application keine fremden Marken verwenden („Spotify“ o. Ä.).
 
+## Update-Suche
+
+- Beim Start fragt CleanMusic die öffentliche GitHub-API nach der neuesten
+  Veröffentlichung dieses Projekts (abschaltbar). Gesendet wird nur, was jede
+  Webanfrage enthält (IP-Adresse, User-Agent „CleanMusic/<Version>“) – keine
+  Nutzerdaten, keine Kennung.
+- Heruntergeladen wird nur nach Klick auf *Aktualisieren*, nur von GitHub und
+  nur die passende Datei des Releases; Größe und SHA-256-Prüfsumme werden vor
+  dem Start geprüft.
+
 ## OBS-Overlay-Plugin
 
 - Liegt nur als **optionales Plugin** im Ordner `extras/plugins/` und ist nicht

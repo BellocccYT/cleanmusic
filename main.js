@@ -22,6 +22,7 @@ const {
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
+const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { DiscordPresence } = require('./discord-rpc');
 
@@ -30,6 +31,14 @@ const isDev = process.argv.includes('--dev');
 const isSmoke = process.argv.includes('--smoke');
 const isSmokePlugin = process.argv.includes('--smoke-plugin');
 const isSmokeObs = process.argv.includes('--smoke-obs');
+// Updater test: pretend to be 0.0.1 and download the latest release into a
+// throwaway folder (never replaces anything, never restarts).
+const UPDATE_TEST = isSmoke && process.argv.includes('--smoke-update');
+if (UPDATE_TEST && process.platform === 'win32') {
+  process.env.PORTABLE_EXECUTABLE_DIR = path.join(app.getPath('temp'), 'cleanmusic-update-test');
+  process.env.PORTABLE_EXECUTABLE_FILE = path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'CleanMusic-0.0.1-portable.exe');
+  fs.mkdirSync(process.env.PORTABLE_EXECUTABLE_DIR, { recursive: true });
+}
 
 // The smoke test favourites, creates playlists etc. – never in the real profile.
 if (isSmoke) {
@@ -982,6 +991,23 @@ function createMainWindow() {
           `);
           console.log('SMOKE_EXTRAS:', JSON.stringify(extrasResult));
           console.log('SMOKE_TRAY:', JSON.stringify({ tray: Boolean(tray && !tray.isDestroyed()), state: trayKey }));
+          const updateResult = await smokeUpdate();
+          updateResult.ui = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              cm.showView('settings');
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              const before = cm.update();
+              cm.showUpdate({ status: 'available', current: '0.9.0', latest: '9.9.9', notes: 'Test', installable: true, asset: { name: 'x', size: 1048576 }, auto: true });
+              const shown = cm.update().card;
+              const buttons = Array.from(document.querySelectorAll('#update-card [data-update]')).map((b) => b.dataset.update);
+              document.querySelector('#update-card [data-update="later"]').click();
+              const hidden = !cm.update().card;
+              cm.showUpdate(before.info);
+              return { panel: before.panel, status: before.status, shown, buttons, hidden };
+            })()
+          `);
+          console.log('SMOKE_UPDATE:', JSON.stringify(updateResult));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -1995,6 +2021,59 @@ function writeConfig(patch) {
   return next;
 }
 
+/* Smoke test for the updater (npm run smoke / smoke:update). */
+async function smokeUpdate() {
+  const versions = [
+    isNewerVersion('0.9.1', '0.9.0'),
+    isNewerVersion('v1.0.0', '0.9.9'),
+    !isNewerVersion('0.9.0', '0.9.0'),
+    !isNewerVersion('0.8.9', '0.9.0'),
+    !isNewerVersion('kaputt', '0.9.0'),
+  ].every(Boolean);
+  const fakeTarget = { kind: 'portable', file: 'x', dir: 'y', pattern: /^CleanMusic-[0-9.]+-portable\.exe$/i };
+  const picked = pickUpdateAsset(
+    {
+      assets: [
+        { name: 'CleanMusic-9.9.9.AppImage', browser_download_url: 'https://github.com/a/b/c.AppImage' },
+        { name: 'CleanMusic-9.9.9-portable.exe', browser_download_url: 'https://evil.example/x.exe' },
+        { name: 'CleanMusic-9.9.9-portable.exe', size: 5, digest: 'sha256:' + 'a'.repeat(64), browser_download_url: 'https://github.com/a/b/x.exe' },
+      ],
+    },
+    fakeTarget
+  );
+  const assetOk = Boolean(picked && picked.url === 'https://github.com/a/b/x.exe' && picked.sha256 === 'a'.repeat(64));
+
+  const checked = await checkForUpdates();
+  const result = {
+    versions,
+    assetOk,
+    status: checked.status,
+    latest: checked.latest,
+    current: checked.current,
+    error: checked.error,
+  };
+
+  if (UPDATE_TEST) {
+    // Pretend to be 0.0.1 → the latest release is "new"; download it into a throwaway folder.
+    result.available = checked.status === 'available';
+    result.asset = checked.asset;
+    if (result.available) {
+      const started = Date.now();
+      const done = await downloadUpdate();
+      result.download = {
+        status: done.status,
+        error: done.error,
+        seconds: Math.round((Date.now() - started) / 1000),
+        file: done.file ? path.basename(done.file) : null,
+        size: done.file && fs.existsSync(done.file) ? fs.statSync(done.file).size : 0,
+        verified: Boolean(updateState.asset && updateState.asset.sha256),
+      };
+      fs.rmSync(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE), { recursive: true, force: true });
+    }
+  }
+  return result;
+}
+
 /* Smoke test for extras/plugins/obs-overlay.js (npm run smoke:obs). */
 async function smokeObsPlugin() {
   const http = require('node:http');
@@ -2805,6 +2884,240 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 /* ------------------------------------------------------------------ *
+ * Updates
+ *
+ * On every start (setting, default on) CleanMusic asks the GitHub
+ * releases of this project for the latest version. The portable EXE and
+ * the AppImage can update themselves: the new file is downloaded next to
+ * the current one, checked against size and the SHA-256 digest GitHub
+ * publishes, and started after CleanMusic closed. Other installs (e.g.
+ * started from the source) only get a link to the release page.
+ * ------------------------------------------------------------------ */
+
+const UPDATE_REPO = 'BellocccYT/cleanmusic';
+const UPDATE_HOSTS = ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'];
+
+let updateState = {
+  status: 'idle', // idle | checking | current | available | downloading | ready | error
+  current: app.getVersion(),
+  latest: null,
+  notes: '',
+  url: '',
+  asset: null,
+  progress: 0,
+  file: null,
+  error: null,
+  checkedAt: 0,
+};
+let updateTask = null;
+
+function parseVersion(value) {
+  const match = String(value || '')
+    .trim()
+    .replace(/^v/i, '')
+    .match(/^(\d+)\.(\d+)\.(\d+)/);
+  return match ? match.slice(1).map(Number) : null;
+}
+
+function isNewerVersion(latest, current) {
+  const a = parseVersion(latest);
+  const b = parseVersion(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return false;
+}
+
+// What this copy of CleanMusic can replace by itself.
+function updateTarget() {
+  if (process.platform === 'win32' && process.env.PORTABLE_EXECUTABLE_FILE) {
+    return {
+      kind: 'portable',
+      file: process.env.PORTABLE_EXECUTABLE_FILE,
+      dir: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.env.PORTABLE_EXECUTABLE_FILE),
+      pattern: /^CleanMusic-[0-9.]+-portable\.exe$/i,
+    };
+  }
+  if (process.platform === 'linux' && process.env.APPIMAGE) {
+    return {
+      kind: 'appimage',
+      file: process.env.APPIMAGE,
+      dir: path.dirname(process.env.APPIMAGE),
+      pattern: /^CleanMusic-[0-9.]+\.AppImage$/i,
+    };
+  }
+  return null;
+}
+
+function updateHostAllowed(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && UPDATE_HOSTS.includes(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function pickUpdateAsset(release, target) {
+  if (!target || !release || !Array.isArray(release.assets)) return null;
+  const asset = release.assets.find(
+    (item) => item && target.pattern.test(String(item.name || '')) && updateHostAllowed(item.browser_download_url)
+  );
+  if (!asset) return null;
+  const digest = /^sha256:[0-9a-f]{64}$/i.test(String(asset.digest || '')) ? String(asset.digest).slice(7).toLowerCase() : null;
+  return {
+    name: String(asset.name),
+    size: Number(asset.size) || 0,
+    url: String(asset.browser_download_url),
+    sha256: digest,
+  };
+}
+
+function updateConfig() {
+  return { auto: readConfig().updateCheck !== false };
+}
+
+function publicUpdate() {
+  return Object.assign({}, updateState, {
+    installable: Boolean(updateTarget()),
+    auto: updateConfig().auto,
+    asset: updateState.asset ? { name: updateState.asset.name, size: updateState.asset.size } : null,
+  });
+}
+
+function sendUpdate() {
+  sendToRenderer('update-state', publicUpdate());
+}
+
+function setUpdate(patch) {
+  updateState = Object.assign({}, updateState, patch);
+  sendUpdate();
+}
+
+async function checkForUpdates() {
+  if (updateTask) return updateTask;
+  if (updateState.status === 'downloading' || updateState.status === 'ready') return publicUpdate();
+
+  updateTask = (async () => {
+    setUpdate({ status: 'checking', error: null });
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      const response = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+        signal: controller.signal,
+        headers: {
+          accept: 'application/vnd.github+json',
+          'user-agent': `CleanMusic/${app.getVersion()} (update check)`,
+        },
+      });
+      clearTimeout(timer);
+      if (response.status === 404) {
+        setUpdate({ status: 'current', latest: null, checkedAt: Date.now() });
+        return publicUpdate();
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const release = await response.json();
+      const latest = String(release.tag_name || '').replace(/^v/i, '');
+      const current = UPDATE_TEST ? '0.0.1' : app.getVersion();
+      const newer = !release.draft && !release.prerelease && isNewerVersion(latest, current);
+      setUpdate({
+        status: newer ? 'available' : 'current',
+        latest: parseVersion(latest) ? latest : null,
+        notes: cleanText(release.body || '', 2000),
+        url: cleanUrl(release.html_url) || `https://github.com/${UPDATE_REPO}/releases/latest`,
+        asset: newer ? pickUpdateAsset(release, updateTarget()) : null,
+        checkedAt: Date.now(),
+        error: null,
+      });
+    } catch (error) {
+      const message = error.name === 'AbortError' ? 'Zeitüberschreitung' : friendlyNetError(error).message || error.message;
+      setUpdate({ status: 'error', error: `Update-Prüfung fehlgeschlagen: ${message}`, checkedAt: Date.now() });
+    }
+    return publicUpdate();
+  })().finally(() => {
+    updateTask = null;
+  });
+  return updateTask;
+}
+
+async function downloadUpdate() {
+  const target = updateTarget();
+  const asset = updateState.asset;
+  if (!target || !asset || updateState.status !== 'available') return publicUpdate();
+
+  const dest = path.join(target.dir, asset.name);
+  if (path.resolve(dest).toLowerCase() === path.resolve(target.file).toLowerCase()) {
+    setUpdate({ status: 'error', error: 'Diese Version läuft bereits.' });
+    return publicUpdate();
+  }
+
+  setUpdate({ status: 'downloading', progress: 0, error: null });
+  const partial = `${dest}.download`;
+  try {
+    const response = await net.fetch(asset.url, { headers: { 'user-agent': `CleanMusic/${app.getVersion()}` } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (response.url && !updateHostAllowed(response.url)) throw new Error('Unerwartete Download-Adresse');
+
+    const hash = crypto.createHash('sha256');
+    const out = fs.createWriteStream(partial);
+    const reader = response.body.getReader();
+    let received = 0;
+    let lastSent = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      received += chunk.length;
+      if (received > 600 * 1024 * 1024) throw new Error('Datei zu groß');
+      hash.update(chunk);
+      if (!out.write(chunk)) await new Promise((resolve) => out.once('drain', resolve));
+      if (Date.now() - lastSent > 250) {
+        lastSent = Date.now();
+        setUpdate({ progress: asset.size ? Math.min(0.99, received / asset.size) : 0 });
+      }
+    }
+    await new Promise((resolve, reject) => out.end((error) => (error ? reject(error) : resolve())));
+
+    if (asset.size && received !== asset.size) throw new Error('Download unvollständig');
+    const digest = hash.digest('hex');
+    if (asset.sha256 && digest !== asset.sha256) throw new Error('Prüfsumme stimmt nicht – Datei verworfen');
+
+    fs.rmSync(dest, { force: true });
+    fs.renameSync(partial, dest);
+    if (target.kind === 'appimage') fs.chmodSync(dest, 0o755);
+    setUpdate({ status: 'ready', progress: 1, file: dest });
+  } catch (error) {
+    fs.rmSync(partial, { force: true });
+    setUpdate({ status: 'error', error: `Download fehlgeschlagen: ${error.message}` });
+  }
+  return publicUpdate();
+}
+
+function installUpdate() {
+  const file = updateState.file;
+  if (updateState.status !== 'ready' || !file || !fs.existsSync(file)) return false;
+  // The new version starts once this one has fully closed (single-instance lock).
+  quitting = true;
+  app.relaunch({ execPath: file, args: [] });
+  app.quit();
+  return true;
+}
+
+ipcMain.handle('update-get', () => publicUpdate());
+ipcMain.handle('update-check', () => checkForUpdates());
+ipcMain.handle('update-download', () => downloadUpdate());
+ipcMain.handle('update-install', () => installUpdate());
+ipcMain.handle('update-open', () => {
+  shell.openExternal(updateState.url || `https://github.com/${UPDATE_REPO}/releases/latest`);
+  return true;
+});
+ipcMain.handle('update-set', (_event, patch) => {
+  writeConfig({ updateCheck: Boolean(patch && patch.auto) });
+  return publicUpdate();
+});
+
+/* ------------------------------------------------------------------ *
  * Tray icon: title in the tooltip, mini controls, optional close-to-tray
  * ------------------------------------------------------------------ */
 
@@ -2885,6 +3198,10 @@ app.whenReady().then(() => {
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
   createMainWindow();
   createTray();
+  // Update check on every start (setting "Beim Start nach Updates suchen").
+  if (!isSmoke && updateConfig().auto) {
+    setTimeout(() => checkForUpdates().catch(() => {}), 4000);
+  }
   // Close button → tray (only if the user switched it on).
   // Windows shutting down / logging off must never be blocked by the tray mode.
   mainWindow.on('session-end', () => {

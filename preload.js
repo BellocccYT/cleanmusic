@@ -34,6 +34,15 @@ contextBridge.exposeInMainWorld('cm', {
   newReleases: () => ipcRenderer.invoke('new-releases'),
   backupSave: (text) => ipcRenderer.invoke('backup-save', text),
   trayGet: () => ipcRenderer.invoke('tray-get'),
+  updateGet: () => ipcRenderer.invoke('update-get'),
+  updateCheck: () => ipcRenderer.invoke('update-check'),
+  updateDownload: () => ipcRenderer.invoke('update-download'),
+  updateInstall: () => ipcRenderer.invoke('update-install'),
+  updateOpen: () => ipcRenderer.invoke('update-open'),
+  updateSet: (patch) => ipcRenderer.invoke('update-set', patch),
+  onUpdateState: (listener) => {
+    ipcRenderer.on('update-state', (_event, info) => listener(info));
+  },
   traySet: (patch) => ipcRenderer.invoke('tray-set', patch),
   backupOpen: () => ipcRenderer.invoke('backup-open'),
   creditsSave: (text) => ipcRenderer.invoke('credits-save', text),
