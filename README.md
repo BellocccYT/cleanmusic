@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.2.0**
+**Version 1.3.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -160,9 +160,10 @@ Titel und fertigem Credit:
 | Bereich | Quelle | Lizenz | Wiedergabe |
 | --- | --- | --- | --- |
 | **NCS** – 21 Kategorien (Top 100, Trending auf YouTube, Gaming, Phonk, House, Drum & Bass, Dubstep, Trap …) | offizielle NCS-Playlists bei Deezer | NCS: frei für YouTube/Twitch/Social mit Credit | 30-s-Vorschau (Apple-Katalog), mit Quellen-Plugin voller Titel |
-| **YouTube-Klassiker** – die meistgenutzten YouTube-Songs (Kevin MacLeod: *Fluffing a Duck*, *Monkeys Spinning Monkeys*, *Sneaky Snitch*, *Investigations* …) in 6 Stimmungen | incompetech.com | CC BY 4.0 | volle Titel |
+| **YouTube-Klassiker** – Kevin MacLeod in 6 Stimmungen plus **Gaming & Retro** (*Itty Bitty 8 Bit*, *Pixel Peeker Polka*, *Hyperfun* …) | incompetech.com | CC BY 4.0 | volle Titel |
 | **Soundeffekte** – Whoosh, Transition, Impact, Riser, Pop, Klick, Glitch, Applaus, Lachen, Fail … oder eigene Suche | Freesound über Openverse | CC0 oder CC BY (pro Sound angezeigt) | volle Sounds |
-| **Freie Musik** – Cinematic, Upbeat, Episch, Entspannt, Piano, Beats … oder eigene Suche | Jamendo & Co. über Openverse | CC0 oder CC BY | volle Titel |
+| **Game-Sounds** – Retro & 8-Bit, Münze & Power-up, Sprung, Level-Up & Sieg, Game Over, Menü & UI, Arcade, RPG & Fantasy, Horror-Game, Sci-Fi-Waffen, Racing | Freesound über Openverse | CC0 oder CC BY (pro Sound angezeigt) | volle Sounds |
+| **Freie Musik** – Cinematic, Upbeat, Episch, Entspannt, Chiptune/8-Bit, Videospiel, Boss-Kampf … oder eigene Suche | Jamendo & Co. über Openverse | CC0 oder CC BY | volle Titel |
 
 - **Kopier-Knopf** an jedem Titel: kopiert den Credit in die Zwischenablage und
   sammelt ihn in **Video-Credits**. *Alle kopieren* liefert den kompletten Block
@@ -237,6 +238,8 @@ angleichen* oder *Boost* an, läuft der Ton ohnehin über Web Audio; der
 Visualizer hört dann direkt dort mit. Ein- und ausschalten,
 Stil wählen und den **Mini-Visualizer** in der Player-Leiste gibt es unter
 *Einstellungen → Visualizer*. Bei Pause zeichnet er nur noch ~8× pro Sekunde.
+Die Spektrum-Balken funktionieren auch, wenn der Ton über die optionale
+Lautstärke-/Klang-Kette läuft.
 
 ### Discord Rich Presence (optional)
 

@@ -22,6 +22,10 @@
       'Life of Riley', 'Quirky Dog', 'Sneaky Adventure', 'Hyperfun', 'Itty Bitty 8 Bit',
       'Wallpaper', 'Kool Kats', 'Amazing Plan',
     ],
+    'gaming-retro': [
+      'Pixel Peeker Polka - faster', 'Itty Bitty 8 Bit', 'Hyperfun', 'Pinball Spring',
+      'Spazzmatica Polka', 'Sneaky Adventure', 'Sneaky Snitch',
+    ],
     chill: [
       'Local Forecast - Elevator', 'Carefree', 'Bossa Antigua', 'Airport Lounge', 'Easy Lemon',
       'Wholesome', 'Daily Beetle', 'Lobby Time', 'Breaktime', 'Cool Vibes', 'Backbay Lounge',
@@ -107,6 +111,7 @@
           { id: 'spannung', label: 'Spannung & Grusel', color: '#a238ff' },
           { id: 'episch', label: 'Episch & Action', color: '#ff5d6c' },
           { id: 'emotional', label: 'Emotional', color: '#8d99ac' },
+          { id: 'gaming-retro', label: 'Gaming & Retro', color: '#35e0c0' },
         ],
         tracks: Object.entries(CLASSICS).flatMap(([category, titles]) =>
           titles.map((title) => classicTrack(title, category))
@@ -144,6 +149,31 @@
         ],
       },
       {
+        id: 'games',
+        label: 'Game-Sounds',
+        icon: 'wave',
+        title: 'Game-Sounds',
+        info:
+          'Freesound-Sounds über Openverse, gefiltert auf CC0 und CC BY. Lizenz und Credit stehen an jedem Sound.',
+        license: null,
+        policy: { label: 'Freesound', url: 'https://freesound.org/' },
+        search: true,
+        kind: 'sfx',
+        categories: [
+          { id: 'retro', label: 'Retro & 8-Bit', query: '8-bit retro game sound' },
+          { id: 'coin-power-up', label: 'Münze & Power-up', query: 'game coin' },
+          { id: 'jump', label: 'Sprung', query: 'video game jump sound' },
+          { id: 'level-up', label: 'Level-Up & Sieg', query: 'level up game' },
+          { id: 'game-over', label: 'Game Over', query: 'game over sound effect' },
+          { id: 'menu-ui', label: 'Menü & UI', query: 'menu ui click' },
+          { id: 'arcade', label: 'Arcade', query: 'arcade sound' },
+          { id: 'rpg-fantasy', label: 'RPG & Fantasy', query: 'fantasy game magic' },
+          { id: 'horror-game', label: 'Horror-Game', query: 'horror video game ambience' },
+          { id: 'sci-fi-weapons', label: 'Sci-Fi-Waffen', query: 'sci-fi laser weapon sound' },
+          { id: 'racing', label: 'Racing', query: 'racing engine game sound' },
+        ],
+      },
+      {
         id: 'free',
         label: 'Freie Musik',
         icon: 'note',
@@ -174,6 +204,9 @@
           { id: 'sad', label: 'Traurig', query: 'sad' },
           { id: 'summer', label: 'Sommer', query: 'summer' },
           { id: 'lounge', label: 'Lounge', query: 'lounge' },
+          { id: 'chiptune', label: 'Chiptune/8-Bit', query: 'chiptune' },
+          { id: 'videospiel', label: 'Videospiel', query: 'video game' },
+          { id: 'boss-kampf', label: 'Boss-Kampf', query: 'epic battle' },
         ],
       },
     ],

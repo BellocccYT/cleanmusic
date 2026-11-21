@@ -269,7 +269,7 @@ window.CMVisualizer = (function () {
   // Log-spaced band levels (0..1) from the FFT, 30 Hz – 16 kHz.
   function bands(count) {
     const out = new Array(count).fill(0);
-    if (!source || !freq) return out;
+    if (!(source || tapped) || !freq) return out;
 
     const nyquist = ctx.sampleRate / 2;
     const binHz = nyquist / freq.length;
@@ -307,7 +307,7 @@ window.CMVisualizer = (function () {
     const g = canvas.getContext('2d');
     const { width, height } = canvas;
     const count = target.mini ? 18 : Math.max(32, Math.min(96, Math.floor(width / (14 * ratio))));
-    const levels = smooth(target, source ? bands(count) : idleLevels(count, t));
+    const levels = smooth(target, source || tapped ? bands(count) : idleLevels(count, t));
     g.clearRect(0, 0, width, height);
 
     const gap = (target.mini ? 2 : 4) * ratio;
@@ -354,7 +354,7 @@ window.CMVisualizer = (function () {
     }
 
     const count = 120;
-    const levels = smooth(target, source ? bands(count / 2) : idleLevels(count / 2, t));
+    const levels = smooth(target, source || tapped ? bands(count / 2) : idleLevels(count / 2, t));
     const mirrored = levels.concat(levels.slice().reverse());
     const reach = Math.min(width, height) * 0.15;
 
@@ -391,7 +391,7 @@ window.CMVisualizer = (function () {
     ];
 
     g.lineJoin = 'round';
-    const samples = source && wave ? wave : null;
+    const samples = (source || tapped) && wave ? wave : null;
     const length = samples ? samples.length : 1024;
     layers.forEach((layer, layerIndex) => {
       g.beginPath();

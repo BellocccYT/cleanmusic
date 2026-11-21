@@ -10,7 +10,7 @@ Stufe wird einzeln getestet, released und über die Update-Suche verteilt.
 | **0.10** | Warteschlange + Autoplay – **erledigt** |
 | **0.11** | Epidemic Sound und Artlist.io im Cutter-Modus – **erledigt** |
 | **0.12** | Erste-Schritte-Assistent – **erledigt** |
-| ~~0.13~~ | Englische Oberfläche – **auf 1.3 verschoben** (Entscheidung 21.11.2026: erst 1.0 fertig machen; 1.1 enthält Spotify-, 1.2 YouTube-Music-Playlist-Import) |
+| ~~0.13~~ | Englische Oberfläche – **auf 1.4 verschoben** (1.1 Spotify-, 1.2 YouTube-Music-Playlist-Import; 1.3 Cutter-Kategorien) |
 | **1.0** | Installer zusätzlich zur portablen EXE, Feinschliff, Release – **gebaut** |
 
 **Nicht in 1.0** (bewusst später): lokale Bibliothek mit Tags/Covern, Crossfade,
@@ -67,7 +67,7 @@ Beim ersten Start (und später über Einstellungen erneut aufrufbar), 4–5 Schr
 
 Bestehende Nutzer sehen ihn nicht automatisch (nur „Neu in dieser Version“-Hinweis).
 
-## 1.3 – Englische Oberfläche (verschoben von 0.13)
+## 1.4 – Englische Oberfläche (verschoben von 0.13)
 
 - Alle Texte aus `app.js`/`index.html` in Sprachdateien (`renderer/i18n/de.js`,
   `en.js`), Funktion `t('key')`. Sprache: Systemsprache als Standard, umschaltbar

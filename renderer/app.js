@@ -204,8 +204,8 @@
     favFilter: 'all',
     creator: {
       tab: 'ncs',
-      category: { ncs: 'top', classics: 'lustig', sfx: 'whoosh', free: 'cinematic' },
-      query: { sfx: '', free: '' },
+      category: { ncs: 'top', classics: 'lustig', sfx: 'whoosh', games: 'retro', free: 'cinematic' },
+      query: { sfx: '', games: '', free: '' },
       lists: {},
     },
     credits: (readJSON(STORAGE.credits, []) || []).filter(
@@ -3784,6 +3784,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.3.0': [
+      'Neue Game-Sounds-Kategorien von Freesound über Openverse – mit CC0-/CC-BY-Lizenzfilter.',
+      'Freie Musik hat jetzt Chiptune/8-Bit, Videospiel und Boss-Kampf; Kevin MacLeod zusätzlich Gaming & Retro.',
+      'Der Mini-Visualizer zeigt das Spektrum jetzt auch mit aktiver optionaler Audio-Kette.',
+    ],
     '1.2.0': [
       'YouTube-Music-Playlists lassen sich jetzt per Link mit einem aktiven Quellen-Plugin übertragen.',
       'Spotify-Links und CSV-/JSON-Dateien funktionieren weiterhin wie bisher.',
@@ -4750,7 +4755,7 @@
       const mood = classics && classics.categories ? classics.categories.find((item) => item.id === entry.category) : null;
       return `Kevin MacLeod${mood ? ` - ${mood.label}` : ''}`;
     }
-    if (entry.source === 'freesound' || (tab && tab.id === 'sfx')) return 'Soundeffekte';
+    if (entry.source === 'freesound' || (tab && (tab.kind === 'sfx' || tab.id === 'sfx'))) return 'Soundeffekte';
     return 'Freie Musik';
   }
 
@@ -4958,7 +4963,7 @@
     const category =
       tab.categories.find((entry) => entry.id === state.creator.category[tab.id]) || tab.categories[0];
     const query = custom || category.query;
-    const kind = tab.id === 'sfx' ? 'sfx' : 'music';
+    const kind = tab.kind === 'sfx' || tab.id === 'sfx' ? 'sfx' : 'music';
     const page = options.more && existing ? existing.page + 1 : 1;
     const previous = options.more && existing ? existing.items : [];
     const cacheKey = `${kind}|${query.toLowerCase()}|${page}`;
@@ -4992,6 +4997,7 @@
   }
 
   function creatorNote(tab) {
+    if (tab.kind === 'sfx') return 'CC0 & CC BY · Freesound';
     switch (tab.id) {
       case 'ncs':
         return fullMode()
@@ -5081,7 +5087,7 @@
                 ? `<div class="radio-search creator-search">
                     <input id="creator-search-input" type="search" value="${esc(custom)}"
                       placeholder="${
-                        tab.id === 'sfx'
+                        tab.kind === 'sfx' || tab.id === 'sfx'
                           ? 'Eigenen Sound suchen (englisch, z. B. „door slam“) …'
                           : 'Eigene Stimmung suchen (englisch, z. B. „summer vlog“) …'
                       }"
@@ -5132,7 +5138,7 @@
 
     host.innerHTML = `
       <div class="results-head">
-        <span>${list.items.length} ${tab.id === 'sfx' ? 'Sounds' : 'Titel'}</span>
+        <span>${list.items.length} ${tab.kind === 'sfx' || tab.id === 'sfx' ? 'Sounds' : 'Titel'}</span>
         <span class="muted small">${esc(creatorNote(tab))}</span>
         <button class="btn ghost small results-action" data-creator-action="play-all">${ICONS.play} Alle abspielen</button>
       </div>
@@ -8270,10 +8276,12 @@ ${updatePanel()}
       const list = creatorList();
       return {
         tab: state.creator.tab,
+        category: state.creator.category[state.creator.tab],
         key: creatorKey(),
         items: list ? list.items.length : 0,
         loading: Boolean(list && list.loading),
         error: list ? list.error : null,
+        licenses: list ? Array.from(new Set(list.items.map((item) => item.license).filter(Boolean))) : [],
         credits: state.credits.length,
       };
     },

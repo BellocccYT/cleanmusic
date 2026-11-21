@@ -1202,6 +1202,38 @@ function createMainWindow() {
                 tabs[tab] = cm.creator();
               }
 
+              const waitForCategory = async (tab, category) => {
+                cm.setCreator(tab, category.id);
+                for (let i = 0; i < 50 && cm.creator().loading; i += 1) await wait(250);
+                const result = cm.creator();
+                return { label: category.label, items: result.items, licenses: result.licenses, error: result.error };
+              };
+              const gameTab = window.CM_CREATOR.tabs.find((entry) => entry.id === 'games');
+              const freeTab = window.CM_CREATOR.tabs.find((entry) => entry.id === 'free');
+              const gameSounds = {};
+              const freeMusic = {};
+              for (const category of gameTab.categories) gameSounds[category.id] = await waitForCategory('games', category);
+              for (const id of ['chiptune', 'videospiel', 'boss-kampf']) {
+                const category = freeTab.categories.find((entry) => entry.id === id);
+                freeMusic[id] = await waitForCategory('free', category);
+              }
+              cm.setCreator('classics', 'gaming-retro');
+              const gamingRetro = cm.creator();
+              const allowedLicense = (value) => /^(CC0|Public Domain|CC BY(?: [0-9.]+)?)$/i.test(value);
+              const openverseResults = [...Object.values(gameSounds), ...Object.values(freeMusic)];
+              const categoryFailures = openverseResults
+                .filter((result) => !result.items || !result.licenses.length || result.licenses.some((license) => !allowedLicense(license)))
+                .map((result) => result.label);
+              if (!gamingRetro.items) categoryFailures.push('Gaming & Retro (Kevin MacLeod)');
+              cm.setCreator('classics', 'lustig');
+              const newCategories = {
+                gameSounds,
+                freeMusic,
+                gamingRetro: { items: gamingRetro.items },
+                allHit: categoryFailures.length === 0,
+                failures: categoryFailures,
+              };
+
               cm.setCreator('ncs', 'top');
               for (let i = 0; i < 40 && !cm.creator().items; i += 1) await wait(300);
               document.querySelector('#creator-list .song-row').click();
@@ -1235,10 +1267,13 @@ function createMainWindow() {
               const credits = cm.creator().credits;
               const creditRows = document.querySelectorAll('#creator-credits .credits-list li').length;
 
-              return { tabs, ncs, now, fullscreen, viz, credits, creditRows };
+              return { tabs, newCategories, ncs, now, fullscreen, viz, credits, creditRows };
             })()
           `);
           console.log('SMOKE_CREATOR:', JSON.stringify(creatorResult));
+          if (!creatorResult.newCategories || !creatorResult.newCategories.allHit) {
+            throw new Error(`Neue Spiele-Kategorien ohne gültige Treffer: ${(creatorResult.newCategories && creatorResult.newCategories.failures || []).join(', ')}`);
+          }
         } catch (error) {
           console.error('SMOKE_CREATOR_FAIL:', error.message);
         }
@@ -1713,6 +1748,7 @@ function createMainWindow() {
                   pluginRecs: document.querySelectorAll('#home-recs [data-track-id^="p:"]').length,
                   charts,
                   youtubePlaylist,
+                  visualizer: cm.visualizer(),
                 };
               })()
             `);
@@ -2258,6 +2294,7 @@ const OPENVERSE_SOURCES = {
   ccmixter: 'ccMixter',
   wikimedia_audio: 'Wikimedia',
 };
+const OPENVERSE_LICENSES = new Set(['cc0', 'by', 'pdm']);
 
 ipcMain.handle('creator-openverse', async (_event, options) => {
   const input = options && typeof options === 'object' ? options : {};
@@ -2299,7 +2336,12 @@ ipcMain.handle('creator-openverse', async (_event, options) => {
 
     const json = await response.json();
     const items = (Array.isArray(json.results) ? json.results : [])
-      .filter((item) => item && /^https:\/\//i.test(item.url || ''))
+      .filter(
+        (item) =>
+          item &&
+          OPENVERSE_LICENSES.has(String(item.license || '').toLowerCase()) &&
+          /^https:\/\//i.test(item.url || '')
+      )
       .map((item) => ({
         id: `ov:${item.id}`,
         source: item.source || 'openverse',
