@@ -327,6 +327,83 @@ window.CMVisualizer = (function () {
     return Array.from({ length: count }, (_, i) => 0.09 + 0.08 * Math.sin(t / 600 + i * 0.45));
   }
 
+  // Mirror: the spectrum grows from the middle line up and down, low tones in the centre.
+  function drawMirror(canvas, target, t, ratio) {
+    const g = canvas.getContext('2d');
+    const { width, height } = canvas;
+    const half = target.mini ? 9 : Math.max(16, Math.min(48, Math.floor(width / (28 * ratio))));
+    const levels = smooth(target, source || tapped ? bands(half) : idleLevels(half, t));
+    g.clearRect(0, 0, width, height);
+    const mid = target.mini ? height / 2 : height * 0.5;
+    const gap = (target.mini ? 2 : 4) * ratio;
+    const barWidth = (width / 2 - gap * half) / half;
+    const maxHeight = target.mini ? height / 2 : height * 0.22;
+    if (!target.mini) {
+      g.shadowColor = rgba(colorA, 0.5);
+      g.shadowBlur = 22 * ratio;
+    }
+    levels.forEach((level, i) => {
+      const h = Math.max(1.5 * ratio, level * maxHeight);
+      const gradient = g.createLinearGradient(0, mid - h, 0, mid + h);
+      gradient.addColorStop(0, rgba(colorB, 0.15));
+      gradient.addColorStop(0.5, rgba(colorA, target.mini ? 0.95 : 0.8));
+      gradient.addColorStop(1, rgba(colorB, 0.15));
+      g.fillStyle = gradient;
+      [width / 2 + gap / 2 + i * (barWidth + gap), width / 2 - gap / 2 - (i + 1) * (barWidth + gap) + gap].forEach((x) => {
+        g.beginPath();
+        const r = Math.min(barWidth / 2, 5 * ratio);
+        if (g.roundRect) g.roundRect(x, mid - h, barWidth, h * 2, r);
+        else g.rect(x, mid - h, barWidth, h * 2);
+        g.fill();
+      });
+    });
+    g.shadowBlur = 0;
+  }
+
+  // Particles: glowing dots rise with the music – more and faster on loud parts.
+  function drawParticles(canvas, target, t, ratio) {
+    const g = canvas.getContext('2d');
+    const { width, height } = canvas;
+    const levels = smooth(target, source || tapped ? bands(24) : idleLevels(24, t));
+    const loud = levels.reduce((sum, value) => sum + value, 0) / levels.length;
+    const dots = target.dots || (target.dots = []);
+    const now = t / 1000;
+    const dt = Math.min(0.05, target.lastT ? now - target.lastT : 0.016);
+    target.lastT = now;
+    const spawn = (target.mini ? 1 : 3) + Math.round(loud * (target.mini ? 4 : 14) + energy * (target.mini ? 2 : 10));
+    for (let k = 0; k < spawn && dots.length < (target.mini ? 60 : 420); k += 1) {
+      const band = Math.floor(Math.random() * levels.length);
+      dots.push({
+        x: ((band + Math.random()) / levels.length) * width,
+        y: height + 4 * ratio,
+        vy: (40 + levels[band] * 260 + Math.random() * 40) * ratio * (target.mini ? 0.35 : 1),
+        vx: (Math.random() - 0.5) * 30 * ratio,
+        r: (1 + Math.random() * 2.6 + levels[band] * 3) * ratio * (target.mini ? 0.6 : 1),
+        life: 0,
+        mix: Math.random(),
+      });
+    }
+    g.clearRect(0, 0, width, height);
+    g.globalCompositeOperation = 'lighter';
+    for (let i = dots.length - 1; i >= 0; i -= 1) {
+      const dot = dots[i];
+      dot.life += dt;
+      dot.y -= dot.vy * dt;
+      dot.x += dot.vx * dt + Math.sin(now * 2 + dot.mix * 6) * 0.3 * ratio;
+      const fade = 1 - (height - dot.y) / (height * (target.mini ? 1 : 0.85));
+      if (dot.y < -10 || fade <= 0) {
+        dots.splice(i, 1);
+        continue;
+      }
+      const color = dot.mix < 0.5 ? colorA : colorB;
+      g.fillStyle = rgba(color, Math.max(0, Math.min(1, fade)) * 0.85);
+      g.beginPath();
+      g.arc(dot.x, dot.y, dot.r * (1 + energy * 0.6), 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalCompositeOperation = 'source-over';
+  }
+
   function drawBars(canvas, target, t, ratio) {
     const g = canvas.getContext('2d');
     const { width, height } = canvas;
@@ -505,6 +582,8 @@ window.CMVisualizer = (function () {
         const ratio = fit(canvas);
         if (target.style === 'radial') drawRadial(canvas, target, t, ratio);
         else if (target.style === 'wave') drawWave(canvas, target, t, ratio);
+        else if (target.style === 'mirror') drawMirror(canvas, target, t, ratio);
+        else if (target.style === 'particles') drawParticles(canvas, target, t, ratio);
         else drawBars(canvas, target, t, ratio);
       });
 

@@ -3871,6 +3871,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.11.0': [
+      'Neue Songtext-Effekte: Neon (flackerndes Leuchten), Welle (Wörter wippen im Takt), Schreibmaschine (Buchstabe für Buchstabe) und Zoom.',
+      'Neue Spektrum-Stile: Spiegel (wächst aus der Mitte nach oben und unten) und Partikel (leuchtende Punkte steigen mit der Musik auf).',
+    ],
     '1.10.1': [
       'Updates auch im Hintergrund: CleanMusic sucht alle 2 Stunden, solange es läuft – mit Windows-Benachrichtigung.',
       'Neuer, deutlich hörbarer Update-Gong (nur stumm, wenn du CleanMusic stummgeschaltet hast).',
@@ -4388,7 +4392,7 @@
         '<p class="lyrics-note">Songtext: LRCLIB</p>';
       return;
     }
-    if (lyricsState.lines.length && lyricsEffect() === 'kinetic') {
+    if (lyricsState.lines.length && BIG_EFFECTS.includes(lyricsEffect())) {
       host.innerHTML = '<div class="ly-kinetic"></div><p class="lyrics-note">Songtext: LRCLIB</p>';
       lyricsState.index = -2;
       updateLyricLine(true);
@@ -4433,7 +4437,7 @@
 
   function showLyricLine(index, force) {
     const host = $('#fs-lyrics');
-    if (host && !host.hidden && lyricsEffect() === 'kinetic' && host.querySelector('.ly-kinetic')) {
+    if (host && !host.hidden && BIG_EFFECTS.includes(lyricsEffect()) && host.querySelector('.ly-kinetic')) {
       renderKinetic(host, index);
       return;
     }
@@ -4462,7 +4466,13 @@
     ['pop', 'Pop'],
     ['karaoke', 'Karaoke'],
     ['kinetic', 'Motion'],
+    ['neon', 'Neon'],
+    ['wave', 'Welle'],
+    ['typer', 'Schreibmaschine'],
+    ['zoom', 'Zoom'],
   ];
+  // Effects that show one big line instead of the scrolling list.
+  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom'];
 
   function lyricsEffect() {
     return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';
@@ -4481,16 +4491,22 @@
     if (!stage) return;
     const line = lyricsState.lines[index];
     const next = lyricsState.lines[index + 1];
-    const words = String((line && line.text) || (index < 0 ? '♪' : '♪')).split(/\s+/).filter(Boolean);
-    const span = Math.min(lineDuration(index) * 0.7, 2.6) * 1000;
-    const step = words.length > 1 ? span / words.length : 0;
+    const effect = lyricsEffect();
+    const text = String((line && line.text) || '♪');
+    const typer = effect === 'typer';
+    const units = typer ? Array.from(text) : text.split(/\s+/).filter(Boolean);
+    const span = Math.min(lineDuration(index) * (typer ? 0.8 : 0.7), typer ? 3.5 : 2.6) * 1000;
+    const step = units.length > 1 ? span / units.length : 0;
+    stage.className = `ly-kinetic ly-k-${effect}`;
     stage.innerHTML = `
-      <p class="ly-k-line">${words
-        .map(
-          (word, at) =>
-            `<span class="${word.replace(/[^\p{L}]/gu, '').length > 6 ? 'hl' : ''}" style="animation-delay:${Math.round(at * step)}ms;--tilt:${(at % 2 ? 1 : -1) * (2 + (at % 3))}deg">${esc(word)}</span>`
-        )
-        .join(' ')}</p>
+      <p class="ly-k-line">${units
+        .map((unit, at) => {
+          const delay = Math.round(at * step);
+          const timing = effect === 'wave' ? `animation-delay:${delay}ms, ${delay + 550 + at * 90}ms` : `animation-delay:${delay}ms`;
+          const cls = !typer && unit.replace(/[^\p{L}]/gu, '').length > 6 ? 'hl' : '';
+          return `<span class="${cls}" style="${timing};--tilt:${(at % 2 ? 1 : -1) * (2 + (at % 3))}deg">${unit === ' ' ? '&nbsp;' : esc(unit)}</span>`;
+        })
+        .join(typer ? '' : ' ')}</p>
       <p class="ly-k-next">${esc((next && next.text) || '')}</p>`;
   }
 
@@ -4498,7 +4514,8 @@
     const size = LYRIC_SIZES.includes(state.settings.lyricsSize) ? state.settings.lyricsSize : 'm';
     host.dataset.size = size;
     host.dataset.align = state.settings.lyricsAlign === 'center' ? 'center' : 'left';
-    host.dataset.effect = lyricsSynced() ? lyricsEffect() : 'none';
+    host.dataset.effect = lyricsSynced() ? (BIG_EFFECTS.includes(lyricsEffect()) ? 'kinetic' : lyricsEffect()) : 'none';
+    host.dataset.fx = lyricsSynced() ? lyricsEffect() : 'none';
     host.classList.toggle('dim-past', state.settings.lyricsDim !== false);
     const fullscreen = $('#fullscreen');
     if (fullscreen) fullscreen.classList.toggle('lyrics-focus', lyricsOn() && Boolean(state.settings.lyricsFocus));
@@ -8816,6 +8833,8 @@
       ['radial', 'Kreis ums Cover'],
       ['bars', 'Balken'],
       ['wave', 'Welle'],
+      ['mirror', 'Spiegel'],
+      ['particles', 'Partikel'],
     ];
     return `
       <div class="panel" id="viz-panel">

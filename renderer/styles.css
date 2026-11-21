@@ -5682,3 +5682,55 @@ html.cover-vinyl .np-art::after {
     opacity: 1;
   }
 }
+
+/* 1.11: more lyric effects */
+@keyframes cm-neon {
+  0%, 100% { text-shadow: 0 0 8px rgb(var(--fs-a)), 0 0 22px rgb(var(--fs-a)), 0 0 44px rgba(var(--fs-b), 0.8); }
+  45% { text-shadow: 0 0 4px rgb(var(--fs-a)), 0 0 12px rgba(var(--fs-a), 0.7), 0 0 24px rgba(var(--fs-b), 0.5); }
+  48% { text-shadow: none; }
+  52% { text-shadow: 0 0 10px rgb(var(--fs-a)), 0 0 26px rgb(var(--fs-a)), 0 0 52px rgba(var(--fs-b), 0.9); }
+}
+.fs-lyrics[data-fx='neon'] p.on {
+  color: #fff;
+  animation: cm-neon 2.6s ease-in-out infinite;
+  transform: scale(1.04);
+}
+@keyframes cm-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.ly-k-wave .ly-k-line span {
+  animation: cm-word 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both, cm-bob 1.2s ease-in-out infinite;
+}
+@keyframes cm-type {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.ly-k-typer .ly-k-line {
+  text-transform: none;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  letter-spacing: 0;
+}
+.ly-k-typer .ly-k-line span {
+  animation: cm-type 0.01s linear both;
+}
+.ly-k-typer .ly-k-line::after {
+  content: '▌';
+  color: rgb(var(--fs-a));
+  animation: cm-type 0.5s steps(1) infinite alternate;
+}
+@keyframes cm-zoom {
+  0% { opacity: 0; transform: scale(2.6); filter: blur(12px); }
+  70% { opacity: 1; transform: scale(0.96); filter: blur(0); }
+  100% { opacity: 1; transform: none; }
+}
+.ly-k-zoom .ly-k-line span {
+  animation: cm-zoom 0.6s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ly-k-wave .ly-k-line span,
+  .ly-k-zoom .ly-k-line span,
+  .fs-lyrics[data-fx='neon'] p.on {
+    animation: none !important;
+  }
+}
