@@ -382,6 +382,347 @@ function normalizeDeezer(json, options = {}) {
     }));
 }
 
+const SPOTIFY_FORMAT_ERROR = 'Spotify hat das Format geändert – bitte den Datei-Import nutzen.';
+const SPOTIFY_MAX_TRACKS = 2000;
+const SPOTIFY_LINK_TRACK_LIMIT = 100;
+
+function spotifyTrack(track, format = 'embed') {
+  if (!track || typeof track !== 'object') return null;
+  const title = cleanText(format === 'export' ? track.trackName || track.title : track.title, 300);
+  const artist = cleanText(format === 'export' ? track.artistName || track.artist : track.subtitle, 300);
+  if (!title) return null;
+  const durationMs = Number(format === 'export' ? track.durationMs || track.duration : track.duration);
+  return {
+    title,
+    artist,
+    album: cleanText(format === 'export' ? track.albumName || track.album : '', 200),
+    durationMs: Number.isFinite(durationMs) && durationMs > 0 ? Math.round(durationMs) : 0,
+    isrc: cleanText(track.isrc || (track.attributes && track.attributes.isrc) || '', 20).toUpperCase(),
+  };
+}
+
+function spotifyPlaylistFromEntity(entity) {
+  if (!entity || typeof entity !== 'object' || !Array.isArray(entity.trackList)) {
+    throw new Error(SPOTIFY_FORMAT_ERROR);
+  }
+  const sourceTracks = entity.trackList;
+  const tracks = sourceTracks.slice(0, SPOTIFY_MAX_TRACKS).map((track) => spotifyTrack(track)).filter(Boolean);
+  const name = cleanText(entity.name || entity.title, 100);
+  if (!name || !tracks.length) throw new Error(SPOTIFY_FORMAT_ERROR);
+  return {
+    name,
+    tracks,
+    limited: sourceTracks.length > SPOTIFY_MAX_TRACKS || sourceTracks.length >= SPOTIFY_LINK_TRACK_LIMIT,
+    limitMessage: sourceTracks.length > SPOTIFY_MAX_TRACKS
+      ? 'Import auf 2000 Titel begrenzt.'
+      : sourceTracks.length >= SPOTIFY_LINK_TRACK_LIMIT
+        ? 'Spotify zeigt über den Link nur 100 Titel – für alle den Datei-Import nutzen.'
+        : '',
+    error: null,
+  };
+}
+
+function spotifyPlaylistId(input) {
+  const value = String(input || '').trim();
+  let id = '';
+  const uri = value.match(/^spotify:playlist:([A-Za-z0-9]{6,64})$/i);
+  if (uri) id = uri[1];
+  else {
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'https:' || url.hostname !== 'open.spotify.com' || url.username || url.password) return '';
+      const match = url.pathname.match(/^\/playlist\/([A-Za-z0-9]{6,64})\/?$/i);
+      if (match) id = match[1];
+    } catch {
+      return '';
+    }
+  }
+  return id;
+}
+
+function parseSpotifyEmbedHtml(html) {
+  const match = String(html || '').match(
+    /<script\b(?=[^>]*\bid=["']__NEXT_DATA__["'])(?=[^>]*\btype=["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/i
+  );
+  if (!match) throw new Error(SPOTIFY_FORMAT_ERROR);
+  try {
+    const data = JSON.parse(match[1]);
+    return spotifyPlaylistFromEntity(data && data.props && data.props.pageProps && data.props.pageProps.state && data.props.pageProps.state.data && data.props.pageProps.state.data.entity);
+  } catch (error) {
+    if (error && error.message === SPOTIFY_FORMAT_ERROR) throw error;
+    throw new Error(SPOTIFY_FORMAT_ERROR);
+  }
+}
+
+async function readResponseTextLimited(response, maxBytes) {
+  const declared = Number(response.headers.get('content-length')) || 0;
+  if (declared > maxBytes) throw new Error('Die Spotify-Antwort ist größer als 5 MB.');
+  if (!response.body || !response.body.getReader) {
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > maxBytes) throw new Error('Die Spotify-Antwort ist größer als 5 MB.');
+    return new TextDecoder().decode(buffer);
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const part = await reader.read();
+    if (part.done) break;
+    size += part.value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new Error('Die Spotify-Antwort ist größer als 5 MB.');
+    }
+    chunks.push(part.value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  });
+  return new TextDecoder().decode(bytes);
+}
+
+async function fetchSpotifyPlaylist(input) {
+  const id = spotifyPlaylistId(input);
+  if (!id) throw new Error('Bitte einen öffentlichen Spotify-Playlist-Link oder eine spotify:playlist-URI einfügen.');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await net.fetch(`https://open.spotify.com/embed/playlist/${encodeURIComponent(id)}`, {
+      signal: controller.signal,
+      headers: { accept: 'text/html' },
+    });
+    if (!response.ok) throw new Error(`Spotify antwortet mit HTTP ${response.status}.`);
+    if (response.url && new URL(response.url).origin !== 'https://open.spotify.com') {
+      throw new Error('Spotify hat auf eine nicht erlaubte Adresse weitergeleitet.');
+    }
+    return parseSpotifyEmbedHtml(await readResponseTextLimited(response, 5 * 1024 * 1024));
+  } catch (error) {
+    if (error && error.name === 'AbortError') throw new Error('Zeitüberschreitung – Spotify antwortet gerade nicht.');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseCsvRows(text) {
+  const source = String(text || '').replace(/^\uFEFF/, '');
+  const firstLine = source.split(/\r?\n/, 1)[0] || '';
+  let delimiter = ',';
+  let quoted = false;
+  let commas = 0;
+  let semicolons = 0;
+  for (let index = 0; index < firstLine.length; index += 1) {
+    const char = firstLine[index];
+    if (char === '"' && firstLine[index + 1] === '"' && quoted) index += 1;
+    else if (char === '"') quoted = !quoted;
+    else if (!quoted && char === ',') commas += 1;
+    else if (!quoted && char === ';') semicolons += 1;
+  }
+  if (semicolons > commas) delimiter = ';';
+
+  const rows = [];
+  let row = [];
+  let cell = '';
+  quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"') {
+      if (quoted && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      row.push(cell);
+      cell = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && source[index + 1] === '\n') index += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      cell = '';
+    } else cell += char;
+  }
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+}
+
+function parseSpotifyCsv(text, filename) {
+  const rows = parseCsvRows(text);
+  if (rows.length < 2) throw new Error('Die CSV-Datei enthält keine Titel.');
+  const headers = rows[0].map((header) => String(header || '').trim().toLowerCase());
+  const column = (...names) => headers.findIndex((header) => names.includes(header));
+  const titleCol = column('track name', 'trackname', 'track title', 'title');
+  const artistCol = column('artist name(s)', 'artist name', 'artistname', 'artist', 'artists');
+  if (titleCol < 0 || artistCol < 0) throw new Error('CSV-Kopfzeile nicht erkannt. Benötigt werden Titel- und Artist-Spalten.');
+  const albumCol = column('album name', 'album');
+  const durationCol = column('duration (ms)', 'duration_ms', 'duration');
+  const isrcCol = column('isrc');
+  const nameCol = column('playlist name', 'playlist');
+  const tracks = rows.slice(1).map((row) => {
+    const raw = {
+      title: row[titleCol],
+      artist: row[artistCol],
+      albumName: albumCol >= 0 ? row[albumCol] : '',
+      durationMs: durationCol >= 0 ? row[durationCol] : 0,
+      isrc: isrcCol >= 0 ? row[isrcCol] : '',
+    };
+    return spotifyTrack(raw, 'export');
+  }).filter(Boolean).slice(0, SPOTIFY_MAX_TRACKS);
+  if (!tracks.length) throw new Error('In der CSV-Datei wurden keine gültigen Titel gefunden.');
+  const playlistName = nameCol >= 0 ? cleanText(rows.slice(1).map((row) => row[nameCol]).find(Boolean), 100) : '';
+  const limited = rows.length - 1 > SPOTIFY_MAX_TRACKS;
+  const playlist = { name: playlistName || path.basename(filename, path.extname(filename)).slice(0, 100) || 'Spotify-Playlist', tracks };
+  return { name: playlist.name, tracks, playlists: [playlist], limited, limitMessage: limited ? 'Import auf 2000 Titel begrenzt.' : '', error: null };
+}
+
+function parseSpotifyJson(text, filename) {
+  let data;
+  try {
+    data = JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
+  } catch {
+    throw new Error('Die JSON-Datei ist ungültig.');
+  }
+  if (!data || !Array.isArray(data.playlists)) throw new Error('Das Spotify-Datenexport-Format wurde nicht erkannt.');
+  let remaining = SPOTIFY_MAX_TRACKS;
+  const playlists = data.playlists.map((playlist, index) => {
+    const items = Array.isArray(playlist && playlist.items) ? playlist.items : [];
+    const tracks = items.map((item) => {
+      const track = item && item.track;
+      if (!track) return null;
+      return spotifyTrack({
+        title: track.trackName,
+        artist: track.artistName,
+        albumName: track.albumName,
+        durationMs: track.durationMs || track.duration,
+        isrc: track.isrc,
+      }, 'export');
+    }).filter(Boolean).slice(0, remaining);
+    remaining -= tracks.length;
+    return { name: cleanText(playlist && playlist.name, 100) || `Playlist ${index + 1}`, tracks };
+  }).filter((playlist) => playlist.tracks.length);
+  if (!playlists.length) throw new Error('Im Spotify-Datenexport wurden keine Titel gefunden.');
+  const limited = data.playlists.reduce((sum, playlist) => sum + (Array.isArray(playlist && playlist.items) ? playlist.items.length : 0), 0) > SPOTIFY_MAX_TRACKS;
+  const single = playlists.length === 1 ? playlists[0] : null;
+  return { name: single ? single.name : '', tracks: single ? single.tracks : [], playlists, limited, limitMessage: limited ? 'Import auf insgesamt 2000 Titel begrenzt.' : '', error: null };
+}
+
+async function runSpotifyImportSmoke() {
+  const csv = parseSpotifyCsv(
+    '\uFEFFTrack Name,Artist Name(s),Album Name,Duration (ms),ISRC,Playlist name\r\n"One, More Time","Daft Punk; The Weeknd",Discovery,320000,GBDUW0000059,Smoke CSV',
+    'export.csv'
+  );
+  const semicolon = parseSpotifyCsv(
+    'Track name;Artist name;Album;ISRC;Playlist name\n"Track; With Semicolon";"Artist One, Artist Two";Album;GBDUW0000059;Smoke Semi',
+    'export.csv'
+  );
+  const json = parseSpotifyJson(
+    JSON.stringify({ playlists: [{ name: 'Smoke JSON', items: [{ track: { trackName: 'One More Time', artistName: 'Daft Punk', albumName: 'Discovery', trackUri: 'spotify:track:test' } }] }] }),
+    'Playlist1.json'
+  );
+  let isrc = null;
+  try {
+    isrc = (await matchSpotifyTracks([{ title: 'One More Time', artist: 'Daft Punk', isrc: 'GBDUW0000059' }])).tracks[0];
+  } catch {
+    isrc = null;
+  }
+  let link;
+  try {
+    const result = await fetchSpotifyPlaylist('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
+    link = { ok: Boolean(result.name && result.tracks.length), name: result.name, tracks: result.tracks.length, limited: result.limited };
+  } catch (error) {
+    link = { ok: false, error: cleanText(error && error.message, 200) };
+  }
+  return {
+    csv: csv.playlists[0].tracks[0].title === 'One, More Time' && csv.playlists[0].tracks[0].artist === 'Daft Punk; The Weeknd',
+    semicolon: semicolon.playlists[0].tracks[0].title === 'Track; With Semicolon' && semicolon.playlists[0].tracks[0].artist === 'Artist One, Artist Two',
+    json: json.playlists[0].name === 'Smoke JSON' && json.playlists[0].tracks[0].title === 'One More Time',
+    isrc: isrc ? { id: isrc.id, title: isrc.title, artist: isrc.artist, preview: Boolean(isrc.preview) } : null,
+    link,
+  };
+}
+
+function spotifyArtistForSearch(value) {
+  return String(value || '').split(/[;,]/, 1)[0].trim().slice(0, 120);
+}
+
+function spotifyMatchScore(hit, wanted) {
+  const titleWords = looseKey(wanted.title).split(' ').filter(Boolean);
+  const artistWords = looseKey(spotifyArtistForSearch(wanted.artist)).split(' ').filter(Boolean);
+  const hitTitle = new Set(looseKey(hit.title).split(' ').filter(Boolean));
+  const hitArtist = new Set(looseKey(hit.artist).split(' ').filter(Boolean));
+  const titleMatch = titleWords.length ? titleWords.filter((word) => hitTitle.has(word)).length / titleWords.length : 0;
+  const artistMatch = artistWords.length ? artistWords.filter((word) => hitArtist.has(word)).length / artistWords.length : 1;
+  let score = titleMatch * 65 + artistMatch * 30;
+  const unwanted = new Set(['karaoke', 'cover', 'instrumental', 'tribute', 'remix']);
+  if ([...hitTitle, ...hitArtist].some((word) => unwanted.has(word))) score -= 24;
+  const expected = Number(wanted.durationMs) / 1000;
+  if (expected > 0 && hit.duration > 0) {
+    const delta = Math.abs(expected - hit.duration);
+    score += delta <= 10 ? 12 : delta <= 30 ? 4 : -Math.min(20, (delta - 30) / 10);
+  }
+  return { score, titleMatch, artistMatch };
+}
+
+async function searchDeezerPlaylistTrack(track) {
+  const artist = spotifyArtistForSearch(track.artist);
+  const query = `artist:"${artist.replace(/["\\]/g, '')}" track:"${String(track.title).replace(/["\\]/g, '')}"`;
+  for (const term of [query, `${artist} ${track.title}`.trim()]) {
+    const json = await fetchDeezerPlaylistJson(`https://api.deezer.com/search?q=${encodeURIComponent(term)}&limit=12`);
+    const hits = normalizeDeezer(json);
+    const ranked = hits.map((hit, index) => ({ hit, index, ...spotifyMatchScore(hit, track) }))
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+    const best = ranked[0];
+    if (best && best.titleMatch >= 0.45 && best.artistMatch >= (artist ? 0.25 : 0) && best.score >= 42) return best.hit;
+  }
+  return null;
+}
+
+let deezerPlaylistRequestAt = 0;
+
+async function fetchDeezerPlaylistJson(url) {
+  const delay = Math.max(0, deezerPlaylistRequestAt - Date.now());
+  if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+  deezerPlaylistRequestAt = Date.now() + 125;
+  return fetchJson(url, 15000);
+}
+
+async function matchSpotifyTracks(tracks) {
+  const source = Array.isArray(tracks) ? tracks.slice(0, 50) : [];
+  const results = new Array(source.length).fill(null);
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const index = next;
+      next += 1;
+      if (index >= source.length) return;
+      const track = source[index] || {};
+      try {
+        let hit = null;
+        const isrc = String(track.isrc || '').trim().toUpperCase();
+        if (/^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(isrc)) {
+          const byIsrc = await fetchDeezerPlaylistJson(`https://api.deezer.com/track/isrc:${encodeURIComponent(isrc)}`);
+          const normalized = normalizeDeezer({ data: byIsrc && byIsrc.id ? [byIsrc] : [] });
+          if (normalized.length) {
+            const candidate = normalized[0];
+            const score = spotifyMatchScore(candidate, track);
+            if (score.titleMatch >= 0.45 && score.artistMatch >= (spotifyArtistForSearch(track.artist) ? 0.25 : 0)) hit = candidate;
+          }
+        }
+        if (!hit) hit = await searchDeezerPlaylistTrack(track);
+        results[index] = hit;
+      } catch {
+        results[index] = null;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, source.length) }, worker));
+  return { tracks: results, error: null };
+}
+
 function normalizeStations(list) {
   const seen = new Set();
   const out = [];
@@ -1145,6 +1486,25 @@ function createMainWindow() {
           `);
           console.log('SMOKE_ONBOARDING:', JSON.stringify(onboardingResult));
 
+          let playlistImportChecks;
+          try {
+            playlistImportChecks = await runSpotifyImportSmoke();
+          } catch (error) {
+            playlistImportChecks = { error: cleanText(error && error.message, 200) };
+          }
+          let playlistImportUi;
+          try {
+            playlistImportUi = await mainWindow.webContents.executeJavaScript(`
+              (async () => ({
+                dialog: window.CleanMusic.spotifyImportDialogSmoke(),
+                import: await window.CleanMusic.importSpotifySmoke(),
+              }))()
+            `);
+          } catch (error) {
+            playlistImportUi = { error: cleanText(error && error.message, 200) };
+          }
+          console.log('SMOKE_PLAYLIST_IMPORT:', JSON.stringify({ ...playlistImportChecks, renderer: playlistImportUi }));
+
           // Shortcut overview (1.0): "?" opens it, Escape closes it.
           const shortcutsResult = await mainWindow.webContents.executeJavaScript(`
             (async () => {
@@ -1406,6 +1766,56 @@ ipcMain.handle('clear-service-data', async (_event, id) => {
 });
 
 ipcMain.handle('open-musickit', () => openMusicKitWindow());
+
+ipcMain.handle('spotify-playlist-link', async (_event, url) => {
+  try {
+    return await fetchSpotifyPlaylist(url);
+  } catch (error) {
+    return { name: '', tracks: [], limited: false, error: cleanText(error && error.message, 240) || 'Spotify-Playlist konnte nicht geladen werden.' };
+  }
+});
+
+ipcMain.handle('playlist-import-file', async () => {
+  let result;
+  try {
+    result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Spotify-Playlist-Datei auswählen',
+      properties: ['openFile'],
+      filters: [{ name: 'Spotify-Playlisten', extensions: ['csv', 'json'] }],
+    });
+  } catch (error) {
+    return { canceled: false, playlists: [], limited: false, error: cleanText(error && error.message, 240) || 'Dateiauswahl fehlgeschlagen.' };
+  }
+  if (result.canceled || !result.filePaths.length) return { canceled: true, playlists: [], limited: false, error: null };
+  const filename = result.filePaths[0];
+  try {
+    const stat = await fsp.stat(filename);
+    if (stat.size > 10 * 1024 * 1024) throw new Error('Die Datei ist größer als 10 MB.');
+    const text = await fsp.readFile(filename, 'utf8');
+    const extension = path.extname(filename).toLowerCase();
+    if (extension === '.csv') return parseSpotifyCsv(text, filename);
+    if (extension === '.json') return parseSpotifyJson(text, filename);
+    throw new Error('Bitte eine CSV- oder JSON-Datei auswählen.');
+  } catch (error) {
+    return { canceled: false, playlists: [], limited: false, error: cleanText(error && error.message, 240) || 'Die Datei konnte nicht gelesen werden.' };
+  }
+});
+
+ipcMain.handle('playlist-match', async (_event, tracks) => {
+  if (!Array.isArray(tracks)) return { matches: [], error: 'Ungültige Titelliste.' };
+  const batch = tracks.slice(0, 50).map((track) => ({
+    title: cleanText(track && track.title, 300),
+    artist: cleanText(track && track.artist, 300),
+    durationMs: Math.max(0, Number(track && track.durationMs) || 0),
+    isrc: cleanText(track && track.isrc, 20).toUpperCase(),
+  }));
+  try {
+    const result = await matchSpotifyTracks(batch);
+    return { matches: result.tracks, error: null };
+  } catch (error) {
+    return { matches: batch.map(() => null), error: cleanText(error && error.message, 200) || 'Deezer-Suche fehlgeschlagen.' };
+  }
+});
 
 ipcMain.handle('search-catalog', async (_event, query) => {
   const empty = { query: '', tracks: [], errors: [], sources: { apple: 0, deezer: 0 } };

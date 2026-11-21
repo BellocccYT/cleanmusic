@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.0.2**
+**Version 1.1.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -132,6 +132,20 @@ Suche erscheinen zusätzlich die aktuellen Deezer-Charts.
   Abspielen automatisch erneuert.
 
 Alles bleibt lokal (im Profil der App); es gibt kein Konto und keine Cloud.
+
+### Playlists von Spotify übertragen
+
+Unter **Bibliothek → Von Spotify übertragen** kannst du eine öffentliche Spotify-Playlist
+per `open.spotify.com/playlist/...`-Link oder Spotify-URI übernehmen. Für private
+Playlists kannst du bei exportify.app mit deinem Spotify-Konto eine CSV-Datei exportieren
+und in CleanMusic laden. Auch CSV-Dateien von TuneMyMusic und Soundiiz sowie Spotifys
+Playlist-JSON aus dem persönlichen Datenexport werden unterstützt. Bei JSON-Exporten
+mit mehreren Playlists kannst du auswählen, welche importiert werden.
+
+CleanMusic übernimmt nur Titelnamen und Artists und sucht dazu öffentliche
+30-Sekunden-Vorschauen im Deezer-Katalog. Spotify kann über den öffentlichen Link nur
+bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import verwenden.
+Nicht gefundene Titel zeigt CleanMusic am Ende an und kann sie in die Zwischenablage kopieren.
 
 ### Cutter-Modus (für Videos)
 

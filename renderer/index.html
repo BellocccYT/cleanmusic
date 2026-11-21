@@ -83,6 +83,10 @@
           </span>
           <span class="svc-name">Neue Playlist</span>
         </button>
+        <button class="nav-item nav-new" id="btn-spotify-import" title="Spotify-Playlist übertragen">
+          <span class="nav-ic"><span aria-hidden="true">↗</span></span>
+          <span class="svc-name">Von Spotify übertragen</span>
+        </button>
       </div>
 
       <div class="nav-group grow">
@@ -290,7 +294,7 @@
   <div id="dialog" class="dialog-backdrop" hidden>
     <form class="dialog" id="dialog-form" autocomplete="off">
       <h3 id="dialog-title"></h3>
-      <p id="dialog-text" class="muted small" hidden></p>
+      <div id="dialog-text" class="muted small" hidden></div>
       <input id="dialog-input" type="text" maxlength="80" spellcheck="false" />
       <div class="dialog-actions">
         <button type="button" class="btn ghost small" id="dialog-cancel">Abbrechen</button>

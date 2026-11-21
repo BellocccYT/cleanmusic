@@ -114,6 +114,17 @@ Verhalten.
   (z. B. nur für verknüpfte Kanäle, neue Veröffentlichungen nur mit aktivem Abo).
   CleanMusic entfernt keine Wasserzeichen und lädt nichts ohne Abo.
 
+## Spotify-Playlist-Import
+
+- Beim Link-Import lädt CleanMusic ausschließlich die öffentliche Spotify-Einbett-Seite
+  einer Playlist. Es wird kein Spotify-Login geöffnet oder verwendet; CleanMusic greift
+  weder auf Cookies noch auf Sitzungstokens zu.
+- Alternativ wählst du selbst eine CSV- oder JSON-Exportdatei aus. Die Titelnamen und
+  Artists werden mit der öffentlichen Deezer-API abgeglichen, um verfügbare Vorschauen
+  zu finden.
+- Übernommen werden nur Metadaten (Titel, Artist, optional Album/Laufzeit/ISRC) und
+  Deezer-Vorschau-Links. CleanMusic lädt oder speichert keine Spotify-Musikdateien.
+
 ## Cutter-Modus: Was du in Videos verwenden darfst
 
 Der Cutter-Modus zeigt nur Quellen, deren Nutzung in Videos ausdrücklich
