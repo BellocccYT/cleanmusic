@@ -24,10 +24,12 @@ Kein DRM-Bypass. Kein Herunterladen oder Speichern von Streams.
 ## Einblicke
 
 <p align="center">
-  <img src="docs/images/01-startseite.png" alt="CleanMusic-Startseite mit Suche, Diensten und Charts" width="100%">
+  <img src="docs/images/01-startseite.png" alt="CleanMusic-Startseite mit Vorschlägen, Trending & Neuheiten und Player" width="100%">
 </p>
 
 <table>
+  <tr><th colspan="2">Zehn Themes und Akzentfarbe aus dem Cover</th></tr>
+  <tr><td colspan="2"><img src="docs/images/02-themes.png" alt="Theme-Auswahl mit zehn Farbschemata" width="100%"></td></tr>
   <tr><th>Cutter-Modus</th><th>Vollbild-Player mit Visualizer</th></tr>
   <tr>
     <td><img src="docs/images/03-cutter.png" alt="Cutter-Modus mit NCS-Kategorien, Titelliste und Video-Credits" width="100%"></td>
