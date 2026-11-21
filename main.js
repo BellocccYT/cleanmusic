@@ -348,7 +348,7 @@ function normalizeItunes(json) {
       artist: track.artistName || '',
       album: track.collectionName || '',
       artwork: track.artworkUrl100
-        ? track.artworkUrl100.replace('100x100bb', '300x300bb')
+        ? track.artworkUrl100.replace('100x100bb', '600x600bb')
         : '',
       duration: Math.round((Number(track.trackTimeMillis) || 0) / 1000),
       preview: track.previewUrl,
@@ -361,7 +361,7 @@ function normalizeItunes(json) {
 const DEEZER_PLACEHOLDER = 'd41d8cd98f00b204e9800998ecf8427e';
 
 function deezerCover(album) {
-  const url = (album && (album.cover_medium || album.cover_big)) || '';
+  const url = (album && (album.cover_xl || album.cover_big || album.cover_medium)) || '';
   return url.includes(DEEZER_PLACEHOLDER) ? '' : url;
 }
 
@@ -4307,7 +4307,7 @@ ipcMain.handle('artist-page', async (_event, input) => {
         .map((album) => ({
           id: Number(album.id) || 0,
           title: cleanText(album.title, 200),
-          cover: cleanUrl(album.cover_medium || album.cover || '', /^https:\/\//i),
+          cover: cleanUrl(album.cover_xl || album.cover_big || album.cover_medium || album.cover || '', /^https:\/\//i),
           year: cleanText(album.release_date, 10).slice(0, 4),
           type: cleanText(album.record_type, 20),
         }))

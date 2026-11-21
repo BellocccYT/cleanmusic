@@ -3870,6 +3870,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.9.1': [
+      'Schärfere Cover: Apple Music und Deezer liefern jetzt die großen Bilder – vor allem im Vollbild-Player und beim Plattenspieler zu sehen.',
+      'Visualizer: verbindet sich zuverlässiger mit dem Ton und reagiert lebendiger auf leise Songs.',
+    ],
     '1.9.0': [
       'Plattenspieler: Das Cover dreht sich als Schallplatte, im Vollbild-Player setzt der Tonarm beim Abspielen auf und hebt bei Pause ab.',
       'Einschalten: Einstellungen → Aussehen → Plattenspieler, oder im Vollbild oben rechts das Platten-Symbol.',

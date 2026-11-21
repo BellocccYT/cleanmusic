@@ -22,6 +22,8 @@ window.CMVisualizer = (function () {
   let ctx = null;
   let analyser = null;
   let source = null; // MediaStreamSource from captureStream() – owned here
+  let captureStream = null;
+  let captureAddTrackHandler = null;
   let tapped = false; // analyser hangs on the engine source instead
   let engine = null; // { source, level, makeup, gain, limiter }
   const output = { gain: 1, normalize: false, bass: 0, treble: 0 };
@@ -42,7 +44,8 @@ window.CMVisualizer = (function () {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
+      // Keep the spectrum responsive enough to read in the small player bar.
+      analyser.smoothingTimeConstant = 0.65;
       analyser.minDecibels = -90;
       analyser.maxDecibels = -18;
       freq = new Uint8Array(analyser.frequencyBinCount);
@@ -57,6 +60,11 @@ window.CMVisualizer = (function () {
   }
 
   function disconnectSource() {
+    if (captureStream && captureAddTrackHandler) {
+      captureStream.removeEventListener('addtrack', captureAddTrackHandler);
+    }
+    captureStream = null;
+    captureAddTrackHandler = null;
     if (tapped && engine) {
       try {
         engine.source.disconnect(analyser);
@@ -99,20 +107,28 @@ window.CMVisualizer = (function () {
       stream = null;
     }
     if (!stream) return;
+    captureStream = stream;
 
     const hook = () => {
-      if (!stream.getAudioTracks().length) return false;
+      if (!stream.getAudioTracks().some((track) => track.readyState === 'live')) return false;
       try {
-        disconnectSource();
         source = ctx.createMediaStreamSource(stream);
         source.connect(analyser);
       } catch {
         source = null;
+        return false;
       }
       return true;
     };
 
-    if (!hook()) stream.addEventListener('addtrack', hook, { once: true });
+    if (!hook()) {
+      captureAddTrackHandler = () => {
+        if (!hook()) return;
+        stream.removeEventListener('addtrack', captureAddTrackHandler);
+        captureAddTrackHandler = null;
+      };
+      stream.addEventListener('addtrack', captureAddTrackHandler);
+    }
   }
 
   function attach(audio) {
@@ -290,7 +306,9 @@ window.CMVisualizer = (function () {
       for (let k = a; k < b && k < freq.length; k += 1) sum += freq[k];
       const value = sum / (b - a) / 255;
       // gentle lift for the highs, which are naturally quieter
-      out[i] = Math.min(1, value * (0.85 + (i / count) * 0.6));
+      // A perceptual lift makes quieter masters visibly react without clipping
+      // the high-energy bands.
+      out[i] = Math.min(1, Math.pow(value, 0.8) * (0.9 + (i / count) * 0.55));
     }
     return out;
   }
@@ -305,7 +323,8 @@ window.CMVisualizer = (function () {
   }
 
   function idleLevels(count, t) {
-    return Array.from({ length: count }, (_, i) => 0.05 + 0.04 * Math.sin(t / 700 + i * 0.45));
+    // Keep the idle motion visible if a remote stream restricts audio capture.
+    return Array.from({ length: count }, (_, i) => 0.09 + 0.08 * Math.sin(t / 600 + i * 0.45));
   }
 
   function drawBars(canvas, target, t, ratio) {
@@ -445,7 +464,9 @@ window.CMVisualizer = (function () {
     if (t - silentSince < 1500 || t - lastRecover < 3000) return;
     lastRecover = t;
     if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
-    if (!engine) connect();
+    // If captureStream has not produced an audio track yet, keep its addtrack
+    // listener alive instead of replacing that stream before the track arrives.
+    if (!engine && !captureAddTrackHandler) connect();
   }
 
   function loop() {
