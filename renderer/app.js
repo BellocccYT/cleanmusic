@@ -245,6 +245,13 @@
         streamSafe: false,
         lyrics: false,
         transition: 'off', // off | gapless | crossfade
+        layout: 'advanced', // simple | advanced
+        lyricsSize: 'm', // s | m | l | xl
+        lyricsAlign: 'left', // left | center
+        lyricsOffset: 0, // seconds, + = lines come earlier
+        lyricsScroll: true,
+        lyricsDim: true,
+        lyricsFocus: false, // big lyrics, no cover
         crossfadeSecs: 6,
         onboarded: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
@@ -805,6 +812,7 @@
       case 'album': return artistList('album');
       case 'shared': return state.sharedList || [];
       case 'review': return reviewEntries();
+      case 'downloads': return visibleDownloads();
       case 'radio': return state.radio.entries;
       case 'releases': return state.releases.tracks;
       case 'pcharts': return state.pluginCharts.items;
@@ -3861,6 +3869,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.8.0': [
+      'Downloads-Liste (Seitenleiste): alles aus deinem Cutting-Ordner – abspielen, ins Schnittprogramm ziehen, Credit kopieren, im Ordner zeigen.',
+      'Suchleiste dort: findet Downloads nach Wörtern in Titel, Künstler, Ordner, Lizenz und Credit. Wunschordner direkt dort wählbar.',
+      'Ansicht Einfach/Erweitert (Einstellungen → Aussehen): Einfach blendet Profi-Funktionen aus.',
+      'Songtexte: Schriftgröße, Ausrichtung, Zeitversatz, Mitscrollen, Abdunkeln und Großansicht – in den Einstellungen und direkt im Vollbild-Player. Der Bildlauf hält die aktuelle Zeile jetzt in der Mitte.',
+    ],
     '1.7.0': [
       'Übergänge: Crossfade (2–12 s) oder lückenlos – Einstellungen → Wiedergabe.',
       'Dein Rückblick (Seitenleiste): Hörminuten, Top-Künstler, Top-Titel und wann du hörst – nur lokal gezählt.',
@@ -4297,11 +4311,11 @@
     return Boolean(state.settings.lyrics);
   }
 
-  async function ensureLyrics() {
+  async function ensureLyrics(refresh = false) {
     const item = currentItem();
     if (!lyricsOn() || !item || item.kind === 'radio' || !bridge.lyricsGet) return;
     const key = matchKey(item);
-    if (!key || key === lyricsState.key) return;
+    if (!key || (!refresh && key === lyricsState.key)) return;
     Object.assign(lyricsState, { key, lines: [], plain: '', loading: true, error: null, index: -1 });
     renderLyrics();
     let result;
@@ -4311,6 +4325,7 @@
         artist: item.artist || '',
         album: item.album || '',
         duration: Math.round(item.duration || (Number.isFinite(audio.duration) ? audio.duration : 0) || 0),
+        refresh,
       });
     } catch (error) {
       result = { error: error.message };
@@ -4340,6 +4355,8 @@
     if (barButton) barButton.classList.toggle('active', lyricsOn());
     if (!host) return;
     host.hidden = !lyricsOn();
+    applyLyricsStyle(host);
+    renderLyricsTools();
     if (host.hidden) return;
     if (lyricsState.loading) {
       host.innerHTML = '<p class="lyrics-note">Songtext wird gesucht …</p>';
@@ -4371,9 +4388,13 @@
     host.innerHTML = `<p class="lyrics-note">${esc(lyricsState.error || 'Kein Songtext gefunden.')}</p>`;
   }
 
+  function lyricsOffset() {
+    return Math.max(-10, Math.min(10, Number(state.settings.lyricsOffset) || 0));
+  }
+
   function updateLyricLine(force = false) {
     if (!lyricsOn() || !lyricsState.lines.length || !lyricsSynced()) return;
-    const time = audio.currentTime || 0;
+    const time = (audio.currentTime || 0) + lyricsOffset();
     let index = -1;
     for (let at = 0; at < lyricsState.lines.length; at += 1) {
       if (lyricsState.lines[at].time <= time + 0.2) index = at;
@@ -4381,16 +4402,151 @@
     }
     if (index === lyricsState.index && !force) return;
     lyricsState.index = index;
+    showLyricLine(index, force);
+    pushPlayerState();
+  }
+
+  function showLyricLine(index, force) {
     const host = $('#fs-lyrics');
     if (host && !host.hidden && state.fullscreen) {
-      host.querySelectorAll('p.on').forEach((line) => line.classList.remove('on'));
+      host.querySelectorAll('p[data-ly]').forEach((line) => {
+        const at = Number(line.dataset.ly);
+        line.classList.toggle('on', at === index);
+        line.classList.toggle('past', at < index);
+      });
       const line = host.querySelector(`[data-ly="${index}"]`);
-      if (line) {
-        line.classList.add('on');
-        host.scrollTo({ top: line.offsetTop - host.clientHeight / 2 + line.clientHeight / 2, behavior: force ? 'auto' : 'smooth' });
+      if (line && state.settings.lyricsScroll !== false) {
+        // Measured inside the box (not via offsetTop, which counts from the whole player).
+        const box = host.getBoundingClientRect();
+        const rect = line.getBoundingClientRect();
+        const top = host.scrollTop + (rect.top - box.top) - host.clientHeight / 2 + rect.height / 2;
+        host.scrollTo({ top: Math.max(0, top), behavior: force ? 'auto' : 'smooth' });
       }
     }
-    pushPlayerState();
+  }
+
+  const LYRIC_SIZES = ['s', 'm', 'l', 'xl'];
+
+  function applyLyricsStyle(host) {
+    const size = LYRIC_SIZES.includes(state.settings.lyricsSize) ? state.settings.lyricsSize : 'm';
+    host.dataset.size = size;
+    host.dataset.align = state.settings.lyricsAlign === 'center' ? 'center' : 'left';
+    host.classList.toggle('dim-past', state.settings.lyricsDim !== false);
+    const fullscreen = $('#fullscreen');
+    if (fullscreen) fullscreen.classList.toggle('lyrics-focus', lyricsOn() && Boolean(state.settings.lyricsFocus));
+  }
+
+  function offsetLabel() {
+    const value = lyricsOffset();
+    return value ? `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(1).replace('.', ',')} s` : '±0 s';
+  }
+
+  function renderLyricsTools() {
+    const tools = $('#fs-lyrics-tools');
+    if (!tools) return;
+    tools.hidden = !lyricsOn();
+    if (tools.hidden) return;
+    tools.innerHTML = `
+      <button data-ly-tool="smaller" title="Schrift kleiner">A−</button>
+      <button data-ly-tool="bigger" title="Schrift größer">A+</button>
+      <button data-ly-tool="align" title="Ausrichtung">${state.settings.lyricsAlign === 'center' ? 'Mitte' : 'Links'}</button>
+      <button data-ly-tool="earlier" title="Songtext früher (wenn er hinterherhinkt)">« früher</button>
+      <span class="ly-offset" title="Zeitversatz">${offsetLabel()}</span>
+      <button data-ly-tool="later" title="Songtext später (wenn er vorausläuft)">später »</button>
+      <button data-ly-tool="focus" class="${state.settings.lyricsFocus ? 'on' : ''}" title="Großansicht: nur Songtext">Großansicht</button>
+      <button data-ly-tool="refresh" title="Songtext neu suchen">Neu suchen</button>`;
+  }
+
+  function setLyricsOption(patch) {
+    Object.assign(state.settings, patch);
+    saveSettings();
+    renderLyrics();
+    if (state.view === 'settings') renderSettings();
+  }
+
+  function lyricsTool(tool) {
+    const size = LYRIC_SIZES.indexOf(LYRIC_SIZES.includes(state.settings.lyricsSize) ? state.settings.lyricsSize : 'm');
+    switch (tool) {
+      case 'smaller':
+        setLyricsOption({ lyricsSize: LYRIC_SIZES[Math.max(0, size - 1)] });
+        return;
+      case 'bigger':
+        setLyricsOption({ lyricsSize: LYRIC_SIZES[Math.min(LYRIC_SIZES.length - 1, size + 1)] });
+        return;
+      case 'align':
+        setLyricsOption({ lyricsAlign: state.settings.lyricsAlign === 'center' ? 'left' : 'center' });
+        return;
+      case 'earlier':
+        setLyricsOption({ lyricsOffset: Math.round((lyricsOffset() + 0.5) * 10) / 10 });
+        return;
+      case 'later':
+        setLyricsOption({ lyricsOffset: Math.round((lyricsOffset() - 0.5) * 10) / 10 });
+        return;
+      case 'focus':
+        setLyricsOption({ lyricsFocus: !state.settings.lyricsFocus });
+        return;
+      case 'refresh':
+        ensureLyrics(true);
+        return;
+      default:
+    }
+  }
+
+  function lyricsSettingsHtml() {
+    const size = LYRIC_SIZES.includes(state.settings.lyricsSize) ? state.settings.lyricsSize : 'm';
+    const sizes = [
+      ['s', 'Klein'],
+      ['m', 'Normal'],
+      ['l', 'Groß'],
+      ['xl', 'Sehr groß'],
+    ];
+    return `
+          <div class="lyrics-settings ${lyricsOn() ? '' : 'is-off'}">
+            <div class="setting-line">
+              <strong>Schriftgröße</strong>
+              <div class="radio-tags">${sizes
+                .map(([id, label]) => `<button class="radio-tag ${size === id ? 'active' : ''}" data-ly-size="${id}">${label}</button>`)
+                .join('')}</div>
+            </div>
+            <div class="setting-line">
+              <strong>Ausrichtung</strong>
+              <div class="radio-tags">
+                <button class="radio-tag ${state.settings.lyricsAlign !== 'center' ? 'active' : ''}" data-ly-align="left">Links</button>
+                <button class="radio-tag ${state.settings.lyricsAlign === 'center' ? 'active' : ''}" data-ly-align="center">Mitte</button>
+              </div>
+            </div>
+            <label class="toggle-row">
+              <span>
+                <strong>Zeitversatz: <span id="ly-offset-value">${offsetLabel()}</span></strong>
+                <small>Wenn der Songtext hinterherhinkt: nach rechts (früher). Läuft er voraus: nach links.</small>
+              </span>
+              <input type="range" id="opt-ly-offset" min="-5" max="5" step="0.1" value="${lyricsOffset()}" />
+            </label>
+            <label class="toggle-row">
+              <span><strong>Automatisch mitscrollen</strong><small>Die aktuelle Zeile bleibt in der Mitte.</small></span>
+              <input type="checkbox" id="opt-ly-scroll" ${state.settings.lyricsScroll !== false ? 'checked' : ''} />
+            </label>
+            <label class="toggle-row">
+              <span><strong>Gesungene Zeilen abdunkeln</strong><small>Was schon dran war, wird blasser.</small></span>
+              <input type="checkbox" id="opt-ly-dim" ${state.settings.lyricsDim !== false ? 'checked' : ''} />
+            </label>
+            <label class="toggle-row">
+              <span><strong>Großansicht</strong><small>Im Vollbild-Player nur Songtext, groß und ohne Cover.</small></span>
+              <input type="checkbox" id="opt-ly-focus" ${state.settings.lyricsFocus ? 'checked' : ''} />
+            </label>
+          </div>`;
+  }
+
+  function wireLyricsTools() {
+    const fullscreen = $('#fullscreen');
+    if (fullscreen) {
+      fullscreen.addEventListener('click', (event) => {
+        const tool = event.target.closest('[data-ly-tool]');
+        if (!tool) return;
+        event.stopPropagation();
+        lyricsTool(tool.dataset.lyTool);
+      });
+    }
   }
 
   function currentLyric() {
@@ -4786,6 +4942,11 @@
     const lyricsButton = $('#btn-lyrics');
     if (lyricsButton) {
       lyricsButton.addEventListener('click', () => {
+        lyricsButton.blur();
+        if (lyricsOn() && state.fullscreen) {
+          toggleLyrics(false);
+          return;
+        }
         if (!currentItem()) {
           toast('Spiel zuerst einen Titel ab.');
           return;
@@ -5701,6 +5862,249 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * 1.8: download list with search
+   * ---------------------------------------------------------------- */
+
+  const dlView = { files: [], base: '', loading: false, error: null, query: '', folder: 'all' };
+  let dlSearchTimer = null;
+
+  function creditField(text, label) {
+    const match = String(text || '').match(new RegExp(`^${label}:\\s*(.+)$`, 'mi'));
+    return match ? match[1].trim() : '';
+  }
+
+  function downloadItem(file) {
+    const credit = file.credit || '';
+    const stem = file.name.replace(/\.[^.]+$/, '');
+    const title = creditField(credit, 'Titel') || stem.replace(/^.+? - /, '') || stem;
+    const artist = creditField(credit, 'Von') || (stem.includes(' - ') ? stem.split(' - ')[0] : '');
+    const licenseLine = creditField(credit, 'Lizenz');
+    const license = (licenseLine.match(/^(CC0|CC BY(?:-SA)?(?: \d\.\d)?|Public Domain|NCS)/i) || [])[1] || (licenseLine ? licenseLine.split(' ')[0] : '');
+    const creditLines = credit.split(/\r?\n/);
+    const creditAt = creditLines.findIndex((line) => /^Credit für deine Videobeschreibung:/i.test(line));
+    return {
+      id: `dl:${file.path}`,
+      kind: 'local',
+      source: 'local',
+      sourceLabel: file.folder || 'Download',
+      title,
+      artist,
+      album: '',
+      artwork: '',
+      duration: 0,
+      url: file.url,
+      link: creditField(credit, 'Quelle'),
+      path: file.path,
+      dir: file.folder || '',
+      license,
+      credit: creditAt >= 0 ? (creditLines[creditAt + 1] || '').trim() : '',
+      creditText: credit,
+      size: file.size,
+      at: file.at,
+      fileName: file.name,
+    };
+  }
+
+  function dlWords(value) {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[̀-ͯ]/g, '')
+      .split(/[^a-z0-9äöüß]+/)
+      .filter(Boolean);
+  }
+
+  function visibleDownloads() {
+    const words = dlWords(dlView.query);
+    return dlView.files.filter((item) => {
+      if (dlView.folder !== 'all' && item.dir !== dlView.folder) return false;
+      if (!words.length) return true;
+      const haystack = dlWords(`${item.title} ${item.artist} ${item.fileName} ${item.dir} ${item.license} ${item.creditText}`).join(' ');
+      return words.every((word) => haystack.includes(word));
+    });
+  }
+
+  async function loadDownloads() {
+    if (!bridge.downloadsList) return;
+    dlView.loading = true;
+    renderDownloads();
+    let result;
+    try {
+      result = await bridge.downloadsList(state.settings.downloadDir || '');
+    } catch (error) {
+      result = { files: [], error: error.message };
+    }
+    dlView.loading = false;
+    dlView.error = (result && result.error) || null;
+    dlView.base = (result && result.base) || '';
+    dlView.files = ((result && result.files) || []).map(downloadItem);
+    if (dlView.folder !== 'all' && !dlView.files.some((item) => item.dir === dlView.folder)) dlView.folder = 'all';
+    renderDownloads();
+  }
+
+  function downloadRows(items) {
+    return items
+      .map((item, index) => {
+        const playing = isPlayingId(item.id);
+        const date = item.at ? new Date(item.at).toLocaleDateString('de-DE') : '';
+        return `
+          <div class="dl-row song-row ${playing ? 'playing' : ''}" data-list="downloads" data-index="${index}" title="${esc(item.path)}">
+            <span class="dl-ic">${playing ? EQ : '♪'}</span>
+            <span class="dl-meta">
+              <span class="song-title">${esc(item.title)}</span>
+              <span class="song-sub">${esc([item.artist, item.dir, date, fmtSize(item.size)].filter(Boolean).join(' · '))}</span>
+            </span>
+            ${item.license ? `<span class="lic-badge" data-lic="${licenseKey(item.license)}">${esc(item.license)}</span>` : ''}
+            <span class="dl-actions">
+              <button class="icon-btn dl-btn done" data-dl-file="${esc(item.path)}" data-dl-act="reveal" data-index="${index}" draggable="true" title="In dein Schnittprogramm ziehen – Klick zeigt die Datei">${ICONS.file}</button>
+              ${item.credit ? `<button class="icon-btn" data-dl-act="credit" data-index="${index}" title="Credit kopieren">${ICONS.copy}</button>` : ''}
+              <button class="icon-btn" data-dl-act="reveal" data-index="${index}" title="Im Ordner zeigen">${ICONS.folder || '📁'}</button>
+            </span>
+          </div>`;
+      })
+      .join('');
+  }
+
+  function renderDownloads() {
+    const host = $('#view-downloads');
+    if (!host) return;
+    const folders = Array.from(new Set(dlView.files.map((item) => item.dir).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'de'));
+    const items = visibleDownloads();
+    const focused = document.activeElement && document.activeElement.id === 'dl-search';
+    host.innerHTML = `
+      <div class="page downloads-page">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Cutting-Ordner</div>
+            <h2>Downloads</h2>
+            <p>${dlView.base ? esc(dlView.base) : 'Alles, was CleanMusic für deine Videos gespeichert hat.'}</p>
+          </div>
+          <div class="page-actions">
+            <button class="btn ghost small" data-dl-page="pick" title="Wunschordner für alle Downloads wählen">Ordner ändern …</button>
+            <button class="btn ghost small" data-dl-page="refresh">Aktualisieren</button>
+            <button class="btn ghost small" data-dl-page="open">Ordner öffnen</button>
+          </div>
+        </div>
+        <div class="radio-search dl-search">
+          <input id="dl-search" type="search" value="${esc(dlView.query)}" placeholder="In Downloads suchen – Titel, Künstler, Lizenz, Credit …" autocomplete="off" spellcheck="false" />
+        </div>
+        ${
+          folders.length > 1
+            ? `<div class="radio-tags dl-folders">${[['all', 'Alle'], ...folders.map((name) => [name, name])]
+                .map(
+                  ([id, label]) =>
+                    `<button class="radio-tag ${dlView.folder === id ? 'active' : ''}" data-dl-folder="${esc(id)}">${esc(label)} <small>${
+                      id === 'all' ? dlView.files.length : dlView.files.filter((item) => item.dir === id).length
+                    }</small></button>`
+                )
+                .join('')}</div>`
+            : ''
+        }
+        ${
+          dlView.loading && !dlView.files.length
+            ? '<div class="search-status"><span class="spinner small"></span><span>Downloads werden gelesen …</span></div>'
+            : !dlView.files.length
+              ? `<div class="panel empty-search"><h3>Noch keine Downloads</h3><p>${esc(
+                  dlView.error ||
+                    'Schalte unter Einstellungen → Downloads „Nur Cutting“ ein und lade im Cutter-Modus freie Titel herunter – sie erscheinen dann hier.'
+                )}</p></div>`
+              : !items.length
+                ? '<div class="panel empty-search"><h3>Nichts gefunden</h3><p>Kein Download passt zu deiner Suche.</p></div>'
+                : `<div class="results-head"><span>${items.length} ${items.length === 1 ? 'Datei' : 'Dateien'}</span><span class="muted small">Klick spielt ab · Symbol ziehen ins Schnittprogramm</span></div>
+                   <div class="song-list">${downloadRows(items)}</div>`
+        }
+      </div>`;
+    if (focused) {
+      const input = $('#dl-search');
+      if (input) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    }
+  }
+
+  async function downloadAction(button) {
+    const item = visibleDownloads()[Number(button.dataset.index)];
+    if (!item) return;
+    if (button.dataset.dlAct === 'reveal') {
+      if (!(await bridge.cuttingReveal(item.path))) toast('Datei nicht mehr vorhanden.');
+      return;
+    }
+    if (button.dataset.dlAct === 'credit') {
+      const ok = await bridge.copyText(item.credit);
+      toast(ok ? 'Credit kopiert' : 'Kopieren nicht möglich');
+    }
+  }
+
+  const ADVANCED_VIEWS = ['creator', 'downloads'];
+
+  function layoutMode() {
+    return state.settings.layout === 'simple' ? 'simple' : 'advanced';
+  }
+
+  function applyLayout() {
+    document.documentElement.dataset.layout = layoutMode();
+  }
+
+  function setLayout(mode) {
+    state.settings.layout = mode === 'simple' ? 'simple' : 'advanced';
+    saveSettings();
+    applyLayout();
+    if (layoutMode() === 'simple' && ADVANCED_VIEWS.includes(state.view)) showView('home');
+    renderSettings();
+    toast(layoutMode() === 'simple' ? 'Einfache Ansicht – Profi-Funktionen ausgeblendet' : 'Erweiterte Ansicht – alle Funktionen sichtbar');
+  }
+
+  function layoutPanelHtml() {
+    const mode = layoutMode();
+    return `
+        <div class="bg-picker">
+          <strong>Ansicht</strong>
+          <div class="radio-tags">
+            <button class="radio-tag ${mode === 'simple' ? 'active' : ''}" data-layout-id="simple">Einfach</button>
+            <button class="radio-tag ${mode === 'advanced' ? 'active' : ''}" data-layout-id="advanced">Erweitert</button>
+          </div>
+          <small class="muted">Einfach blendet Cutter-Modus, Downloads, Plugins, Discord und Profi-Schalter aus. Nichts geht verloren – zurück jederzeit hier.</small>
+        </div>`;
+  }
+
+  async function pickDownloadFolder() {
+    if (!bridge.pluginPickFolder) return;
+    const picked = await bridge.pluginPickFolder();
+    if (!picked) return;
+    state.settings.downloadDir = picked;
+    saveSettings();
+    syncCreatorDownloadFolder();
+    toast('Neuer Download-Ordner gespeichert');
+    loadDownloads();
+  }
+
+  function wireDownloadsView() {
+    const view = $('#view-downloads');
+    if (!view) return;
+    view.addEventListener('input', (event) => {
+      if (event.target.id !== 'dl-search') return;
+      dlView.query = event.target.value;
+      clearTimeout(dlSearchTimer);
+      dlSearchTimer = setTimeout(renderDownloads, 150);
+    });
+    view.addEventListener('click', (event) => {
+      const page = event.target.closest('[data-dl-page]');
+      if (page) {
+        if (page.dataset.dlPage === 'refresh') loadDownloads();
+        if (page.dataset.dlPage === 'pick') pickDownloadFolder();
+        if (page.dataset.dlPage === 'open' && bridge.cuttingOpenFolder) bridge.cuttingOpenFolder(state.settings.downloadDir || '');
+        return;
+      }
+      const folder = event.target.closest('[data-dl-folder]');
+      if (folder) {
+        dlView.folder = folder.dataset.dlFolder;
+        renderDownloads();
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------- *
    * Queue + autoplay
    *
    * The queue is state.queue.items with the playing title at .index.
@@ -6442,6 +6846,7 @@
     if (result && result.ok) {
       downloads[entry.id] = { path: result.path, at: Date.now() };
       writeJSON(STORAGE.downloads, downloads);
+      if (state.view === 'downloads') loadDownloads();
       toast(`${result.existed ? 'Schon vorhanden' : 'Gespeichert'}: ${result.name} – zum Schnittprogramm ziehen`);
     } else {
       toast((result && result.error) || 'Download fehlgeschlagen');
@@ -7417,6 +7822,7 @@
           </span>
           <input type="checkbox" id="opt-cover-accent" ${state.settings.coverAccent ? 'checked' : ''} />
         </label>
+        ${layoutPanelHtml()}
         ${backgroundPanelHtml()}
         <p class="muted small" style="margin-top:10px">
           Farbpaletten von Catppuccin, Dracula, Nord, Tokyo Night, Rosé Pine, Gruvbox und Everforest,
@@ -8696,14 +9102,14 @@
             </span>
             <input type="checkbox" id="opt-autoplay" ${autoplayOn() ? 'checked' : ''} />
           </label>
-          <label class="toggle-row">
+          <label class="toggle-row advanced-only">
             <span>
               <strong>KI-Songs markieren</strong>
               <small>Titel mit KI-Hinweis (z. B. „AI Cover“, „Suno“, „KI-generiert“) bekommen ein „KI?“. Erkennt nur, was gekennzeichnet ist.</small>
             </span>
             <input type="checkbox" id="opt-markai" ${state.settings.markAi !== false ? 'checked' : ''} />
           </label>
-          <label class="toggle-row">
+          <label class="toggle-row advanced-only">
             <span>
               <strong>Stream-sicher-Modus (Ich streame)</strong>
               <small>Zeigt in der Player-Leiste, ob der Titel frei lizenziert ist (NCS, CC0, CC BY), und Songwünsche kommen nur noch aus freier Musik.</small>
@@ -8717,6 +9123,7 @@
             </span>
             <input type="checkbox" id="opt-lyrics" ${lyricsOn() ? 'checked' : ''} />
           </label>
+          ${lyricsSettingsHtml()}
           ${transitionSettingsHtml()}
           <label class="toggle-row">
             <span>
@@ -8864,6 +9271,7 @@ ${updatePanel()}
     setActiveService(name === 'service' ? state.currentService : null);
 
     if (name === 'review') renderReview();
+    if (name === 'downloads') loadDownloads();
     if (name === 'search') {
       renderSearchResults();
       if (!state.charts.loaded) loadCharts();
@@ -9069,6 +9477,13 @@ ${updatePanel()}
    * ---------------------------------------------------------------- */
 
   function onRowClick(event) {
+    const dlAction = event.target.closest('[data-dl-act]');
+    if (dlAction) {
+      event.preventDefault();
+      event.stopPropagation();
+      downloadAction(dlAction);
+      return;
+    }
     const artistLink = event.target.closest('[data-artist]');
     if (artistLink) {
       event.preventDefault();
@@ -9455,6 +9870,23 @@ ${updatePanel()}
         return;
       }
 
+      const lySize = event.target.closest('[data-ly-size]');
+      if (lySize) {
+        setLyricsOption({ lyricsSize: lySize.dataset.lySize });
+        return;
+      }
+      const lyAlign = event.target.closest('[data-ly-align]');
+      if (lyAlign) {
+        setLyricsOption({ lyricsAlign: lyAlign.dataset.lyAlign });
+        return;
+      }
+
+      const layoutButton = event.target.closest('[data-layout-id]');
+      if (layoutButton) {
+        setLayout(layoutButton.dataset.layoutId);
+        return;
+      }
+
       const bgButton = event.target.closest('[data-bg-id]');
       if (bgButton) {
         setBackground(bgButton.dataset.bgId);
@@ -9642,6 +10074,23 @@ ${updatePanel()}
 
       if (event.target.id === 'opt-lyrics') {
         toggleLyrics(event.target.checked);
+        return;
+      }
+
+      if (event.target.id === 'opt-ly-offset') {
+        state.settings.lyricsOffset = Math.round(Number(event.target.value) * 10) / 10 || 0;
+        saveSettings();
+        const label = $('#ly-offset-value');
+        if (label) label.textContent = offsetLabel();
+        renderLyrics();
+        return;
+      }
+
+      if (['opt-ly-scroll', 'opt-ly-dim', 'opt-ly-focus'].includes(event.target.id)) {
+        const key = { 'opt-ly-scroll': 'lyricsScroll', 'opt-ly-dim': 'lyricsDim', 'opt-ly-focus': 'lyricsFocus' }[event.target.id];
+        state.settings[key] = event.target.checked;
+        saveSettings();
+        renderLyrics();
         return;
       }
 
@@ -9880,6 +10329,7 @@ ${updatePanel()}
           return;
         case 'lyrics':
           toggleLyrics();
+          act.blur();
           return;
         case 'play':
           $('#btn-play').click();
@@ -10001,6 +10451,7 @@ ${updatePanel()}
   function init() {
     applyTheme();
     applyBackground();
+    applyLayout();
     window.addEventListener('error', (event) => {
       console.error(`Renderer error: ${event.message}`);
     });
@@ -10019,6 +10470,8 @@ ${updatePanel()}
     wireLocalExtras();
     wireArtistPage();
     wireCutterExtras();
+    wireDownloadsView();
+    wireLyricsTools();
     wireReview();
     wireGlobal();
 
@@ -10312,6 +10765,25 @@ ${updatePanel()}
       refreshDownloadButtons();
     },
     playerSnapshot: () => playerSnapshot(),
+    setLayout: (mode) => setLayout(mode),
+    lyricsScrollTest: (index) => {
+      state.nowMode = 'plugin';
+      renderLyrics();
+      lyricsState.index = index;
+      showLyricLine(index, true);
+      const host = $('#fs-lyrics');
+      const line = host && host.querySelector(`[data-ly="${index}"]`);
+      if (!host || !line) return null;
+      const box = host.getBoundingClientRect();
+      const rect = line.getBoundingClientRect();
+      return { lineCenter: Math.round(rect.top + rect.height / 2 - box.top), boxHeight: Math.round(box.height), lines: host.querySelectorAll('p[data-ly]').length };
+    },
+    downloadsView: async (query) => {
+      dlView.query = query || '';
+      showView('downloads');
+      await loadDownloads();
+      return { files: dlView.files.length, visible: visibleDownloads().length, rows: document.querySelectorAll('#view-downloads .dl-row').length, first: (visibleDownloads()[0] || {}).title || '', credit: Boolean((visibleDownloads()[0] || {}).credit) };
+    },
     bpmSynthetic: (bpm) => {
       const rate = 22050;
       const buffer = new AudioBuffer({ length: rate * 40, sampleRate: rate, numberOfChannels: 1 });

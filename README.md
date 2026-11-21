@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.7.0**
+**Version 1.8.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -284,11 +284,19 @@ Songwünsche aus dem Chat kommen nur noch aus freier Musik (Creative Commons üb
 Quellen-Plugin, Openverse). Erkennt nur bekannte Lizenzen – im Zweifel gilt ein Titel
 als nicht sicher.
 
+### Downloads-Liste
+
+In der Seitenleiste **Downloads**: alles aus deinem Cutting-Ordner (auch YouTube-CC, Schnitte und Abo-Downloads) – abspielen, ins Schnittprogramm ziehen, Credit kopieren, im Ordner zeigen. Die **Suchleiste** findet Downloads nach Wörtern in Titel, Künstler, Ordner, Lizenz und Credit; **„Ordner ändern …“** wählt deinen Wunschordner.
+
+### Ansicht: Einfach oder Erweitert
+
+*Einstellungen → Aussehen → Ansicht*: **Einfach** blendet Cutter-Modus, Downloads, Plugins, Discord und Profi-Schalter aus, **Erweitert** zeigt alles.
+
 ### Songtexte
 
 Im Vollbild-Player blendet der Knopf mit den drei Linien den **mitlaufenden Songtext**
 ein (aus der freien Datenbank [LRCLIB](https://lrclib.net); dabei werden nur Titel,
-Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“.
+Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. Einstellbar (in den Einstellungen und direkt im Vollbild-Player): Schriftgröße, Ausrichtung, Zeitversatz, Mitscrollen, gesungene Zeilen abdunkeln, Großansicht ohne Cover, „Neu suchen“.
 
 ### Lautstärke
 

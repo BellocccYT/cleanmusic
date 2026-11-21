@@ -1665,6 +1665,42 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_V17:', JSON.stringify(v17));
+
+          // 1.8: download list + search – in a throwaway folder with two test files.
+          const listDir = path.join(app.getPath('temp'), 'cleanmusic-smoke-dllist');
+          fs.rmSync(listDir, { recursive: true, force: true });
+          fs.mkdirSync(path.join(listDir, 'Kevin MacLeod - Lustig'), { recursive: true });
+          fs.writeFileSync(path.join(listDir, 'Kevin MacLeod - Lustig', 'Kevin MacLeod - Fluffing a Duck.mp3'), Buffer.alloc(64));
+          fs.writeFileSync(
+            path.join(listDir, 'Kevin MacLeod - Lustig', 'Kevin MacLeod - Fluffing a Duck.txt'),
+            'Titel: Fluffing a Duck\r\nVon: Kevin MacLeod\r\nLizenz: CC BY 4.0\r\n\r\nCredit für deine Videobeschreibung:\r\n"Fluffing a Duck" Kevin MacLeod (incompetech.com)\r\n'
+          );
+          fs.mkdirSync(path.join(listDir, 'Schnitte'), { recursive: true });
+          fs.writeFileSync(path.join(listDir, 'Schnitte', 'Other Song (0-10 bis 0-20).wav'), Buffer.alloc(64));
+          const v18 = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              cm.setDownloads('off', ${JSON.stringify(listDir)});
+              const all = await cm.downloadsView('');
+              const duck = await cm.downloadsView('duck macleod');
+              const none = await cm.downloadsView('gibtsnicht xyz');
+              cm.setDownloads('off', '');
+              cm.showView('home');
+              return { all, duck, none };
+            })()
+          `);
+          fs.rmSync(listDir, { recursive: true, force: true });
+          v18.layout = await mainWindow.webContents.executeJavaScript(`
+            (() => {
+              const cm = window.CleanMusic;
+              cm.setLayout('simple');
+              const hidden = getComputedStyle(document.querySelector('.nav-item[data-view="creator"]')).display === 'none';
+              cm.setLayout('advanced');
+              const shown = getComputedStyle(document.querySelector('.nav-item[data-view="creator"]')).display !== 'none';
+              return { hiddenInSimple: hidden, shownInAdvanced: shown };
+            })()
+          `);
+          console.log('SMOKE_V18:', JSON.stringify(v18));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -2699,6 +2735,59 @@ ipcMain.handle('cutting-open-folder', async (_event, folder) => {
     return 'Ordner konnte nicht angelegt werden.';
   }
   return shell.openPath(target);
+});
+
+/* Download list (1.8): audio files in the Cutting folder (two levels deep)
+ * with the credit .txt next to them – read only, nothing is changed. */
+ipcMain.handle('downloads-list', async (_event, folder) => {
+  const base = downloadBase(folder);
+  const files = [];
+  const readCredit = (file) => {
+    const stem = file.replace(/\.[^.]+$/, '');
+    for (const candidate of [`${stem}.txt`, `${stem} – Lizenz.txt`]) {
+      try {
+        if (fs.existsSync(candidate)) return fs.readFileSync(candidate, 'utf8').slice(0, 4000);
+      } catch {
+        /* next */
+      }
+    }
+    return '';
+  };
+  const walk = (dir, depth) => {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (files.length >= 3000) return;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < 2) walk(full, depth + 1);
+        continue;
+      }
+      if (!/\.(mp3|ogg|wav|flac|m4a|aac|aiff?)$/i.test(entry.name)) continue;
+      let stat;
+      try {
+        stat = fs.statSync(full);
+      } catch {
+        continue;
+      }
+      files.push({
+        path: full,
+        name: entry.name,
+        folder: path.relative(base, dir).split(path.sep).join(' / '),
+        size: stat.size,
+        at: stat.mtimeMs,
+        url: pathToFileURL(full).href,
+        credit: readCredit(full),
+      });
+    }
+  };
+  walk(base, 0);
+  files.sort((a, b) => b.at - a.at);
+  return { base, files, error: null };
 });
 
 /* Backup: favourites, playlists, credits, history, appearance as JSON. */
@@ -4146,7 +4235,7 @@ ipcMain.handle('lyrics-get', async (_event, query) => {
   if (!title) return { lines: [], plain: '', error: 'Kein Titel.' };
   const duration = Math.round(Number(input.duration) || 0);
   const key = `${artist}|${title}`.toLowerCase();
-  if (lyricsCache.has(key)) return lyricsCache.get(key);
+  if (!input.refresh && lyricsCache.has(key)) return lyricsCache.get(key);
 
   const pick = (entry) =>
     entry && typeof entry === 'object'

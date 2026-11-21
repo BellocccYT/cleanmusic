@@ -5309,3 +5309,134 @@ html.bg-still #app-bg::after {
 #btn-lyrics.active {
   color: var(--accent);
 }
+
+/* 1.8: download list */
+.dl-search {
+  margin-bottom: 12px;
+}
+.dl-folders {
+  margin-bottom: 12px;
+}
+.dl-folders .radio-tag small {
+  opacity: 0.6;
+  margin-left: 4px;
+}
+.dl-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+}
+.dl-ic {
+  text-align: center;
+  color: var(--muted);
+}
+.dl-meta {
+  display: grid;
+  min-width: 0;
+}
+.dl-meta .song-title,
+.dl-meta .song-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dl-actions {
+  display: flex;
+  gap: 2px;
+}
+.dl-row .dl-btn {
+  cursor: grab;
+}
+
+/* 1.8: simple layout – professional features hidden */
+html[data-layout='simple'] .nav-item[data-view='creator'],
+html[data-layout='simple'] .nav-item[data-view='downloads'],
+html[data-layout='simple'] .creator-label,
+html[data-layout='simple'] #creator-nav,
+html[data-layout='simple'] #plugins-panel,
+html[data-layout='simple'] #discord-panel,
+html[data-layout='simple'] #downloads-panel,
+html[data-layout='simple'] #viz-panel,
+html[data-layout='simple'] .advanced-only {
+  display: none !important;
+}
+
+/* 1.8: lyrics options */
+.fs-lyrics {
+  position: relative;
+}
+.fs-lyrics[data-size='s'] p { font-size: 16px; }
+.fs-lyrics[data-size='m'] p { font-size: 20px; }
+.fs-lyrics[data-size='l'] p { font-size: 26px; }
+.fs-lyrics[data-size='xl'] p { font-size: 34px; line-height: 1.25; }
+.fs-lyrics[data-align='center'] {
+  text-align: center;
+}
+.fs-lyrics[data-align='center'] p {
+  transform-origin: center;
+}
+.fs-lyrics.dim-past p.past {
+  color: rgba(255, 255, 255, 0.24);
+}
+.fs-lyrics p.lyrics-note {
+  font-size: 12px !important;
+}
+.fs-lyrics-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.fs-lyrics-tools button,
+.fs-lyrics-tools .ly-offset {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.08);
+}
+.fs-lyrics-tools button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.fs-lyrics-tools button.on {
+  background: rgb(var(--fs-a));
+  color: #06121a;
+}
+.fs-lyrics-tools .ly-offset {
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.fs.lyrics-focus .fs-cover-wrap {
+  display: none;
+}
+.fs.lyrics-focus .fs-meta {
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+}
+.fs.lyrics-focus .fs-lyrics {
+  max-height: 52vh;
+}
+.lyrics-settings {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 8px 14px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-soft);
+}
+.lyrics-settings.is-off {
+  opacity: 0.55;
+}
+.lyrics-settings .setting-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+#btn-lyrics:focus:not(:focus-visible),
+#fs-lyrics-btn:focus:not(:focus-visible) {
+  outline: none;
+}
