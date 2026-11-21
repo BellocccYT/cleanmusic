@@ -85,7 +85,8 @@
   const STORAGE = {
     settings: 'cleanmusic.settings.v1',
     library: 'cleanmusic.library.v1',
-    volume: 'cleanmusic.volume.v1',
+    volume: 'cleanmusic.volume.v1', // 0.7 and older: linear element volume
+    level: 'cleanmusic.volume.v2', // { level (slider, 0–1.5), muted }
     playback: 'cleanmusic.playback.v1',
     collection: 'cleanmusic.collection.v1',
     matches: 'cleanmusic.matches.v1',
@@ -194,7 +195,15 @@
       readJSON(STORAGE.playback, {})
     ),
     settings: Object.assign(
-      { systemBrowser: false, fullTracks: true, visualizer: true, vizStyle: 'radial', miniViz: true },
+      {
+        systemBrowser: false,
+        fullTracks: true,
+        visualizer: true,
+        vizStyle: 'radial',
+        miniViz: true,
+        normalize: false,
+        volumeBoost: false,
+      },
       readJSON(STORAGE.settings, {})
     ),
   };
@@ -3097,27 +3106,138 @@
     });
 
     const volume = $('#volume');
-    const storedVolume = Number(readJSON(STORAGE.volume, 0.85));
-    const initialVolume = Number.isFinite(storedVolume) ? Math.min(1, Math.max(0, storedVolume)) : 0.85;
-    volume.value = String(initialVolume);
-    audio.volume = initialVolume;
+    Object.assign(vol, loadVolume());
+    applyVolume();
 
-    volume.addEventListener('input', () => {
-      audio.volume = Number(volume.value);
-      audio.muted = false;
-      writeJSON(STORAGE.volume, Number(volume.value));
-      updateMuteIcon();
+    volume.addEventListener('input', () => setVolume(Number(volume.value)));
+    $('#btn-mute').addEventListener('click', () => setMuted(!vol.muted));
+    [volume, $('#btn-mute'), $('#volume-pct')].forEach((el) => {
+      if (el) el.addEventListener('wheel', onVolumeWheel, { passive: false });
     });
+  }
 
-    $('#btn-mute').addEventListener('click', () => {
-      audio.muted = !audio.muted;
-      updateMuteIcon();
+  /* ---------------------------------------------------------------- *
+   * Volume
+   *
+   * The slider is perceptual: gain = level². 0.7 and older stored the
+   * linear element volume – migrated once via level = √volume. With
+   * "Boost" the slider goes up to 150 %, with "Lautstärke angleichen" a
+   * gentle leveller runs; both need the Web Audio engine in visualizer.js.
+   * ---------------------------------------------------------------- */
+
+  const vol = { level: 0.92, muted: false };
+
+  function loadVolume() {
+    const stored = readJSON(STORAGE.level, null);
+    if (stored && Number.isFinite(Number(stored.level))) {
+      return { level: Math.min(1.5, Math.max(0, Number(stored.level))), muted: Boolean(stored.muted) };
+    }
+    const old = Number(readJSON(STORAGE.volume, NaN));
+    return { level: Number.isFinite(old) ? Math.sqrt(Math.min(1, Math.max(0, old))) : 0.92, muted: false };
+  }
+
+  function maxVolume() {
+    return state.settings.volumeBoost ? 1.5 : 1;
+  }
+
+  function persistVolume() {
+    writeJSON(STORAGE.level, { level: vol.level, muted: vol.muted });
+  }
+
+  function volumeLevel() {
+    return Math.min(vol.level, maxVolume());
+  }
+
+  function applyVolume() {
+    const level = volumeLevel();
+    const gain = level * level;
+    const viz = window.CMVisualizer;
+    const engine =
+      viz && viz.setOutput
+        ? viz.setOutput({
+            gain: vol.muted ? 0 : gain,
+            normalize: Boolean(state.settings.normalize),
+            want: Boolean(state.settings.normalize || state.settings.volumeBoost),
+          })
+        : false;
+    if (engine) {
+      // The engine applies the gain – the element itself stays at full level.
+      audio.volume = 1;
+      audio.muted = false;
+    } else {
+      audio.volume = Math.min(1, gain);
+      audio.muted = vol.muted;
+    }
+    updateVolumeUi();
+  }
+
+  function setVolume(level, { unmute = true } = {}) {
+    if (!Number.isFinite(level)) return;
+    vol.level = Math.round(Math.min(maxVolume(), Math.max(0, level)) * 100) / 100;
+    if (unmute) vol.muted = false;
+    applyVolume();
+    persistVolume();
+  }
+
+  function nudgeVolume(delta) {
+    setVolume(volumeLevel() + delta);
+  }
+
+  function setMuted(muted) {
+    vol.muted = Boolean(muted);
+    // Unmuting at 0 % would stay silent – come back at a sensible level.
+    if (!vol.muted && vol.level < 0.02) vol.level = 0.5;
+    applyVolume();
+    persistVolume();
+  }
+
+  function onVolumeWheel(event) {
+    event.preventDefault();
+    const delta = event.deltaY || event.deltaX;
+    if (!delta) return;
+    nudgeVolume((delta < 0 ? 1 : -1) * (event.shiftKey ? 0.01 : 0.05));
+  }
+
+  function volumeStage() {
+    const level = volumeLevel();
+    if (vol.muted || level <= 0) return 'mute';
+    if (level < 0.34) return 'low';
+    if (level < 0.7) return 'mid';
+    return 'high';
+  }
+
+  function updateVolumeUi() {
+    const max = maxVolume();
+    const level = vol.muted ? 0 : volumeLevel();
+    const pct = Math.round(volumeLevel() * 100);
+    const over = !vol.muted && level > 1;
+    ['#volume', '#fs-volume'].forEach((selector) => {
+      const input = $(selector);
+      if (!input) return;
+      input.max = String(max);
+      input.value = String(level);
+      input.style.setProperty('--fill', `${((level / max) * 100).toFixed(2)}%`);
+      input.style.setProperty('--full', `${((1 / max) * 100).toFixed(2)}%`);
+      input.classList.toggle('over', over);
+      input.setAttribute('aria-valuetext', vol.muted ? 'stumm' : `${pct} Prozent`);
+    });
+    ['#volume-pct', '#fs-volume-pct'].forEach((selector) => {
+      const label = $(selector);
+      if (!label) return;
+      label.textContent = vol.muted ? 'stumm' : `${pct} %`;
+      label.classList.toggle('over', over);
+    });
+    const stage = volumeStage();
+    ['#btn-mute', '#fs-mute'].forEach((selector) => {
+      const button = $(selector);
+      if (!button) return;
+      button.dataset.level = stage;
+      button.title = vol.muted ? 'Ton an (M)' : 'Stumm schalten (M)';
     });
   }
 
   function updateMuteIcon() {
-    const button = $('#btn-mute');
-    button.style.opacity = audio.muted ? '0.45' : '1';
+    updateVolumeUi();
   }
 
   /* ---------------------------------------------------------------- *
@@ -3646,7 +3766,7 @@
     $('#fs-add').disabled = !item;
     $('#fs-play').classList.toggle('playing', !audio.paused);
     $('#fs-play').classList.toggle('loading', $('#btn-play').classList.contains('loading'));
-    $('#fs-volume').value = String(audio.volume);
+    updateVolumeUi();
 
     $$('#fs-styles [data-fs-style]').forEach((button) => {
       const style = button.dataset.fsStyle;
@@ -4210,6 +4330,20 @@
               <small>Standard: eingebetteter Web-Player direkt in CleanMusic.</small>
             </span>
             <input type="checkbox" id="opt-system" ${state.settings.systemBrowser ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>Lautstärke angleichen</strong>
+              <small>Gleicht laute und leise Titel sanft an, damit du nicht ständig nachregeln musst.</small>
+            </span>
+            <input type="checkbox" id="opt-normalize" ${state.settings.normalize ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>Boost bis 150 %</strong>
+              <small>Für leise Quellen. Ein Limiter verhindert Übersteuern. Mausrad, M und +/− regeln überall.</small>
+            </span>
+            <input type="checkbox" id="opt-boost" ${state.settings.volumeBoost ? 'checked' : ''} />
           </label>
         </div>
 
@@ -4880,6 +5014,25 @@
         return;
       }
 
+      if (event.target.id === 'opt-normalize' || event.target.id === 'opt-boost') {
+        const boost = event.target.id === 'opt-boost';
+        state.settings[boost ? 'volumeBoost' : 'normalize'] = event.target.checked;
+        saveSettings();
+        if (vol.level > maxVolume()) vol.level = maxVolume();
+        applyVolume();
+        persistVolume();
+        toast(
+          boost
+            ? event.target.checked
+              ? 'Boost an – Lautstärke bis 150 %'
+              : 'Boost aus – maximal 100 %'
+            : event.target.checked
+              ? 'Lautstärke wird angeglichen'
+              : 'Lautstärke-Angleichung aus'
+        );
+        return;
+      }
+
       if (event.target.id === 'opt-mini-viz') {
         state.settings.miniViz = event.target.checked;
         saveSettings();
@@ -5056,14 +5209,9 @@
       updateFsProgress();
     });
 
-    $('#fs-volume').addEventListener('input', (event) => {
-      const value = Number(event.target.value);
-      audio.volume = value;
-      audio.muted = false;
-      $('#volume').value = String(value);
-      writeJSON(STORAGE.volume, value);
-      updateMuteIcon();
-    });
+    $('#fs-volume').addEventListener('input', (event) => setVolume(Number(event.target.value)));
+    $('#fs-volume').addEventListener('wheel', onVolumeWheel, { passive: false });
+    $('#fs-mute').addEventListener('click', () => setMuted(!vol.muted));
 
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement && state.fullscreen) closeFullscreen();
@@ -5080,6 +5228,16 @@
       if (key === 'f' || key === 'F') {
         event.preventDefault();
         toggleFullscreen();
+        return;
+      }
+      if (key === 'm' || key === 'M') {
+        event.preventDefault();
+        setMuted(!vol.muted);
+        return;
+      }
+      if (key === '+' || key === '-') {
+        event.preventDefault();
+        nudgeVolume(key === '+' ? 0.05 : -0.05);
         return;
       }
 
@@ -5103,11 +5261,7 @@
         case 'ArrowUp':
         case 'ArrowDown': {
           event.preventDefault();
-          const value = Math.min(1, Math.max(0, audio.volume + (key === 'ArrowUp' ? 0.05 : -0.05)));
-          audio.volume = value;
-          $('#volume').value = String(value);
-          $('#fs-volume').value = String(value);
-          writeJSON(STORAGE.volume, value);
+          nudgeVolume(key === 'ArrowUp' ? 0.05 : -0.05);
           return;
         }
         case 'n':
@@ -5160,6 +5314,7 @@
     });
     viz.setEnabled(state.settings.visualizer);
     applyVisualizerVisibility();
+    applyVolume();
 
     bridge.onDiscordStatus((status) => {
       state.discord.status = status || {};
@@ -5227,6 +5382,18 @@
       showView('creator');
     },
     collectCreditAt: (key, index) => collectCredit(entryAt(key, index)),
+    volume: () => ({
+      level: vol.level,
+      muted: vol.muted,
+      max: maxVolume(),
+      stage: volumeStage(),
+      element: Number(audio.volume.toFixed(4)),
+      elementMuted: audio.muted,
+      engine: window.CMVisualizer.engineState ? window.CMVisualizer.engineState() : null,
+      label: ($('#volume-pct') || {}).textContent || '',
+    }),
+    setVolume: (level) => setVolume(Number(level)),
+    setMuted: (muted) => setMuted(muted),
     visualizer: () => ({
       enabled: window.CMVisualizer.isEnabled(),
       analysing: window.CMVisualizer.isAnalysing(),

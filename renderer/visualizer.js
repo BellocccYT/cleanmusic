@@ -9,13 +9,22 @@
  *
  * Styles: 'bars' (spectrum), 'radial' (ring around an anchor element,
  * e.g. the cover), 'wave' (oscilloscope), 'mini' (player bar).
+ *
+ * Optional output engine (volume boost above 100 % and loudness levelling):
+ * only built once the user turns one of those on. It routes the element
+ * through Web Audio (source → leveller → make-up → volume → limiter) for the
+ * rest of the session; the visualizer then taps that source directly and the
+ * AudioContext is never suspended again.
  */
 
 window.CMVisualizer = (function () {
   let audioEl = null;
   let ctx = null;
   let analyser = null;
-  let source = null;
+  let source = null; // MediaStreamSource from captureStream() – owned here
+  let tapped = false; // analyser hangs on the engine source instead
+  let engine = null; // { source, level, makeup, gain, limiter }
+  const output = { gain: 1, normalize: false };
   let freq = null;
   let wave = null;
   let enabled = false;
@@ -43,6 +52,14 @@ window.CMVisualizer = (function () {
   }
 
   function disconnectSource() {
+    if (tapped && engine) {
+      try {
+        engine.source.disconnect(analyser);
+      } catch {
+        /* ignore */
+      }
+    }
+    tapped = false;
     if (!source) return;
     try {
       source.disconnect();
@@ -53,7 +70,20 @@ window.CMVisualizer = (function () {
   }
 
   function connect() {
-    if (!enabled || !audioEl || !audioEl.getAttribute('src')) return;
+    if (!enabled || !audioEl) return;
+    if (engine) {
+      ensureContext();
+      if (tapped) return;
+      disconnectSource();
+      try {
+        engine.source.connect(analyser);
+        tapped = true;
+      } catch {
+        tapped = false;
+      }
+      return;
+    }
+    if (!audioEl.getAttribute('src')) return;
     ensureContext();
     disconnectSource();
 
@@ -83,7 +113,82 @@ window.CMVisualizer = (function () {
   function attach(audio) {
     audioEl = audio;
     audio.addEventListener('playing', connect);
-    audio.addEventListener('emptied', disconnectSource);
+    audio.addEventListener('emptied', () => {
+      if (!engine) disconnectSource();
+    });
+    // With the engine the sound itself runs through the context – keep it awake.
+    audio.addEventListener('play', () => {
+      if (engine && ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+    });
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Output engine
+   * ---------------------------------------------------------------- */
+
+  function buildEngine() {
+    if (engine || !audioEl) return engine;
+    ensureContext();
+    try {
+      const src = ctx.createMediaElementSource(audioEl);
+      const level = ctx.createDynamicsCompressor();
+      const makeup = ctx.createGain();
+      const gain = ctx.createGain();
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -1.5;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.12;
+      src.connect(level);
+      level.connect(makeup);
+      makeup.connect(gain);
+      gain.connect(limiter);
+      limiter.connect(ctx.destination);
+      engine = { source: src, level, makeup, gain, limiter };
+    } catch {
+      engine = null;
+      return null;
+    }
+    // The captureStream tap is no longer needed – analyse the engine source.
+    disconnectSource();
+    if (enabled) connect();
+    return engine;
+  }
+
+  function applyOutput() {
+    if (!engine) return;
+    const now = ctx.currentTime;
+    engine.gain.gain.setTargetAtTime(output.gain, now, 0.02);
+    const { level, makeup } = engine;
+    if (output.normalize) {
+      // Gentle levelling: loud masters come down a little, quiet ones up.
+      level.threshold.value = -26;
+      level.knee.value = 12;
+      level.ratio.value = 3;
+      level.attack.value = 0.012;
+      level.release.value = 0.35;
+      makeup.gain.setTargetAtTime(1.9, now, 0.05);
+    } else {
+      level.threshold.value = 0;
+      level.knee.value = 0;
+      level.ratio.value = 1;
+      makeup.gain.setTargetAtTime(1, now, 0.05);
+    }
+  }
+
+  /**
+   * gain: linear output gain (may be > 1), normalize: levelling on/off,
+   * want: build the engine if it does not exist yet.
+   * Returns true when the engine carries the sound (element volume must
+   * then stay at 1 – the gain is applied here).
+   */
+  function setOutput(options = {}) {
+    if (Number.isFinite(options.gain)) output.gain = Math.max(0, Math.min(3, options.gain));
+    if (typeof options.normalize === 'boolean') output.normalize = options.normalize;
+    if (options.want && !engine) buildEngine();
+    applyOutput();
+    return Boolean(engine);
   }
 
   function setEnabled(on) {
@@ -93,7 +198,7 @@ window.CMVisualizer = (function () {
       loop();
     } else {
       disconnectSource();
-      if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+      if (ctx && ctx.state === 'running' && !engine) ctx.suspend().catch(() => {});
       cancelAnimationFrame(raf);
       raf = 0;
       targets.forEach((_target, canvas) => clearCanvas(canvas));
@@ -314,7 +419,7 @@ window.CMVisualizer = (function () {
       }
       lastDraw = t;
 
-      if (source && analyser) {
+      if ((source || tapped) && analyser) {
         analyser.getByteFrequencyData(freq);
         analyser.getByteTimeDomainData(wave);
         let bass = 0;
@@ -336,7 +441,7 @@ window.CMVisualizer = (function () {
 
       frameListeners.forEach((listener) => {
         try {
-          listener(energy, Boolean(source));
+          listener(energy, Boolean(source) || tapped);
         } catch {
           /* ignore */
         }
@@ -356,12 +461,24 @@ window.CMVisualizer = (function () {
     attach,
     setEnabled,
     isEnabled: () => enabled,
-    isAnalysing: () => Boolean(source),
+    isAnalysing: () => Boolean(source) || tapped,
+    setOutput,
+    hasEngine: () => Boolean(engine),
+    engineState: () => (engine ? { context: ctx.state, gain: output.gain, normalize: output.normalize } : null),
     register,
     setStyle,
     setColors,
     onFrame,
     wake,
     energy: () => energy,
+    // RMS of what the analyser hears right now (null = nothing connected).
+    signal: () => {
+      if (!(source || tapped) || !analyser) return null;
+      const buffer = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(buffer);
+      let sum = 0;
+      for (let i = 0; i < buffer.length; i += 1) sum += buffer[i] * buffer[i];
+      return Number(Math.sqrt(sum / buffer.length).toFixed(4));
+    },
   };
 })();

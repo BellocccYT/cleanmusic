@@ -2176,6 +2176,53 @@ input[type="range"]:hover::-webkit-slider-thumb {
 
 #volume {
   width: 98px;
+  --fill: 0%;
+  --full: 100%;
+  background: linear-gradient(90deg, var(--accent) var(--fill), var(--panel-3) var(--fill));
+}
+
+#volume.over {
+  background: linear-gradient(
+    90deg,
+    var(--accent) var(--full),
+    #ffb347 var(--full),
+    #ffb347 var(--fill),
+    var(--panel-3) var(--fill)
+  );
+}
+
+.volume-pct {
+  min-width: 40px;
+  font-size: 10.5px;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  cursor: ns-resize;
+  user-select: none;
+}
+
+.volume-pct.over,
+.fs-volume-pct.over {
+  color: #ffb347;
+}
+
+/* Speaker icon: waves follow the level, a cross when muted. */
+.vol-btn .ic-vol .x {
+  display: none;
+}
+.vol-btn[data-level='mute'] .ic-vol .w1,
+.vol-btn[data-level='mute'] .ic-vol .w2,
+.vol-btn[data-level='low'] .ic-vol .w2 {
+  display: none;
+}
+.vol-btn[data-level='mid'] .ic-vol .w2 {
+  opacity: 0.35;
+}
+.vol-btn[data-level='mute'] .ic-vol .x {
+  display: inline;
+}
+.vol-btn[data-level='mute'] {
+  color: var(--muted-2);
 }
 
 #audio {
@@ -3692,6 +3739,40 @@ body.fs-open .toast {
 
 #fs-volume {
   width: 120px;
+  --fill: 0%;
+  --full: 100%;
+  background: linear-gradient(90deg, rgb(var(--fs-b)) var(--fill), rgba(255, 255, 255, 0.16) var(--fill));
+}
+
+#fs-volume.over {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--fs-b)) var(--full),
+    #ffb347 var(--full),
+    #ffb347 var(--fill),
+    rgba(255, 255, 255, 0.16) var(--fill)
+  );
+}
+
+.fs-mute {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: inherit;
+}
+
+.fs-mute:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.fs-volume-pct {
+  min-width: 40px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .fs-next {

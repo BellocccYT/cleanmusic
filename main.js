@@ -628,6 +628,45 @@ function createMainWindow() {
           `);
           console.log('SMOKE_APPLE:', JSON.stringify(appleResult));
 
+          // Volume: perceptual curve, mute key, wheel, boost engine (stays on
+          // for the radio test below, so radio runs through Web Audio too).
+          const volumeResult = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const cm = window.CleanMusic;
+              const audio = document.querySelector('#audio');
+              cm.setVolume(0.5);
+              const half = cm.volume();
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
+              const muted = cm.volume();
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
+              document.querySelector('#volume').dispatchEvent(new WheelEvent('wheel', { deltaY: -100, cancelable: true }));
+              const wheel = cm.volume().level;
+              const boost = document.querySelector('#opt-boost');
+              boost.checked = true;
+              boost.dispatchEvent(new Event('change', { bubbles: true }));
+              cm.setVolume(1.4);
+              const t0 = audio.currentTime;
+              await wait(1200);
+              const boosted = cm.volume();
+              const result = {
+                half: { element: half.element, label: half.label, stage: half.stage },
+                muted: { muted: muted.muted, stage: muted.stage, label: muted.label },
+                wheel,
+                boosted: { level: boosted.level, element: boosted.element, engine: boosted.engine, label: boosted.label },
+                over: document.querySelector('#volume').classList.contains('over'),
+                advancing: audio.currentTime > t0,
+                signal: window.CMVisualizer.signal(),
+              };
+              boost.checked = false;
+              boost.dispatchEvent(new Event('change', { bubbles: true }));
+              result.afterBoostOff = cm.volume().level;
+              cm.setVolume(0.8);
+              return result;
+            })()
+          `);
+          console.log('SMOKE_VOLUME:', JSON.stringify(volumeResult));
+
           await mainWindow.webContents.executeJavaScript(
             "window.CleanMusic.showView('radio')"
           );
@@ -649,6 +688,8 @@ function createMainWindow() {
                 time: Number(audio.currentTime.toFixed(2)),
                 mediaError: audio.error ? audio.error.code : null,
                 liveIndicator: !document.querySelector('#live-indicator').hidden,
+                engine: window.CMVisualizer.hasEngine(),
+                signal: window.CMVisualizer.signal(),
                 seekHidden: document.querySelector('.seek-row').hidden,
               };
             })()
