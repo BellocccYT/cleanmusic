@@ -127,6 +127,11 @@ Verhalten.
 
 ## Cutter-Modus: Was du in Videos verwenden darfst
 
+**Ausnahme YouTube-Tab (ab 1.4):** Er erscheint nur mit einem aktiven Quellen-Plugin
+und ist **nicht lizenzgeprüft**. Jeder Treffer trägt „⚠ Content ID möglich“, es gibt
+keinen Download. „Creative Commons“ ist die Angabe des Uploaders bei YouTube –
+CleanMusic prüft sie nicht. Ob du einen Titel verwenden darfst, klärst du selbst.
+
 Der Cutter-Modus zeigt nur Quellen, deren Nutzung in Videos ausdrücklich
 erlaubt ist – **unter Bedingungen**, die CleanMusic an jedem Titel anzeigt:
 

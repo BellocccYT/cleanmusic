@@ -15,7 +15,8 @@
  *
  * Optional song requests (off by default, CleanMusic 1.0.1 or newer):
  *
- *   GET /request?token=…&user=…&q=…   → !sr: search + queue, one line for the chat
+ *   GET /request?token=…&user=…&q=…   → !sr: search text or a link (Spotify, YouTube,
+ *                                        Deezer, Apple Music) → "next" in the queue + playlist
  *   GET /wrongsong?token=…&user=…     → !wrongsong: remove the viewer's last request
  *   GET /requests                     → open requests as one chat line
  *
@@ -53,6 +54,10 @@ function settings() {
     requestMax: 15,
     requestMaxMinutes: 10,
     requestBlock: '',
+    requestPosition: 'next',
+    requestPlaylist: 'Songwünsche aus dem Chat',
+    requestBlockAi: true,
+    requestAiWords: '',
   };
   return Object.assign(defaults, ctx ? ctx.settings.get() : {});
 }
@@ -206,7 +211,15 @@ async function songRequest(url) {
   if (pending.length >= max) return [200, `${at} Die Wunschliste ist gerade voll – versuch es später noch mal.`];
 
   const minutes = Math.max(0, Number(s.requestMaxMinutes) || 0);
-  const result = await ctx.player.request(query, { by: user, source: s.requestSource, maxSeconds: minutes * 60 });
+  const result = await ctx.player.request(query, {
+    by: user,
+    source: s.requestSource,
+    maxSeconds: minutes * 60,
+    position: s.requestPosition === 'end' ? 'end' : 'next',
+    playlist: String(s.requestPlaylist || '').trim(),
+    blockAi: Boolean(s.requestBlockAi),
+    aiWords: String(s.requestAiWords || ''),
+  });
   if (!result || !result.ok) {
     switch (result && result.reason) {
       case 'not-found':
@@ -217,6 +230,12 @@ async function songRequest(url) {
         return [200, `${at} Das ist zu lang (höchstens ${minutes} Minuten).`];
       case 'no-source':
         return [200, `${at} Gerade gibt es keine vollen Titel – Songwünsche gehen später wieder.`];
+      case 'ai':
+        return [200, `${at} Das ist als KI-Musik gekennzeichnet und wird nicht gespielt.`];
+      case 'unsupported-link':
+        return [200, `${at} Dieser Link wird nicht unterstützt – schick Titel und Artist oder einen Link von Spotify, YouTube, Deezer oder Apple Music.`];
+      case 'no-lookup':
+        return [200, `${at} YouTube-Links gehen gerade nicht – schick Titel und Artist.`];
       default:
         return [200, `${at} Das hat nicht geklappt – versuch es gleich noch mal.`];
     }
@@ -226,6 +245,7 @@ async function songRequest(url) {
   songRequests += 1;
   const preview = result.track && result.track.preview ? ' (30-s-Vorschau)' : '';
   if (result.playingNow) return [200, `${at} ${trackName(result.track)} läuft jetzt${preview}.`];
+  if (result.position === 1) return [200, `${at} ${trackName(result.track)} kommt als Nächstes${preview}.`];
   return [200, `${at} ${trackName(result.track)} ist auf Platz ${result.position}${preview}.`];
 }
 
@@ -357,15 +377,17 @@ module.exports = {
   apiVersion: 2,
   id: 'streamerbot',
   name: 'Streamer.bot',
-  version: '1.1.0',
+  version: '1.2.0',
   description:
     'Chat-Befehle für Twitch über Streamer.bot: !song postet den aktuellen Titel, !skip und !pause steuern CleanMusic, ' +
-    'optional Songwünsche mit !sr.',
+    'optional Songwünsche mit !sr – per Suche oder Link (Spotify, YouTube, Deezer, Apple Music).',
   help:
     'In Streamer.bot je Befehl eine Action anlegen und darin die Sub-Action „Fetch URL“ mit der kopierten ' +
     'Adresse verwenden. Bei !song das Ergebnis in eine Variable speichern und mit „Send Message to Channel“ ' +
     'in den Twitch-Chat schreiben. !skip und !pause in Streamer.bot nur für Mods freigeben. ' +
     'Songwünsche (!sr, !wrongsong, !wishes) erst unten einschalten; die Antwort ebenfalls in den Chat schreiben. ' +
+    'Links von Spotify, Deezer und Apple Music gehen immer, YouTube-Links mit einem aktiven Quellen-Plugin (ab CleanMusic 1.4.0). ' +
+    'Der KI-Filter erkennt nur gekennzeichnete Songs (z. B. „AI Cover“, „Suno“). ' +
     'Achte darauf, dass du gewünschte Musik im Stream spielen darfst. ' +
     'Schritt für Schritt: extras/plugins/README.md im CleanMusic-Repository.',
   settings: [
@@ -408,6 +430,37 @@ module.exports = {
       min: 0,
       max: 180,
       help: 'Gilt für volle Titel aus dem Quellen-Plugin.',
+    },
+    {
+      id: 'requestPosition',
+      type: 'select',
+      label: 'Wünsche spielen',
+      default: 'next',
+      options: [
+        { value: 'next', label: 'Als Nächstes (neuester Wunsch zuerst)' },
+        { value: 'end', label: 'Nach den anderen Wünschen' },
+      ],
+    },
+    {
+      id: 'requestPlaylist',
+      type: 'text',
+      label: 'In Playlist speichern',
+      default: 'Songwünsche aus dem Chat',
+      help: 'Jeder Wunsch landet zusätzlich in dieser CleanMusic-Playlist. Leer lassen = nicht speichern.',
+    },
+    {
+      id: 'requestBlockAi',
+      type: 'toggle',
+      label: 'KI-Songs ablehnen',
+      default: true,
+      help: 'Lehnt Wünsche ab, die als KI-Musik gekennzeichnet sind (z. B. „AI Cover“, „Suno“, „KI-generiert“). Ungekennzeichnete erkennt niemand zuverlässig.',
+    },
+    {
+      id: 'requestAiWords',
+      type: 'text',
+      label: 'Zusätzliche KI-Sperrliste',
+      default: '',
+      help: 'Weitere Wörter oder Artists, durch Komma getrennt.',
     },
     {
       id: 'requestBlock',

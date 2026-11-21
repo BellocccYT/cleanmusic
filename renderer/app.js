@@ -204,8 +204,8 @@
     favFilter: 'all',
     creator: {
       tab: 'ncs',
-      category: { ncs: 'top', classics: 'lustig', sfx: 'whoosh', games: 'retro', free: 'cinematic' },
-      query: { sfx: '', games: '', free: '' },
+      category: { ncs: 'top', classics: 'lustig', sfx: 'whoosh', games: 'retro', free: 'cinematic', youtube: 'gaming' },
+      query: { sfx: '', games: '', free: '', youtube: '' },
       lists: {},
     },
     credits: (readJSON(STORAGE.credits, []) || []).filter(
@@ -233,6 +233,7 @@
         theme: 'nacht',
         coverAccent: false,
         autoplay: true, // suggestions after single titles (search)
+        markAi: true, // "KI?" badge on labelled AI songs
         onboarded: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
         downloadDir: '',
@@ -441,6 +442,8 @@
       duration: Number(item.duration) || 0,
       url: '',
       link: item.link || '',
+      aiHint: Boolean(item.aiHint),
+      ytLicense: item.license === 'cc-by' ? 'cc-by' : '',
     };
   }
 
@@ -657,7 +660,7 @@
     return playlist;
   }
 
-  function addToPlaylist(id, entries) {
+  function addToPlaylist(id, entries, options = {}) {
     const playlist = playlistById(id);
     if (!playlist) return;
 
@@ -673,6 +676,7 @@
     playlist.updatedAt = Date.now();
     onCollectionChanged({ playlists: true });
 
+    if (options.quiet) return;
     if (!fresh.length) toast(`Schon in „${playlist.name}“`);
     else if (fresh.length === 1) toast(`„${fresh[0].title}“ → ${playlist.name}`);
     else toast(`${fresh.length} Titel → ${playlist.name}`);
@@ -876,11 +880,32 @@
     return '<span>♪</span>';
   }
 
+  const CONTENT_ID_NOTE =
+    'Nicht lizenzgeprüft – kann auf YouTube, TikTok oder Twitch Content-ID-Ansprüche, Stummschaltung oder Sperren auslösen. Rechte vor der Nutzung selbst klären.';
+
   function licenseBadge(entry) {
-    if (!entry.license) return '';
-    return `<span class="lic-badge" data-lic="${licenseKey(entry.license)}" title="${esc(
-      entry.license === 'NCS' ? 'NCS – frei für Videos mit Credit' : `Lizenz: ${entry.license}`
-    )}">${esc(entry.license)}</span>`;
+    const contentId = entry.contentId
+      ? `<span class="lic-badge" data-lic="cid" title="${esc(CONTENT_ID_NOTE)}">⚠ Content ID möglich</span>`
+      : '';
+    if (!entry.license) return contentId;
+    const title =
+      entry.license === 'NCS'
+        ? 'NCS – frei für Videos mit Credit'
+        : entry.contentId
+          ? 'Angabe des Uploaders bei YouTube, nicht geprüft – Content ID trotzdem möglich'
+          : `Lizenz: ${entry.license}`;
+    return `<span class="lic-badge" data-lic="${licenseKey(entry.license)}" title="${esc(title)}">${esc(entry.license)}</span>${contentId}`;
+  }
+
+  function youtubeCutterEntry(plugin, item) {
+    const entry = pluginEntry(plugin, item);
+    const licensed = item.license === 'cc-by';
+    entry.contentId = true;
+    entry.license = licensed ? 'CC BY laut Uploader' : '';
+    entry.credit = licensed
+      ? `„${entry.title}“ von ${entry.artist || 'YouTube'} (YouTube) – CC BY laut Uploader: ${item.link || entry.link}`
+      : '';
+    return entry;
   }
 
   function songRow(entry, index, listKey, options = {}) {
@@ -905,6 +930,7 @@
             entry.sourceLabel || ''
           )}</span>
           ${licenseBadge(entry)}
+          ${aiBadge(entry)}
         </span>
         ${lengthBadge(entry)}
         <div class="song-actions">
@@ -2769,6 +2795,8 @@
         loading: false,
         error: result.error || null,
       });
+      // The first hit is the likely click – start loading it now.
+      if (state.pluginSearch.results[0]) prefetchEntry(state.pluginSearch.results[0]);
     } catch (error) {
       if (requestId !== pluginSearchRequestId) return;
       Object.assign(state.pluginSearch, { results: [], loading: false, error: error.message });
@@ -3384,12 +3412,16 @@
 
     // Resolve the next track while this one plays – plugins may need a few
     // seconds per title, the next one should start instantly.
+    // The next two at once – the plugin bundles them into one start.
     prefetchTimer = setTimeout(() => {
-      const next = state.queue.items[state.queue.upcoming];
-      if (!next) return;
-      const task = prefetchPluginEntry(next);
-      if (task) task.catch(() => {});
-    }, 5000);
+      const { items, upcoming } = state.queue;
+      const targets = [items[upcoming]];
+      if (!state.playback.shuffle && upcoming >= 0) targets.push(items[upcoming + 1]);
+      targets.filter(Boolean).forEach((entry) => {
+        const task = prefetchPluginEntry(entry);
+        if (task) task.catch(() => {});
+      });
+    }, 1500);
   }
 
   // Hover intent: resolving takes seconds, so start when the pointer rests
@@ -3784,6 +3816,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.4.0': [
+      'Songwünsche per Link: Spotify, Deezer, Apple Music und YouTube (mit Quellen-Plugin) – als Nächstes und in einer Playlist gespeichert (Streamer.bot-Plugin 1.2.0).',
+      'KI-Filter: gekennzeichnete KI-Songs (z. B. „AI Cover“, „Suno“) lassen sich bei Songwünschen ablehnen und bekommen ein „KI?“.',
+      'Cutter-Modus: YouTube-Tab über dein Quellen-Plugin – mit Hinweis „Content ID möglich“, ohne Download.',
+      'Schnelleres Laden über das Quellen-Plugin: die nächsten Titel werden früher und gebündelt vorgeladen.',
+    ],
     '1.3.0': [
       'Neue Game-Sounds-Kategorien von Freesound über Openverse – mit CC0-/CC-BY-Lizenzfilter.',
       'Freie Musik hat jetzt Chiptune/8-Bit, Videospiel und Boss-Kampf; Kevin MacLeod zusätzlich Gaming & Retro.',
@@ -4088,7 +4126,7 @@
   }
 
   function queueCopy(entry, flags) {
-    return Object.assign({}, entry, { queued: false, autoplay: false, requestedBy: null }, flags);
+    return Object.assign({}, entry, { queued: false, autoplay: false, requestedBy: null, requestedAt: 0 }, flags);
   }
 
   function enqueue(entries, mode = 'end', flags = {}) {
@@ -4869,8 +4907,13 @@
 
   const CREATOR = window.CM_CREATOR || { tabs: [] };
 
+  function creatorTabs() {
+    return CREATOR.tabs.filter((tab) => tab.kind !== 'plugin' || searchPlugin());
+  }
+
   function creatorTab(id = state.creator.tab) {
-    return CREATOR.tabs.find((tab) => tab.id === id) || CREATOR.tabs[0] || null;
+    const tabs = creatorTabs();
+    return tabs.find((tab) => tab.id === id) || tabs[0] || null;
   }
 
   function creatorKey() {
@@ -4957,6 +5000,36 @@
       return;
     }
 
+    // YouTube via the source plugin: shown with a Content ID warning, never downloadable.
+    if (tab.kind === 'plugin') {
+      const plugin = searchPlugin();
+      const customQuery = state.creator.query[tab.id];
+      const chosen =
+        tab.categories.find((entry) => entry.id === state.creator.category[tab.id]) || tab.categories[0];
+      const term = customQuery || chosen.query;
+      const creativeCommons = !customQuery && Boolean(chosen.cc);
+      state.creator.lists[key] = { items: [], loading: true, error: null, more: false, page: 1 };
+      renderCreatorList();
+
+      let found;
+      try {
+        found = plugin
+          ? await bridge.pluginSearch(plugin.id, term, { creativeCommons, limit: 25 })
+          : { results: [], error: 'Kein Quellen-Plugin aktiv.' };
+      } catch (error) {
+        found = { results: [], error: error.message };
+      }
+      state.creator.lists[key] = {
+        items: (Array.isArray(found.results) ? found.results : []).map((item) => youtubeCutterEntry(plugin, item)),
+        loading: false,
+        error: found.error || null,
+        more: false,
+        page: 1,
+      };
+      if (creatorKey() === key) renderCreatorList();
+      return;
+    }
+
     // Sound effects / free music via Openverse (cached for a day – the
     // anonymous API allows ~200 requests per day).
     const custom = state.creator.query[tab.id];
@@ -4997,6 +5070,7 @@
   }
 
   function creatorNote(tab) {
+    if (tab.kind === 'plugin') return 'Über dein Quellen-Plugin · nicht lizenzgeprüft · kein Download';
     if (tab.kind === 'sfx') return 'CC0 & CC BY · Freesound';
     switch (tab.id) {
       case 'ncs':
@@ -5024,7 +5098,7 @@
 
     const custom = tab.search ? state.creator.query[tab.id] : '';
     const active = state.creator.category[tab.id];
-    const tabs = CREATOR.tabs
+    const tabs = creatorTabs()
       .map(
         (entry) => `
           <button class="creator-tab ${entry.id === tab.id ? 'active' : ''}" data-creator-tab="${entry.id}">
@@ -5087,9 +5161,11 @@
                 ? `<div class="radio-search creator-search">
                     <input id="creator-search-input" type="search" value="${esc(custom)}"
                       placeholder="${
-                        tab.kind === 'sfx' || tab.id === 'sfx'
-                          ? 'Eigenen Sound suchen (englisch, z. B. „door slam“) …'
-                          : 'Eigene Stimmung suchen (englisch, z. B. „summer vlog“) …'
+                        tab.kind === 'plugin'
+                          ? 'Auf YouTube suchen (z. B. „phonk gaming“) …'
+                          : tab.kind === 'sfx' || tab.id === 'sfx'
+                            ? 'Eigenen Sound suchen (englisch, z. B. „door slam“) …'
+                            : 'Eigene Stimmung suchen (englisch, z. B. „summer vlog“) …'
                       }"
                       autocomplete="off" spellcheck="false" />
                     <button class="btn primary small" data-creator-action="search">Suchen</button>
@@ -5119,7 +5195,7 @@
       host.innerHTML = `
         <div class="search-status">
           <span class="spinner small"></span>
-          <span>${tab.id === 'ncs' ? 'NCS-Playlist wird geladen …' : 'Suche bei Openverse …'}</span>
+          <span>${tab.id === 'ncs' ? 'NCS-Playlist wird geladen …' : tab.kind === 'plugin' ? 'Suche über dein Quellen-Plugin …' : 'Suche bei Openverse …'}</span>
         </div>`;
       return;
     }
@@ -6323,6 +6399,61 @@
     return bestRequestHit(tracks, query);
   }
 
+  // AI music: only what is labelled (title, artist, album, plugin hint).
+  // Bare "AI"/"KI" counts only in brackets – names like "Ai Otsuka" stay clean.
+  const AI_STRONG =
+    /(ai[- ]generated|generated (?:by|with) ai|\bai[- ](?:cover|music|song|remix|version|voice|vocals)\b|\bki[- ](?:generiert|cover|song|musik|version)\b|mit ki (?:erstellt|generiert)|\bsuno\b|\budio\b|#ai\b|\baimusic\b|artificial intelligence|künstliche intelligenz)/i;
+  const AI_TAGGED = /[([]\s*(?:ai|ki|a\.i\.)\s*[)\]]/i;
+
+  function aiWordList(value) {
+    return (Array.isArray(value) ? value : String(value || '').split(','))
+      .map((word) => String(word).trim().toLowerCase())
+      .filter((word) => word.length > 1)
+      .slice(0, 50);
+  }
+
+  function aiSuspect(entry, extra = []) {
+    if (!entry) return false;
+    if (entry.aiHint) return true;
+    const parts = [entry.title, entry.album, entry.artist].map((part) => String(part || ''));
+    if (parts.some((part) => AI_STRONG.test(part) || AI_TAGGED.test(part))) return true;
+    if (!extra.length) return false;
+    const text = parts.join(' ').toLowerCase();
+    return extra.some((word) => text.includes(word));
+  }
+
+  function aiBadge(entry) {
+    if (state.settings.markAi === false || !aiSuspect(entry)) return '';
+    return '<span class="lic-badge ai-badge" title="KI-Hinweis im Titel, beim Artist oder bei der Quelle – kann falsch sein">KI?</span>';
+  }
+
+  const YOUTUBE_HOSTS = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'];
+
+  function requestLinkKind(query) {
+    if (/^spotify:track:[A-Za-z0-9]{6,64}$/i.test(query)) return 'link';
+    if (!/^https?:\/\/\S+$/i.test(query)) return null;
+    try {
+      if (YOUTUBE_HOSTS.includes(new URL(query).hostname.toLowerCase())) return 'youtube';
+    } catch {
+      return 'link';
+    }
+    return 'link';
+  }
+
+  async function findRequestByLink(query, kind) {
+    if (kind === 'youtube') {
+      const plugin = readyPlugins('lookup')[0];
+      if (!plugin || !bridge.pluginLookup) return { reason: 'no-lookup' };
+      const result = await bridge.pluginLookup(plugin.id, query);
+      if (!result || !result.item) return { reason: 'not-found' };
+      return { entry: pluginEntry(plugin, result.item) };
+    }
+    if (!bridge.requestLink) return { reason: 'unsupported-link' };
+    const result = await bridge.requestLink(query);
+    if (!result || !result.track) return { reason: (result && result.reason) || 'not-found' };
+    return { entry: previewEntry(result.track) };
+  }
+
   async function songRequest(value) {
     const query = String((value && value.query) || '')
       .replace(/[\r\n\t]+/g, ' ')
@@ -6331,43 +6462,74 @@
     const by = requestName(value && value.by) || 'Chat';
     const source = REQUEST_SOURCES.includes(value && value.source) ? value.source : 'auto';
     const maxSeconds = Math.max(0, Math.round(Number(value && value.maxSeconds) || 0));
+    const position = value && value.position === 'end' ? 'end' : 'next';
+    const playlistName = String((value && value.playlist) || '').trim().slice(0, 80);
+    const blockAi = Boolean(value && value.blockAi);
+    const extraAi = aiWordList(value && value.aiWords);
     if (!query) return { ok: false, reason: 'empty' };
-    if (source === 'full' && !searchPlugin()) return { ok: false, reason: 'no-source' };
 
-    const found = await findRequestTrack(query, source, maxSeconds);
-    if (!found) return { ok: false, reason: 'not-found' };
-    if (found.tooLong) return { ok: false, reason: 'too-long' };
+    const linkKind = requestLinkKind(query);
+    if (blockAi && !linkKind && aiSuspect({ title: query }, extraAi)) return { ok: false, reason: 'ai' };
+
+    let found;
+    if (linkKind) {
+      const result = await findRequestByLink(query, linkKind);
+      if (!result.entry) return { ok: false, reason: result.reason, link: true };
+      found = result.entry;
+      if (maxSeconds && found.kind === 'plugin' && found.duration > maxSeconds) return { ok: false, reason: 'too-long' };
+    } else {
+      if (source === 'full' && !searchPlugin()) return { ok: false, reason: 'no-source' };
+      found = await findRequestTrack(query, source, maxSeconds);
+      if (!found) return { ok: false, reason: 'not-found' };
+      if (found.tooLong) return { ok: false, reason: 'too-long' };
+    }
+    const track = { title: found.title, artist: found.artist, source: found.sourceLabel || '', preview: found.kind === 'preview' };
+    if (blockAi && aiSuspect(found, extraAi)) return { ok: false, reason: 'ai', track };
 
     const key = matchKey(found);
     const { items, index } = state.queue;
     const current = items[index];
     if ((current && matchKey(current) === key) || items.slice(index + 1).some((entry) => matchKey(entry) === key)) {
-      return { ok: false, reason: 'duplicate', track: { title: found.title, artist: found.artist } };
+      return { ok: false, reason: 'duplicate', track };
     }
 
-    enqueue([found], 'end', { requestedBy: by });
-    const mine = pendingRequests().filter((entry) => entry.by === by);
-    const placed = mine[mine.length - 1];
-    return {
-      ok: true,
-      track: { title: found.title, artist: found.artist, source: found.sourceLabel || '', preview: found.kind === 'preview' },
-      position: placed ? placed.position : 0,
-      playingNow: !placed,
-    };
+    enqueue([found], position, { requestedBy: by, requestedAt: Date.now() });
+
+    let savedTo = '';
+    if (playlistName) {
+      const playlist =
+        state.collection.playlists.find((item) => item.name.toLowerCase() === playlistName.toLowerCase()) ||
+        createPlaylist(playlistName);
+      addToPlaylist(playlist.id, [found], { quiet: true });
+      savedTo = playlist.name;
+    }
+
+    const queue = state.queue;
+    let placed = 0;
+    for (let at = queue.index + 1; at < queue.items.length; at += 1) {
+      const entry = queue.items[at];
+      if (entry.requestedBy === by && matchKey(entry) === key) {
+        placed = at - queue.index;
+        break;
+      }
+    }
+    return { ok: true, track, position: placed, playingNow: !placed, link: Boolean(linkKind), savedTo };
   }
 
   function removeSongRequest(value) {
     const by = requestName(value && value.by).toLowerCase();
     if (!by) return { ok: false, reason: 'empty' };
     const { items, index } = state.queue;
-    for (let position = items.length - 1; position > index; position -= 1) {
+    let newest = -1;
+    for (let position = index + 1; position < items.length; position += 1) {
       const entry = items[position];
-      if (entry.requestedBy && entry.requestedBy.toLowerCase() === by) {
-        removeFromQueue(position);
-        return { ok: true, track: { title: entry.title, artist: entry.artist } };
-      }
+      if (!entry.requestedBy || entry.requestedBy.toLowerCase() !== by) continue;
+      if (newest < 0 || (entry.requestedAt || 0) >= (items[newest].requestedAt || 0)) newest = position;
     }
-    return { ok: false, reason: 'none' };
+    if (newest < 0) return { ok: false, reason: 'none' };
+    const entry = items[newest];
+    removeFromQueue(newest);
+    return { ok: true, track: { title: entry.title, artist: entry.artist } };
   }
 
   async function answerPlayerCall(callId, task) {
@@ -6866,6 +7028,13 @@
               <small>Nach einem einzelnen Titel aus der Suche laufen passende Vorschläge weiter. Von dir Eingereihtes kommt immer zuerst.</small>
             </span>
             <input type="checkbox" id="opt-autoplay" ${autoplayOn() ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>KI-Songs markieren</strong>
+              <small>Titel mit KI-Hinweis (z. B. „AI Cover“, „Suno“, „KI-generiert“) bekommen ein „KI?“. Erkennt nur, was gekennzeichnet ist.</small>
+            </span>
+            <input type="checkbox" id="opt-markai" ${state.settings.markAi !== false ? 'checked' : ''} />
           </label>
           <label class="toggle-row">
             <span>
@@ -7749,6 +7918,13 @@ ${updatePanel()}
         return;
       }
 
+      if (event.target.id === 'opt-markai') {
+        state.settings.markAi = event.target.checked;
+        saveSettings();
+        toast(event.target.checked ? 'KI-Songs werden markiert' : 'KI-Markierung aus');
+        return;
+      }
+
       if (event.target.id === 'opt-update') {
         if (bridge.updateSet) {
           bridge
@@ -8385,6 +8561,12 @@ ${updatePanel()}
       refreshDownloadButtons();
     },
     playerSnapshot: () => playerSnapshot(),
+    aiCheck: (text) => aiSuspect({ title: String(text || '') }),
+    creatorTabs: () => creatorTabs().map((tab) => tab.id),
+    playlistCount: (name) => {
+      const playlist = state.collection.playlists.find((item) => item.name === name);
+      return playlist ? playlist.items.length : -1;
+    },
     requests: () => pendingRequests(),
     songRequest: (value) => songRequest(value),
     theme: () => ({

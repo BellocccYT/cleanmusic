@@ -85,7 +85,9 @@ contextBridge.exposeInMainWorld('cm', {
       return Promise.resolve({ error: 'Der Dateipfad konnte nicht gelesen werden.' });
     }
   },
-  pluginSearch: (id, query) => ipcRenderer.invoke('plugin-search', id, query),
+  pluginSearch: (id, query, options) => ipcRenderer.invoke('plugin-search', id, query, options || null),
+  pluginLookup: (id, url) => ipcRenderer.invoke('plugin-lookup', id, url),
+  requestLink: (url) => ipcRenderer.invoke('request-link', url),
   pluginResolve: (id, refId, force) => ipcRenderer.invoke('plugin-resolve', id, refId, Boolean(force)),
   pluginMatch: (id, track) => ipcRenderer.invoke('plugin-match', id, track),
 });

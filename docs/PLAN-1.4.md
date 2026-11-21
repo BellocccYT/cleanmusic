@@ -1,5 +1,7 @@
 # Plan: CleanMusic 1.4.0 – Songwünsche per Link, KI-Filter, YouTube im Cutter-Modus
 
+**Status: gebaut (21.11.2026).** Zusätzlich: schnelleres Laden (Plugin 1.3.0 mit Python-Start und gebündelten Abrufen, früheres Vorladen in der App).
+
 Festgelegt am 21.11.2026 mit dem User. Vorher **`AGENTS.md`** lesen – die Regeln
 gelten, besonders: **kein YouTube-Lesecode und kein Wort „yt-dlp“ im App-Code**
 (`main.js`, `renderer/*`, `preload.js`); alles YouTube-Spezifische gehört ins

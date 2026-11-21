@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.3.0**
+**Version 1.4.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -154,6 +154,11 @@ bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import v
 
 ### Cutter-Modus (für Videos)
 
+> **YouTube-Tab (ab 1.4, nur mit aktivem Quellen-Plugin):** zeigt YouTube-Treffer
+> (Gaming-Musik, Phonk, Lo-Fi, Meme-Sounds …) mit dem Hinweis **„⚠ Content ID möglich“** –
+> nicht lizenzgeprüft, kein Download. „Creative Commons“ nutzt YouTubes CC-Filter
+> (Angabe des Uploaders, nicht geprüft).
+
 Musik und Soundeffekte, die du in Videos verwenden darfst – mit Lizenz an jedem
 Titel und fertigem Credit:
 
@@ -290,6 +295,19 @@ Unter **Radio** findest du tausende öffentliche Sender über die
 
 ---
 
+## Schneller laden mit dem Quellen-Plugin
+
+Das Quellen-Plugin (ab 1.3.0) lädt die nächsten beiden Titel und den ersten
+Suchtreffer schon vorab und bündelt mehrere Titel in einem Aufruf. Am meisten bringt
+ein **aktuelles yt-dlp als Python-Modul**: Es startet etwa doppelt so schnell wie die
+einzelne EXE, und das Plugin nimmt es automatisch, sobald es mindestens so neu ist.
+
+```powershell
+python -m pip install -U yt-dlp
+```
+
+Die Plugin-Karte zeigt dann „schneller Start (Python)“.
+
 ## Updates
 
 CleanMusic sucht **bei jedem Start** nach einer neuen Version (abschaltbar unter
@@ -349,7 +367,11 @@ unverändert. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
 Streamer.bot: `!song` postet den aktuellen Titel, `!skip` und `!pause` steuern
 CleanMusic (Token-geschützt, nur lokal). Optional **Songwünsche** mit `!sr`,
 `!wrongsong` und `!wishes` – mit Limits pro Zuschauer, in der Warteschlange als
-„Wunsch von …“ markiert. Anleitung:
+„Wunsch von …“ markiert. Seit 1.4 (Plugin 1.2.0) auch **per Link** – Spotify, Deezer,
+Apple Music und YouTube (mit Quellen-Plugin): Der Wunsch kommt **als Nächstes** und
+landet zusätzlich in der Playlist „Songwünsche aus dem Chat“. Ein **KI-Filter** lehnt
+gekennzeichnete KI-Songs ab („AI Cover“, „Suno“, „KI-generiert“ …) – er erkennt nur,
+was gekennzeichnet ist. Anleitung:
 [extras/plugins/README.md](extras/plugins/README.md#streamerbot-streamerbotjs).
 
 ### OBS Now-Playing (optionales Plugin)

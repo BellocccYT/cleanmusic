@@ -4810,3 +4810,15 @@ body.fs-open .toast {
   font-style: normal;
   color: var(--accent);
 }
+
+/* 1.4: Content ID warning and AI badge */
+.lic-badge[data-lic="cid"] {
+  color: var(--warn);
+  border-color: rgba(var(--warn-rgb), 0.45);
+  background: rgba(var(--warn-rgb), 0.12);
+}
+.lic-badge.ai-badge {
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb), 0.45);
+  background: rgba(var(--danger-rgb), 0.1);
+}

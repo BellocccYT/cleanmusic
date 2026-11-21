@@ -209,6 +209,28 @@
           { id: 'boss-kampf', label: 'Boss-Kampf', query: 'epic battle' },
         ],
       },
+      {
+        id: 'youtube',
+        kind: 'plugin',
+        label: 'YouTube',
+        icon: 'search',
+        title: 'YouTube (über dein Quellen-Plugin)',
+        info:
+          'Nicht lizenzgeprüft: Viele Titel lösen auf YouTube, TikTok oder Twitch Content-ID-Ansprüche, Stummschaltung oder Sperren aus – auch wenn „No Copyright“ im Titel steht. Kein Download. „Creative Commons“ nutzt YouTubes CC-Filter (Angabe des Uploaders, nicht geprüft).',
+        license: null,
+        policy: { label: 'So funktioniert Content ID', url: 'https://support.google.com/youtube/answer/2797370' },
+        search: true,
+        categories: [
+          { id: 'gaming', label: 'Gaming-Musik', query: 'gaming music' },
+          { id: 'cc', label: 'Creative Commons', query: 'music', cc: true },
+          { id: 'phonk', label: 'Phonk', query: 'phonk' },
+          { id: 'lofi', label: 'Lo-Fi', query: 'lofi hip hop' },
+          { id: 'epic', label: 'Epische Musik', query: 'epic music' },
+          { id: 'memes', label: 'Meme-Sounds', query: 'meme sound effects' },
+          { id: 'funny', label: 'Lustige Sounds', query: 'funny sound effects' },
+          { id: 'nocopyright', label: '„No Copyright“', query: 'no copyright music' },
+        ],
+      },
     ],
   };
 })();

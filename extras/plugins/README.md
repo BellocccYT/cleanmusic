@@ -86,6 +86,19 @@ eingereihte Titel und Wünsche spielen vor dem Rest der Liste.
    letzten Wunsch zurückziehen) und `!wishes` (offene Wünsche anzeigen). Diese
    drei dürfen alle Zuschauer nutzen.
 
+**Ab Plugin 1.2.0 und CleanMusic 1.4.0:** `!sr` nimmt auch **Links** – Spotify,
+Deezer, Apple Music und (mit aktivem Quellen-Plugin) YouTube/YouTube Music. Andere
+Links bekommen eine freundliche Absage. Neue Einstellungen:
+
+- **Wünsche spielen:** *Als Nächstes* (Standard, neuester Wunsch zuerst) oder *Nach den
+  anderen Wünschen*.
+- **In Playlist speichern:** Standard „Songwünsche aus dem Chat“ – leer = aus.
+- **KI-Songs ablehnen** (Standard an) + **zusätzliche KI-Sperrliste**: lehnt
+  gekennzeichnete KI-Musik ab („AI Cover“, „Suno“, „Udio“, „KI-generiert“ …). Nicht
+  gekennzeichnete KI-Songs erkennt niemand zuverlässig.
+
+`!wrongsong` nimmt immer den **neuesten** eigenen Wunsch zurück.
+
 Einstellungen: woher die Wünsche kommen (**volle Titel** über ein aktives
 Quellen-Plugin, sonst 30-Sekunden-Vorschau – oder nur eines von beidem), Wünsche
 pro Zuschauer gleichzeitig (Standard 2), Wartezeit pro Zuschauer (60 s), höchstens

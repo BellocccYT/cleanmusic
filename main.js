@@ -1575,6 +1575,22 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_SHORTCUTS:', JSON.stringify(shortcutsResult));
+
+          // AI filter (1.4): labelled songs yes, real names no.
+          const aiResult = await mainWindow.webContents.executeJavaScript(`
+            (() => {
+              const check = window.CleanMusic.aiCheck;
+              const yes = ['Song (AI Cover)', 'Suno Mix', 'KI-generiert', 'Track [AI]', 'Made with Udio', 'AI-generated Lofi'];
+              const no = ['Kaiser Chiefs', 'Ai Otsuka', 'Pakistan', 'Kim Petras', 'Sunrise Avenue', 'Raindrops'];
+              return {
+                flagged: yes.filter((t) => check(t)).length + '/' + yes.length,
+                clean: no.filter((t) => !check(t)).length + '/' + no.length,
+                wrong: yes.filter((t) => !check(t)).concat(no.filter((t) => check(t))),
+                youtubeTab: window.CleanMusic.creatorTabs().includes('youtube'),
+              };
+            })()
+          `);
+          console.log('SMOKE_AI_FILTER:', JSON.stringify(aiResult));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -2921,6 +2937,47 @@ async function smokeStreamerbotPlugin() {
   const wrong = await get('/wrongsong?token=' + token + '&user=smoke');
   const wrongNone = await get('/wrongsong?token=' + token + '&user=nobody');
   const afterWrong = await js('window.CleanMusic.requests().length');
+  // Song requests with links, "next", playlist, AI filter (plugin 1.2.0, CleanMusic 1.4.0).
+  await js("window.cm.pluginSettingsSet('streamerbot', { requests: true, requestSource: 'preview', requestCooldown: 0, requestPerUser: 6, requestMax: 30, requestPosition: 'next', requestPlaylist: 'Smoke Wünsche', requestBlockAi: true })");
+  await wait(500);
+  const linkSpotify = await sr('linker', 'https://open.spotify.com/intl-de/track/0VjIjW4GlUZAMYd2vXMi3b?si=smoke');
+  const firstAfterSpotify = await js('(window.CleanMusic.requests()[0] || {}).title || ""');
+  let deezerId = null;
+  try {
+    const found = await fetchJson('https://api.deezer.com/search?q=' + encodeURIComponent('Get Lucky Daft Punk') + '&limit=1');
+    deezerId = found && found.data && found.data[0] ? found.data[0].id : null;
+  } catch {
+    deezerId = null;
+  }
+  const linkDeezer = deezerId ? await sr('linker', `https://www.deezer.com/de/track/${deezerId}`) : { status: 0, body: 'keine Deezer-ID' };
+  let appleId = null;
+  try {
+    const found = await fetchJson('https://itunes.apple.com/search?term=queen%20bohemian%20rhapsody&media=music&entity=song&limit=1&country=DE');
+    appleId = found && found.results && found.results[0] ? found.results[0].trackId : null;
+  } catch {
+    appleId = null;
+  }
+  const linkApple = appleId ? await sr('linker', `https://music.apple.com/de/album/smoke/1?i=${appleId}`) : { status: 0, body: 'keine Apple-ID' };
+  const linkOther = await sr('linker', 'https://soundcloud.com/someone/some-track');
+  const linkYoutube = await sr('linker', 'https://youtu.be/dQw4w9WgXcQ');
+  const aiQuery = await sr('linker', 'Drake Hotline Bling (AI Cover)');
+  const savedCount = await js("window.CleanMusic.playlistCount('Smoke Wünsche')");
+  await js("window.cm.pluginSettingsSet('streamerbot', { requestPosition: 'end' })");
+  await wait(400);
+  const ender = await sr('ender', 'Michael Jackson Billie Jean');
+  const lastPending = await js('(() => { const list = window.CleanMusic.requests(); return list.length ? list[list.length - 1].by : ""; })()');
+  const linkResults = {
+    spotify: linkSpotify.body,
+    spotifyFirst: firstAfterSpotify,
+    deezer: linkDeezer.body,
+    apple: linkApple.body,
+    other: linkOther.body,
+    youtubeWithoutPlugin: linkYoutube.body,
+    aiBlocked: aiQuery.body,
+    savedToPlaylist: savedCount,
+    endMode: [ender.body, lastPending],
+  };
+
   await js("window.cm.pluginSettingsSet('streamerbot', { requests: false })");
   await wait(300);
   const srOffAgain = await sr('viewer3', 'ABBA');
@@ -2975,6 +3032,7 @@ async function smokeStreamerbotPlugin() {
       wrongNone: wrongNone.body,
       afterWrong,
       offAgain: srOffAgain.status,
+      links: linkResults,
     },
     status: info && info.status ? info.status.text : null,
     fields: info && info.settings ? info.settings.fields.length : 0,
@@ -3225,6 +3283,10 @@ function pluginContext(id) {
           by: oneLine(options.by, 40),
           source: ['auto', 'full', 'preview'].includes(options.source) ? options.source : 'auto',
           maxSeconds: Math.max(0, Math.min(6 * 3600, Math.round(Number(options.maxSeconds) || 0))),
+          position: options.position === 'end' ? 'end' : 'next',
+          playlist: oneLine(options.playlist, 80),
+          blockAi: Boolean(options.blockAi),
+          aiWords: oneLine(options.aiWords, 1000),
         }),
       requests: () => callRenderer('requests'),
       removeRequest: (by) => callRenderer('removeRequest', { by: oneLine(by, 40) }),
@@ -3381,7 +3443,7 @@ const SETTING_TYPES = ['text', 'number', 'toggle', 'select', 'folder'];
 function pluginSettingFields(mod) {
   return (mod && Array.isArray(mod.settings) ? mod.settings : [])
     .filter((field) => field && PLUGIN_ID.test(String(field.id || '').toLowerCase()) && SETTING_TYPES.includes(field.type))
-    .slice(0, 12)
+    .slice(0, 24)
     .map((field) => ({
       id: String(field.id),
       type: field.type,
@@ -3548,6 +3610,8 @@ function cleanItems(items, maxItems = 50) {
       duration: Number(item.duration) || 0,
       artwork: cleanUrl(item.artwork, /^https:\/\//i),
       link: cleanUrl(item.link),
+      aiHint: Boolean(item.aiHint),
+      license: item.license === 'cc-by' ? 'cc-by' : '',
     }));
 }
 
@@ -3621,6 +3685,7 @@ async function pluginInfo(plugin, enabled, refresh) {
     capabilities: {
       charts: Boolean(mod && typeof mod.charts === 'function'),
       playlist: Boolean(mod && typeof mod.playlist === 'function'),
+      lookup: Boolean(mod && typeof mod.lookup === 'function'),
       events: Boolean(mod && typeof mod.onEvent === 'function'),
       search: Boolean(mod && typeof mod.search === 'function'),
       resolve: Boolean(mod && typeof mod.resolve === 'function'),
@@ -3765,15 +3830,132 @@ ipcMain.handle('plugin-add-file', async () => {
 
 ipcMain.handle('plugin-import-dropped', async (_event, sourcePath) => importPluginFile(sourcePath));
 
-ipcMain.handle('plugin-search', async (_event, id, query) => {
+ipcMain.handle('plugin-search', async (_event, id, query, options) => {
   const plugin = readyPlugin(id, 'search');
   if (!plugin) return { results: [], error: 'Plugin nicht aktiv' };
   if (typeof query !== 'string' || !query.trim()) return { results: [], error: null };
+  const searchOptions = {
+    creativeCommons: Boolean(options && options.creativeCommons),
+    limit: Math.max(1, Math.min(30, Number(options && options.limit) || 15)),
+  };
 
   try {
-    return { results: cleanItems(await plugin.module.search(query.trim().slice(0, 120))), error: null };
+    return { results: cleanItems(await plugin.module.search(query.trim().slice(0, 120), searchOptions)), error: null };
   } catch (error) {
     return { results: [], error: cleanText(error.message || String(error)) };
+  }
+});
+
+/* --- Song requests with a link (1.4.0) ------------------------------- *
+ * Spotify (public embed page, like the playlist import), Deezer and Apple
+ * (public APIs). YouTube links are handled by a source plugin (lookup).
+ * Only these hosts are fetched; anything else is "unsupported-link". */
+
+async function fetchSpotifyTrack(id) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await net.fetch(`https://open.spotify.com/embed/track/${encodeURIComponent(id)}`, {
+      signal: controller.signal,
+      headers: { accept: 'text/html' },
+    });
+    if (!response.ok) throw new Error(`Spotify antwortet mit HTTP ${response.status}.`);
+    if (response.url && new URL(response.url).origin !== 'https://open.spotify.com') throw new Error(SPOTIFY_FORMAT_ERROR);
+    const html = await readResponseTextLimited(response, 5 * 1024 * 1024);
+    const match = html.match(/<script\b(?=[^>]*\bid=["']__NEXT_DATA__["'])[^>]*>([\s\S]*?)<\/script>/i);
+    if (!match) throw new Error(SPOTIFY_FORMAT_ERROR);
+    const data = JSON.parse(match[1]);
+    const entity = data && data.props && data.props.pageProps && data.props.pageProps.state && data.props.pageProps.state.data && data.props.pageProps.state.data.entity;
+    const title = cleanText(entity && (entity.title || entity.name), 300);
+    if (!title) throw new Error(SPOTIFY_FORMAT_ERROR);
+    const artists = Array.isArray(entity.artists) ? entity.artists.map((artist) => artist && artist.name).filter(Boolean).join(', ') : entity.subtitle;
+    return { title, artist: cleanText(artists || '', 300), durationMs: Number(entity.duration) || 0, isrc: '' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveRequestLink(input) {
+  const value = String(input || '').trim().slice(0, 500);
+  const uri = value.match(/^spotify:track:([A-Za-z0-9]{6,64})$/i);
+  let url = null;
+  if (!uri) {
+    try {
+      url = new URL(value);
+    } catch {
+      return { reason: 'unsupported-link' };
+    }
+    if (url.protocol !== 'https:' || url.username || url.password) return { reason: 'unsupported-link' };
+  }
+  const host = url ? url.hostname.toLowerCase() : 'open.spotify.com';
+
+  if (uri || host === 'open.spotify.com') {
+    const id = uri ? uri[1] : (url.pathname.match(/^(?:\/intl-[a-z]{2}(?:-[a-z]{2,4})?)?\/track\/([A-Za-z0-9]{6,64})\/?$/i) || [])[1];
+    if (!id) return { reason: 'unsupported-link' };
+    const track = await fetchSpotifyTrack(id);
+    const [hit] = (await matchSpotifyTracks([track])).tracks;
+    return hit ? { track: hit } : { reason: 'not-found' };
+  }
+
+  if (host === 'link.deezer.com' || host === 'deezer.page.link') {
+    // Short link: follow it, but only to deezer.com.
+    const response = await net.fetch(url.toString(), { headers: { accept: 'text/html' } });
+    const final = new URL(response.url || url.toString());
+    try {
+      await response.body?.cancel();
+    } catch {
+      /* body not needed */
+    }
+    if (final.protocol !== 'https:' || !/(^|\.)deezer\.com$/i.test(final.hostname)) return { reason: 'unsupported-link' };
+    url = final;
+  }
+
+  if (/(^|\.)deezer\.com$/i.test(url.hostname)) {
+    const id = (url.pathname.match(/\/track\/(\d{1,20})(?:\/|$)/) || [])[1];
+    if (!id) return { reason: 'unsupported-link' };
+    const json = await fetchJson(`https://api.deezer.com/track/${id}`, 15000);
+    const [hit] = normalizeDeezer({ data: json && json.id ? [json] : [] });
+    return hit ? { track: hit } : { reason: 'not-found' };
+  }
+
+  if (host === 'music.apple.com' || host === 'itunes.apple.com') {
+    const id =
+      url.searchParams.get('i') ||
+      (url.pathname.match(/\/song\/(?:[^/]+\/)?(\d{1,20})\/?$/) || [])[1] ||
+      '';
+    if (!/^\d{1,20}$/.test(id)) return { reason: 'unsupported-link' };
+    const json = await fetchJson(`https://itunes.apple.com/lookup?id=${id}&entity=song&country=DE`, 15000);
+    const [hit] = normalizeItunes(json);
+    return hit ? { track: hit } : { reason: 'not-found' };
+  }
+
+  return { reason: 'unsupported-link' };
+}
+
+ipcMain.handle('request-link', async (_event, url) => {
+  try {
+    return await resolveRequestLink(url);
+  } catch {
+    return { reason: 'not-found' };
+  }
+});
+
+ipcMain.handle('plugin-lookup', async (_event, id, url) => {
+  const plugin = readyPlugin(id, 'lookup');
+  if (!plugin) return { item: null, error: 'Plugin nicht aktiv' };
+  let timeout;
+  try {
+    const item = await Promise.race([
+      plugin.module.lookup(String(url || '').trim().slice(0, 500)),
+      new Promise((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Zeitüberschreitung')), 90000);
+      }),
+    ]);
+    return { item: cleanItems([item], 1)[0] || null, error: null };
+  } catch (error) {
+    return { item: null, error: cleanText(error.message || String(error)) };
+  } finally {
+    clearTimeout(timeout);
   }
 });
 

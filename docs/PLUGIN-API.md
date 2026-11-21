@@ -59,6 +59,24 @@ Plugin-eigene Referenz (`refId`), `artwork` muss `https://` sein.
 wahr ist. Alle Rückgaben werden von CleanMusic gekürzt und auf gültige URLs
 geprüft.
 
+### Suche mit Optionen, Link-Lookup, Hinweise (CleanMusic 1.4.0+)
+
+- `search(query, options)` bekommt als zweiten Parameter `{ limit, creativeCommons }`.
+  Bei `creativeCommons: true` (Cutter-Modus, Kategorie „Creative Commons“) nur Treffer
+  liefern, die die Quelle als Creative Commons ausweist, und an jedem Item
+  `license: 'cc-by'` setzen. Ältere Plugins ignorieren den Parameter – ohne
+  `license` zeigt CleanMusic dann nur den Content-ID-Hinweis.
+- `lookup(url)` (optional): ein einzelnes Item zu einem Link (für Songwünsche per Link).
+  Link selbst prüfen, bei fremden Links einen verständlichen Fehler werfen.
+- Optionale Item-Felder: `aiHint: true` (Quelle/Uploader kennzeichnet KI-Musik),
+  `license: 'cc-by'`.
+- `await player.request(query, { by, source, maxSeconds, position, playlist, blockAi, aiWords })`:
+  `query` darf ein Link sein (Spotify, Deezer, Apple Music; YouTube über `lookup`).
+  `position`: `'next'` (Standard) oder `'end'`; `playlist`: Name der CleanMusic-Playlist,
+  in der der Wunsch zusätzlich landet; `blockAi` + `aiWords` (Komma-Liste): KI-Filter.
+  Neue Gründe: `ai`, `unsupported-link`, `no-lookup`. Antwort zusätzlich `{ link, savedTo }`.
+- Bis zu 24 Einstellungsfelder pro Plugin (vorher 12).
+
 ### Playlist-Import (CleanMusic 1.2.0+)
 
 `playlist(url)` ist eine optionale Fähigkeit. Sie wird für Playlist-Links angeboten
