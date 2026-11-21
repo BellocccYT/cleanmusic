@@ -262,6 +262,13 @@ Seit **API v2** können Plugins auf Titelwechsel reagieren, den Player steuern
 und eigene Einstellungsfelder in ihrer Plugin-Karte anzeigen; v1-Plugins laufen
 unverändert. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
 
+### Streamer.bot (optionales Plugin)
+
+[`extras/plugins/streamerbot.js`](extras/plugins/) bringt Twitch-Chat-Befehle über
+Streamer.bot: `!song` postet den aktuellen Titel, `!skip` und `!pause` steuern
+CleanMusic (Token-geschützt, nur lokal). Anleitung:
+[extras/plugins/README.md](extras/plugins/README.md#streamerbot-streamerbotjs).
+
 ### OBS Now-Playing (optionales Plugin)
 
 Im Repository liegt unter [`extras/plugins/obs-overlay.js`](extras/plugins/)
@@ -521,7 +528,7 @@ renderer/
                         Vorschläge, Cutter-Modus, Vollbild-Player, Player
   musickit.html/.js     optionale Apple-MusicKit-Wiedergabe
 docs/                   Plugin-API und Screenshots für die README
-extras/plugins/         optionale Plugins zum Selbst-Hinzufügen (OBS-Overlay)
+extras/plugins/         optionale Plugins zum Selbst-Hinzufügen (OBS-Overlay, Streamer.bot)
 build/                  App-Icons (aus tools/make-icons.js)
 tools/                  Hilfsskripte (Icons erzeugen)
 plugins/                Lokale Plugin-Dateien – nicht Teil des Repositorys oder der Builds
@@ -530,8 +537,8 @@ THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 
 ## Nächste sinnvolle Schritte
 
-0. **Streamer.bot-Plugin** (für 1.0 geplant): Befehle wie !song / !skip und
-   Titelwechsel als Ereignisse – als eigenes, optionales Plugin über die Plugin-API v2. Plan: [docs/PLAN-STREAMERBOT.md](docs/PLAN-STREAMERBOT.md).
+0. **Streamer.bot Phase 2:** Titelwechsel als WebSocket-Ereignis direkt in Streamer.bot
+   (Phase 1 mit !song/!skip/!pause ist fertig). Plan: [docs/PLAN-STREAMERBOT.md](docs/PLAN-STREAMERBOT.md).
 
 1. **Cloud-freier Sync** zwischen PCs über einen selbst gewählten Ordner.
 3. **Cutter-Extras:** BPM-Filter, Wellenform mit Schnittmarken, Sounds per Drag & Drop in den Editor.

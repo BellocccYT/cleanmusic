@@ -160,6 +160,13 @@ Quellen-Plugin – in CleanMusic.
   Cover ist üblich; die Musik selbst im Stream zu spielen, braucht die
   passenden Rechte (z. B. freie Musik aus dem Cutter-Modus).
 
+## Streamer.bot-Plugin
+
+- Ebenfalls nur ein **optionales Plugin** in `extras/plugins/`, nicht Teil der EXE.
+  Lokaler Server nur auf `127.0.0.1` mit Host-Prüfung; Steuerbefehle nur mit Token.
+- Keine Songwünsche aus dem Chat. Was im Stream läuft, verantwortest du selbst –
+  Plattform-Regeln (z. B. Twitch-Musikrichtlinien) und Urheberrecht gelten.
+
 ## Themes
 
 - Die Community-Themes übernehmen nur **Farbwerte** freier Paletten (MIT-Lizenz).

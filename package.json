@@ -13,6 +13,7 @@
     "smoke": "electron . --smoke",
     "smoke:plugin": "electron . --smoke --smoke-plugin",
     "smoke:obs": "electron . --smoke --smoke-obs",
+    "smoke:streamerbot": "electron . --smoke --smoke-streamerbot",
     "smoke:update": "electron . --smoke --smoke-update",
     "build:win": "electron-builder --win portable",
     "build:linux": "electron-builder --linux AppImage",

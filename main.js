@@ -31,6 +31,7 @@ const isDev = process.argv.includes('--dev');
 const isSmoke = process.argv.includes('--smoke');
 const isSmokePlugin = process.argv.includes('--smoke-plugin');
 const isSmokeObs = process.argv.includes('--smoke-obs');
+const isSmokeStreamerbot = process.argv.includes('--smoke-streamerbot');
 // Updater test: pretend to be 0.0.1 and download the latest release into a
 // throwaway folder (never replaces anything, never restarts).
 const UPDATE_TEST = isSmoke && process.argv.includes('--smoke-update');
@@ -1075,6 +1076,15 @@ function createMainWindow() {
           }
         }
 
+        // Optional: the Streamer.bot plugin from extras/ (Fetch-URL commands).
+        if (isSmokeStreamerbot) {
+          try {
+            console.log('SMOKE_STREAMERBOT:', JSON.stringify(await smokeStreamerbotPlugin()));
+          } catch (error) {
+            console.error('SMOKE_STREAMERBOT_FAIL:', error.message);
+          }
+        }
+
         // Optional: exercise the first source plugin found in the plugin folders.
         if (isSmokePlugin) {
           try {
@@ -2072,6 +2082,100 @@ async function smokeUpdate() {
     }
   }
   return result;
+}
+
+/* Smoke test for extras/plugins/streamerbot.js (npm run smoke:streamerbot). */
+async function smokeStreamerbotPlugin() {
+  const http = require('node:http');
+  const port = 4797;
+  const target = path.join(pluginDirs()[0], 'streamerbot.js');
+  fs.copyFileSync(path.join(ROOT, 'extras', 'plugins', 'streamerbot.js'), target);
+
+  const stored = readConfig().pluginSettings || {};
+  writeConfig({ pluginSettings: Object.assign({}, stored, { streamerbot: { port } }) });
+  discoverPlugins();
+  const config = pluginConfig();
+  config.enabled = config.enabled.filter((id) => id !== 'streamerbot').concat('streamerbot');
+  savePluginConfig(config);
+  const plugin = plugins.get('streamerbot');
+  await loadPlugin(plugin);
+
+  const js = (code) => mainWindow.webContents.executeJavaScript(code);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const get = (pathname, host) =>
+    new Promise((resolve) => {
+      const req = http.request(
+        { host: '127.0.0.1', port, path: pathname, headers: host ? { Host: host } : {} },
+        (res) => {
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => {
+            body += chunk;
+          });
+          res.on('end', () => resolve({ status: res.statusCode, body }));
+        }
+      );
+      req.on('error', (error) => resolve({ status: 0, body: error.message }));
+      req.end();
+    });
+
+  const token = (pluginConfig().data.streamerbot || {}).token || '';
+  await js("(async () => { const a = document.querySelector('#audio'); if (a.paused) document.querySelector('#btn-play').click(); return true; })()");
+  await wait(1200);
+  const before = await js('window.CleanMusic.playerSnapshot()');
+  const song = await get('/song');
+  const json = await get('/nowplaying.json');
+  const noToken = await get('/skip');
+  const badToken = await get('/skip?token=' + 'x'.repeat(24));
+  const foreign = await get('/song', 'evil.example');
+  const skip = await get('/skip?token=' + token);
+  const spam = await get('/pause?token=' + token);
+  await wait(2800);
+  const after = await js('window.CleanMusic.playerSnapshot()');
+  const pause = await get('/pause?token=' + token);
+  await wait(700);
+  const paused = await js("document.querySelector('#audio').paused");
+  await wait(2200);
+  const resume = await get('/pause?token=' + token);
+  await wait(900);
+  const resumed = await js("!document.querySelector('#audio').paused");
+
+  await js("window.cm.pluginSettingsSet('streamerbot', { control: false })");
+  await wait(2600);
+  const blocked = await get('/skip?token=' + token);
+  const info = (await pluginList(false)).plugins.find((entry) => entry.id === 'streamerbot');
+
+  const cleanup = pluginConfig();
+  cleanup.enabled = cleanup.enabled.filter((id) => id !== 'streamerbot');
+  savePluginConfig(cleanup);
+  unloadPlugin(plugin);
+  plugins.delete('streamerbot');
+  fs.rmSync(target, { force: true });
+  discoverPlugins();
+  await wait(300);
+  const closed = await get('/song');
+
+  return {
+    loaded: !plugin.error,
+    error: plugin.error,
+    token: /^[a-f0-9]{24}$/.test(token),
+    song: song.status === 200 && before.track ? song.body.includes(before.track.title) : song.body,
+    json: json.status === 200 ? JSON.parse(json.body).title === (before.track && before.track.title) : json.status,
+    noToken: noToken.status,
+    badToken: badToken.status,
+    foreignHost: foreign.status,
+    skip: skip.status,
+    skipped: Boolean(before.track && after.track && before.track.id !== after.track.id),
+    spamLimit: spam.status,
+    pause: [pause.status, pause.body],
+    paused,
+    resume: [resume.status, resume.body],
+    resumed,
+    blockedWhenOff: blocked.status,
+    status: info && info.status ? info.status.text : null,
+    fields: info && info.settings ? info.settings.fields.length : 0,
+    closedAfterUnload: closed.status === 0,
+  };
 }
 
 /* Smoke test for extras/plugins/obs-overlay.js (npm run smoke:obs). */

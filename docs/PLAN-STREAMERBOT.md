@@ -1,6 +1,8 @@
 # Plan: Streamer.bot-Plugin (Ziel: CleanMusic 1.0)
 
-Status: **nur Planung** – wird gemeinsam umgesetzt. Nichts davon ist gebaut.
+Status: **Phase 1 gebaut** (`extras/plugins/streamerbot.js`, Weg A „Fetch URL“).
+Entscheidungen (21.11.2026): erst Fetch URL, WebSocket später; Befehle `!song`,
+`!skip`, `!pause`; **keine Songwünsche**; Plattform Twitch.
 
 ## Ziel
 
@@ -86,7 +88,12 @@ Authentifizierung des WebSocket-Servers, Versionsunterschiede.
   Player prüfen (wie `smoke:obs`).
 - WebSocket-Teil gegen einen kleinen Fake-Server im Test (kein echtes Streamer.bot nötig).
 
-## Offene Fragen an dich
+## Nächste Phase
+
+- Weg B (WebSocket): Titelwechsel als Ereignis direkt in Streamer.bot, Action-Auswahl
+  in der Plugin-Karte. Vorher gegen die aktuelle Streamer.bot-Doku prüfen.
+
+## Ursprüngliche Fragen (beantwortet)
 
 1. Reicht für den Start Weg A (Fetch URL), oder soll Weg B gleich mit?
 2. Welche Befehle brauchst du wirklich (`!song`, `!skip`, `!vol`, `!sr`)?
