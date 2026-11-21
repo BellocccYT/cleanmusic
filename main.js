@@ -2318,6 +2318,15 @@ async function smokeUpdate() {
     // Pretend to be 0.0.1 → the latest release is "new"; download it into a throwaway folder.
     result.available = checked.status === 'available';
     result.asset = checked.asset;
+    if (result.available && UPDATE_TEST_SETUP && checked.asset) {
+      const running = downloadUpdate();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      result.cleanupWhileDownloading = cleanupSetupDir(UPDATE_TEST_DIR) ? 'deleted' : 'skipped';
+      const first = await running;
+      result.firstDownload = first.status;
+      setUpdate({ status: 'error', error: 'Test' });
+      result.retryAllowed = true;
+    }
     if (result.available) {
       const started = Date.now();
       const done = await downloadUpdate();
@@ -3533,7 +3542,7 @@ async function checkForUpdates() {
 async function downloadUpdate() {
   const target = updateTarget();
   const asset = updateState.asset;
-  if (!target || !asset || updateState.status !== 'available') return publicUpdate();
+  if (!target || !asset || (updateState.status !== 'available' && updateState.status !== 'error')) return publicUpdate();
 
   const dest = path.join(target.dir, asset.name);
   if (path.resolve(dest).toLowerCase() === path.resolve(target.file).toLowerCase()) {
@@ -3609,15 +3618,21 @@ function installUpdate() {
 }
 
 // Leftover setup EXE from the last update (it ran from the temp folder).
+// Never while an update is being downloaded or waits to be installed:
+// 1.0.0/1.0.1 deleted the folder under a running download (ENOENT on rename).
+function cleanupSetupDir(folder = SETUP_UPDATE_DIR) {
+  if (updateState.status === 'downloading' || updateState.status === 'ready') return false;
+  try {
+    fs.rmSync(folder, { recursive: true, force: true });
+  } catch {
+    // still in use – next start
+  }
+  return true;
+}
+
 function cleanupSetupUpdate() {
   if (!isInstalledCopy()) return;
-  setTimeout(() => {
-    try {
-      fs.rmSync(SETUP_UPDATE_DIR, { recursive: true, force: true });
-    } catch {
-      // still in use – next start
-    }
-  }, 15000);
+  setTimeout(() => cleanupSetupDir(), 15000);
 }
 
 ipcMain.handle('update-get', () => publicUpdate());

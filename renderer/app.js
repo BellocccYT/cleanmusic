@@ -3472,6 +3472,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.0.2': [
+      'Installierte Version: Updates brechen nicht mehr ab, wenn du direkt nach dem Start auf „Updaten“ klickst.',
+      'Klappt ein Update-Download nicht, gibt es jetzt „Nochmal versuchen“.',
+    ],
     '1.0.1': [
       'Songwünsche für Plugins: Mit dem Streamer.bot-Plugin (ab 1.1.0) wünscht sich dein Twitch-Chat per !sr Titel – optional, mit Limits.',
       'Wünsche stehen in der Warteschlange unter „Songwünsche aus dem Chat“ mit Namen.',
@@ -5513,7 +5517,8 @@
           <small>${esc(info.error || '')}</small>
         </div>
         <div class="update-actions">
-          <button class="btn primary small" data-update="open">Zur Download-Seite</button>
+          ${info.installable && info.asset ? '<button class="btn primary small" data-update="download">Nochmal versuchen</button>' : ''}
+          <button class="btn ${info.installable && info.asset ? 'ghost' : 'primary'} small" data-update="open">Zur Download-Seite</button>
           <button class="btn ghost small" data-update="later">Schließen</button>
         </div>`;
     }

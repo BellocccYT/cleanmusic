@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.0.1**
+**Version 1.0.2**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -408,9 +408,9 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-1.0.1-setup.exe` – **Installer** (ein Klick, pro Benutzer,
+- `release\CleanMusic-1.0.2-setup.exe` – **Installer** (ein Klick, pro Benutzer,
   ohne Admin-Rechte; installiert nach `%LOCALAPPDATA%\Programs\cleanmusic`)
-- `release\CleanMusic-1.0.1-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-1.0.2-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
@@ -433,7 +433,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-1.0.1.AppImage`.
+Ergebnis: `release/CleanMusic-1.0.2.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die
