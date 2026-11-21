@@ -91,6 +91,20 @@ den Nutzungsbedingungen des jeweiligen Anbieters widerspricht. CleanMusic prüft
 oder genehmigt Plugins nicht und übernimmt keine Verantwortung für ihr
 Verhalten.
 
+## Downloads („Nur Cutting“)
+
+- Standardmäßig **aus**. Eingeschaltet lädt CleanMusic nur Dateien, deren Lizenz
+  das ausdrücklich erlaubt: **CC0, CC BY oder Public Domain**, und nur von
+  bekannten Quellen freier Musik (incompetech.com, Freesound, Jamendo, ccMixter,
+  Wikimedia). Lizenz und Quelle prüft der Hauptprozess, nicht nur die Oberfläche.
+- Neben jeder Datei liegt eine `.txt` mit Titel, Urheber, Lizenz-Link und
+  Credit-Text. Bei CC BY **musst** du diesen Credit in deinem Video angeben.
+- Streams der Dienste, 30-Sekunden-Vorschauen, NCS-Titel (eigene
+  Nutzungsbedingungen, Download nur bei NCS selbst) und alles, was Plugins
+  liefern, sind vom Download ausgeschlossen. Einen Modus „alles
+  herunterladen“ gibt es nicht und wird es nicht geben – das würde Urheber- und
+  Nutzungsrechte der Dienste verletzen.
+
 ## Cutter-Modus: Was du in Videos verwenden darfst
 
 Der Cutter-Modus zeigt nur Quellen, deren Nutzung in Videos ausdrücklich

@@ -31,6 +31,12 @@ contextBridge.exposeInMainWorld('cm', {
   },
   pluginSettingsSet: (id, patch) => ipcRenderer.invoke('plugin-settings-set', id, patch),
   pluginPickFolder: () => ipcRenderer.invoke('plugin-pick-folder'),
+  cuttingDefaultFolder: () => ipcRenderer.invoke('cutting-default-folder'),
+  cuttingDownload: (item) => ipcRenderer.invoke('cutting-download', item),
+  cuttingDrag: (file) => ipcRenderer.send('cutting-drag', file),
+  cuttingReveal: (file) => ipcRenderer.invoke('cutting-reveal', file),
+  cuttingExists: (files) => ipcRenderer.invoke('cutting-exists', files),
+  cuttingOpenFolder: (folder) => ipcRenderer.invoke('cutting-open-folder', folder),
   onPluginNotify: (listener) => {
     ipcRenderer.on('plugin-notify', (_event, message) => listener(message));
   },

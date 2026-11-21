@@ -21,7 +21,7 @@ Electron-App für Windows, die Musik-Streamingdienste als offizielle Web-Player 
 
 - Im App-Code (`main.js`, `renderer/*`, `preload.js`) keinen yt-dlp-/YouTube-Extraktionscode und keine yt-dlp-Erwähnungen. Alles Quellenspezifische gehört in ein extern installiertes Plugin.
 - Plugins werden nie automatisch geladen: erst nach Aktivierung mit Rückfrage.
-- Kein DRM-Bypass, kein Download-Button für Streams, keine Werbeblocker.
+- Kein DRM-Bypass, kein Download-Button für Streams, keine Werbeblocker. Downloads nur im Modus „Nur Cutting“ (CC0, CC BY, Public Domain aus dem Cutter-Modus, Host-Allowlist und Lizenzprüfung in `main.js`); niemals einen Modus „alles“ einbauen.
 - Nutzerdaten liegen in `%APPDATA%\CleanMusic` (`localStorage` + `cleanmusic-config.json`). Nicht anfassen.
 - Plugins, `release/` und `node_modules/` bleiben aus Git heraus.
 

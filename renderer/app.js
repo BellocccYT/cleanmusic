@@ -55,6 +55,10 @@
       '<svg class="ic" viewBox="0 0 24 24"><path d="M2 12h2l2-6 3 12 3-15 3 18 3-12 2 6h2"></path></svg>',
     note:
       '<svg class="ic" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>',
+    download:
+      '<svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path></svg>',
+    file:
+      '<svg class="ic" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M10 13.5v4l3.5-2z"></path></svg>',
     copy:
       '<svg class="ic" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
     discord:
@@ -93,6 +97,7 @@
     recs: 'cleanmusic.recs.v1',
     credits: 'cleanmusic.credits.v1',
     openverseCache: 'cleanmusic.ovcache.v1',
+    downloads: 'cleanmusic.downloads.v1', // entry id → { path, at }
   };
 
   const RECS_MAX_AGE = 6 * 60 * 60 * 1000;
@@ -205,6 +210,8 @@
         volumeBoost: false,
         theme: 'nacht',
         coverAccent: false,
+        downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
+        downloadDir: '',
       },
       readJSON(STORAGE.settings, {})
     ),
@@ -865,6 +872,7 @@
         </span>
         ${lengthBadge(entry)}
         <div class="song-actions">
+          ${downloadButton(entry)}
           ${
             entry.credit
               ? `<button class="icon-btn credit-btn" data-act="credit" title="Credit kopieren & in Video-Credits sammeln">${ICONS.copy}</button>`
@@ -3246,6 +3254,151 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Downloads ("Nur Cutting")
+   *
+   * Only freely licensed files from the cutter mode (CC0, CC BY, Public
+   * Domain) – never streams, previews or plugin titles. Each file gets a
+   * credit .txt next to it; finished downloads can be dragged straight
+   * into a video editor.
+   * ---------------------------------------------------------------- */
+
+  const downloads = readJSON(STORAGE.downloads, {}) || {};
+  const downloading = new Set();
+
+  function canDownload(entry) {
+    if (!entry || state.settings.downloads !== 'cutting') return false;
+    if (entry.kind !== 'stream' || !entry.url) return false;
+    const key = licenseKey(entry.license);
+    return key === 'free' || key === 'by';
+  }
+
+  function downloadButton(entry) {
+    if (!canDownload(entry)) return '';
+    const done = downloads[entry.id];
+    if (done) {
+      return `<button class="icon-btn dl-btn done" data-act="reveal" data-dl-file="${esc(done.path)}" draggable="true"
+        title="Heruntergeladen – in dein Schnittprogramm ziehen, Klick zeigt die Datei">${ICONS.file}</button>`;
+    }
+    const busy = downloading.has(entry.id);
+    return `<button class="icon-btn dl-btn ${busy ? 'busy' : ''}" data-act="download" ${busy ? 'disabled' : ''}
+      title="Herunterladen (mit Credit-Datei)">${ICONS.download}</button>`;
+  }
+
+  function downloadCategory(entry) {
+    const tab = creatorTab();
+    if (entry.source === 'incompetech') {
+      const classics = CREATOR.tabs.find((item) => item.id === 'classics');
+      const mood = classics && classics.categories ? classics.categories.find((item) => item.id === entry.category) : null;
+      return `Kevin MacLeod${mood ? ` - ${mood.label}` : ''}`;
+    }
+    if (entry.source === 'freesound' || (tab && tab.id === 'sfx')) return 'Soundeffekte';
+    return 'Freie Musik';
+  }
+
+  function refreshDownloadButtons() {
+    if (state.view === 'creator') renderCreator();
+    renderFavorites();
+    if (state.currentPlaylist) renderPlaylist();
+  }
+
+  async function downloadEntry(entry) {
+    if (!canDownload(entry) || downloading.has(entry.id) || !bridge.cuttingDownload) return;
+    downloading.add(entry.id);
+    refreshDownloadButtons();
+    let result;
+    try {
+      result = await bridge.cuttingDownload({
+        url: entry.url,
+        title: entry.title,
+        artist: entry.artist,
+        license: entry.license,
+        licenseUrl: entry.licenseUrl,
+        credit: entry.credit,
+        link: entry.link,
+        category: downloadCategory(entry),
+        folder: state.settings.downloadDir,
+      });
+    } catch (error) {
+      result = { error: error.message };
+    }
+    downloading.delete(entry.id);
+    if (result && result.ok) {
+      downloads[entry.id] = { path: result.path, at: Date.now() };
+      writeJSON(STORAGE.downloads, downloads);
+      toast(`${result.existed ? 'Schon vorhanden' : 'Gespeichert'}: ${result.name} – zum Schnittprogramm ziehen`);
+    } else {
+      toast((result && result.error) || 'Download fehlgeschlagen');
+    }
+    refreshDownloadButtons();
+    return result;
+  }
+
+  async function revealDownload(entry) {
+    const done = downloads[entry.id];
+    if (!done) return;
+    const ok = bridge.cuttingReveal ? await bridge.cuttingReveal(done.path) : false;
+    if (!ok) {
+      delete downloads[entry.id];
+      writeJSON(STORAGE.downloads, downloads);
+      toast('Datei nicht mehr da – du kannst sie neu herunterladen.');
+      refreshDownloadButtons();
+    }
+  }
+
+  // Forget downloads whose files were deleted or moved.
+  async function checkDownloads() {
+    const ids = Object.keys(downloads);
+    if (!ids.length || !bridge.cuttingExists) return;
+    try {
+      const exists = await bridge.cuttingExists(ids.map((id) => downloads[id].path));
+      let changed = false;
+      ids.forEach((id, index) => {
+        if (!exists[index]) {
+          delete downloads[id];
+          changed = true;
+        }
+      });
+      if (changed) {
+        writeJSON(STORAGE.downloads, downloads);
+        refreshDownloadButtons();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function downloadsPanel() {
+    const mode = state.settings.downloads;
+    const folder = state.settings.downloadDir || state.downloadDefault || 'Musik\\CleanMusic Cutting';
+    return `
+      <div class="panel" id="downloads-panel">
+        <h3>Downloads <span class="tag">nur freie Lizenzen</span></h3>
+        <p>
+          CleanMusic lädt ausschließlich frei lizenzierte Dateien aus dem Cutter-Modus herunter
+          (CC0, CC BY, Public Domain) – jeweils mit einer Credit-Datei daneben. Streams,
+          Vorschauen und Plugin-Titel lassen sich nicht herunterladen.
+        </p>
+        <div class="row dl-modes">
+          <button class="radio-tag ${mode === 'off' ? 'active' : ''}" data-dl-mode="off">Aus</button>
+          <button class="radio-tag ${mode === 'cutting' ? 'active' : ''}" data-dl-mode="cutting">Nur Cutting</button>
+        </div>
+        <div class="ps-row dl-folder-row" style="margin-top:12px">
+          <label><strong>Ordner</strong><small>Unterordner je Kategorie, z. B. „Soundeffekte“.</small></label>
+          <span class="ps-folder">
+            <input type="text" id="dl-folder" value="${esc(folder)}" readonly spellcheck="false" />
+            <button class="btn ghost small" data-dl-action="pick">Ändern …</button>
+            <button class="btn ghost small" data-dl-action="open">Öffnen</button>
+          </span>
+        </div>
+        ${
+          state.settings.downloadDir
+            ? '<p class="muted small" style="margin-top:6px"><button class="link-btn" data-dl-action="reset">Standardordner verwenden</button></p>'
+            : ''
+        }
+      </div>`;
+  }
+
+  /* ---------------------------------------------------------------- *
    * Cutter mode (music + sound effects for videos)
    * ---------------------------------------------------------------- */
 
@@ -4624,6 +4777,8 @@
 
         ${visualizerPanel()}
 
+        ${downloadsPanel()}
+
         ${pluginPanel()}
 
         ${discordPanel()}
@@ -4763,6 +4918,18 @@
   }
 
   function wireDragAndDrop() {
+    document.addEventListener(
+      'dragstart',
+      (event) => {
+        const file = event.target.closest && event.target.closest('[data-dl-file]');
+        if (!file || !bridge.cuttingDrag) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        bridge.cuttingDrag(file.dataset.dlFile);
+      },
+      true
+    );
+
     document.addEventListener('dragstart', (event) => {
       const row = event.target.closest && event.target.closest('[data-list][data-index]');
       if (!row) return;
@@ -4924,6 +5091,12 @@
         return;
       case 'credit':
         collectCredit(entry);
+        return;
+      case 'download':
+        downloadEntry(entry);
+        return;
+      case 'reveal':
+        revealDownload(entry);
         return;
       case 'remove':
         if (key.startsWith('playlist:')) removeFromPlaylist(key.slice(9), index);
@@ -5225,6 +5398,41 @@
     $('#view-settings').addEventListener('click', async (event) => {
       if (event.target.closest('#btn-musickit')) {
         bridge.openMusickit();
+        return;
+      }
+
+      const dlMode = event.target.closest('[data-dl-mode]');
+      if (dlMode) {
+        state.settings.downloads = dlMode.dataset.dlMode === 'cutting' ? 'cutting' : 'off';
+        saveSettings();
+        renderSettings();
+        refreshDownloadButtons();
+        toast(
+          state.settings.downloads === 'cutting'
+            ? 'Downloads an – nur freie Dateien aus dem Cutter-Modus'
+            : 'Downloads aus'
+        );
+        return;
+      }
+
+      const dlAction = event.target.closest('[data-dl-action]');
+      if (dlAction) {
+        const action = dlAction.dataset.dlAction;
+        if (action === 'pick' && bridge.pluginPickFolder) {
+          const picked = await bridge.pluginPickFolder();
+          if (picked) {
+            state.settings.downloadDir = picked;
+            saveSettings();
+            renderSettings();
+          }
+        } else if (action === 'open' && bridge.cuttingOpenFolder) {
+          const error = await bridge.cuttingOpenFolder(state.settings.downloadDir);
+          if (error) toast(`Ordner konnte nicht geöffnet werden: ${error}`);
+        } else if (action === 'reset') {
+          state.settings.downloadDir = '';
+          saveSettings();
+          renderSettings();
+        }
         return;
       }
 
@@ -5637,6 +5845,17 @@
     }
     if (bridge.onPluginsChanged) bridge.onPluginsChanged(() => refreshPlugins(false));
 
+    if (bridge.cuttingDefaultFolder) {
+      bridge
+        .cuttingDefaultFolder()
+        .then((folder) => {
+          state.downloadDefault = folder;
+          renderSettings();
+        })
+        .catch(() => {});
+    }
+    checkDownloads();
+
     bridge.onDiscordStatus((status) => {
       state.discord.status = status || {};
       renderDiscordStatus();
@@ -5703,6 +5922,14 @@
       showView('creator');
     },
     collectCreditAt: (key, index) => collectCredit(entryAt(key, index)),
+    downloadAt: (key, index) => downloadEntry(entryAt(key, index)),
+    downloads: () => ({ mode: state.settings.downloads, count: Object.keys(downloads).length }),
+    setDownloads: (mode, folder) => {
+      state.settings.downloads = mode === 'cutting' ? 'cutting' : 'off';
+      state.settings.downloadDir = folder || '';
+      saveSettings();
+      refreshDownloadButtons();
+    },
     playerSnapshot: () => playerSnapshot(),
     theme: () => ({
       id: currentTheme() ? currentTheme().id : null,

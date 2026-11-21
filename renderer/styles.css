@@ -4098,3 +4098,39 @@ body.fs-open .toast {
   width: 260px;
   min-width: 0;
 }
+
+/* Downloads ("Nur Cutting") ------------------------------------------ */
+
+.dl-btn.done {
+  color: var(--ok);
+  cursor: grab;
+}
+
+.dl-btn.busy {
+  opacity: 1;
+  color: var(--accent);
+  animation: dl-pulse 1s ease-in-out infinite;
+}
+
+@keyframes dl-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.dl-folder-row .ps-folder {
+  max-width: 70%;
+}
+
+.dl-folder-row input[type="text"] {
+  width: 300px;
+  color: var(--muted);
+}
+
+.link-btn {
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

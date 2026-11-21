@@ -112,6 +112,18 @@ Titel und fertigem Credit:
 - Openverse erlaubt ohne Konto ~200 Anfragen am Tag; CleanMusic speichert
   Ergebnisse deshalb 24 h zwischen.
 
+### Downloads: nur freie Dateien für Videos
+
+Unter *Einstellungen → Downloads* gibt es genau zwei Stufen: **Aus** (Standard)
+und **Nur Cutting**. Dann bekommen frei lizenzierte Titel im Cutter-Modus
+(**CC0, CC BY, Public Domain** – Kevin MacLeod, Freesound, Jamendo über
+Openverse) einen Download-Knopf. Jede Datei landet in
+`MusikCleanMusic Cutting<Kategorie>\x60 (Ordner änderbar), daneben eine
+`.txt` mit Lizenz und fertigem Credit-Text. Fertige Downloads ziehst du über das
+grüne Datei-Symbol direkt in dein Schnittprogramm; ein Klick zeigt die Datei im
+Explorer. Streams, Vorschauen, NCS-Titel und Plugin-Titel lassen sich
+**nicht** herunterladen – einen Modus „alles herunterladen“ gibt es bewusst nicht.
+
 ### Vollbild-Player
 
 Taste **F**, der Knopf ⤢ in der Player-Leiste oder Doppelklick aufs Cover:
@@ -236,7 +248,8 @@ hinzufügen wie jedes andere Plugin, Anleitung in
 
 ## Was es bewusst **nicht** macht
 
-- DRM-Streams entschlüsseln oder Streams speichern / herunterladen
+- DRM-Streams entschlüsseln oder Streams speichern / herunterladen (Downloads
+  gibt es nur für frei lizenzierte Dateien aus dem Cutter-Modus)
 - Plugins oder Downloader mitliefern
 - Werbung blockieren
 - Einen „einen Player für alle" vortäuschen: Spotify, TIDAL, Amazon & Co.

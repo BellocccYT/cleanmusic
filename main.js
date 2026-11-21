@@ -15,6 +15,7 @@ const {
   session,
   net,
   clipboard,
+  nativeImage,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -825,6 +826,43 @@ function createMainWindow() {
           console.error('SMOKE_CREATOR_FAIL:', error.message);
         }
 
+        // Downloads ("Nur Cutting") into a throwaway folder – never the real music folder.
+        try {
+          const dlDir = path.join(app.getPath('temp'), 'cleanmusic-smoke-downloads');
+          fs.rmSync(dlDir, { recursive: true, force: true });
+          const dlResult = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              cm.setCreator('ncs', 'top');
+              await wait(400);
+              const offButtons = document.querySelectorAll('#view-creator [data-act="download"]').length;
+              cm.setDownloads('cutting', ${JSON.stringify(dlDir)});
+              const ncsButtons = document.querySelectorAll('#view-creator [data-act="download"]').length;
+              cm.setCreator('classics', 'lustig');
+              for (let i = 0; i < 40 && cm.creator().items === 0; i += 1) await wait(250);
+              await wait(300);
+              const classicButtons = document.querySelectorAll('#view-creator [data-act="download"]').length;
+              const result = await cm.downloadAt('creator', 0);
+              await wait(300);
+              const done = document.querySelectorAll('#view-creator [data-dl-file]').length;
+              cm.setDownloads('off', '');
+              return {
+                offButtons, ncsButtons, classicButtons,
+                ok: Boolean(result && result.ok), name: result && result.name,
+                error: result && result.error, size: result && result.size,
+                done, state: cm.downloads(),
+              };
+            })()
+          `);
+          const files = fs.existsSync(dlDir) ? fs.readdirSync(dlDir, { recursive: true }) : [];
+          dlResult.files = files.map(String);
+          console.log('SMOKE_DOWNLOAD:', JSON.stringify(dlResult));
+          fs.rmSync(dlDir, { recursive: true, force: true });
+        } catch (error) {
+          console.error('SMOKE_DOWNLOAD_FAIL:', error.message);
+        }
+
         try {
           const plugins = await mainWindow.webContents.executeJavaScript(
             'window.CleanMusic.plugins()'
@@ -1464,6 +1502,165 @@ ipcMain.handle('creator-openverse', async (_event, options) => {
   } catch (error) {
     return { items: [], more: false, error: friendlyNetError(error).message || 'Openverse nicht erreichbar' };
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * Downloads – only "Nur Cutting": freely licensed audio from the cutter
+ * mode (CC0, CC BY, Public Domain) from known free-music hosts, always
+ * with a credit file next to it. Streams and previews are never offered.
+ * ------------------------------------------------------------------ */
+
+const DOWNLOAD_LICENSE = /^(cc0|public domain|cc by(?: [0-9.]+)?)$/i;
+const DOWNLOAD_HOSTS = ['incompetech.com', 'freesound.org', 'jamendo.com', 'ccmixter.org', 'wikimedia.org'];
+const DOWNLOAD_TYPES = {
+  'audio/mpeg': '.mp3',
+  'audio/mp3': '.mp3',
+  'audio/ogg': '.ogg',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'audio/wave': '.wav',
+  'audio/flac': '.flac',
+  'audio/x-flac': '.flac',
+  'audio/mp4': '.m4a',
+  'audio/aac': '.aac',
+};
+const downloadedFiles = new Set();
+
+function defaultDownloadDir() {
+  return path.join(app.getPath('music'), 'CleanMusic Cutting');
+}
+
+function downloadBase(folder) {
+  const custom = typeof folder === 'string' ? folder.trim() : '';
+  return custom && path.isAbsolute(custom) ? custom : defaultDownloadDir();
+}
+
+function safeName(value, fallback) {
+  const name = String(value || '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[. ]+|[. ]+$/g, '')
+    .slice(0, 110);
+  return name || fallback;
+}
+
+function allowedDownloadHost(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return DOWNLOAD_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle('cutting-default-folder', () => defaultDownloadDir());
+
+ipcMain.handle('cutting-download', async (_event, input) => {
+  const item = input && typeof input === 'object' ? input : {};
+  const url = cleanUrl(item.url);
+  const license = cleanText(item.license, 40);
+  if (!url || !allowedDownloadHost(url)) return { error: 'Diese Quelle ist für Downloads nicht freigegeben.' };
+  if (!DOWNLOAD_LICENSE.test(license)) return { error: 'Nur CC0, CC BY und Public Domain können heruntergeladen werden.' };
+
+  const base = downloadBase(item.folder);
+  const folder = path.join(base, safeName(item.category, 'Cutting'));
+  const stem = safeName(item.artist ? `${item.artist} - ${item.title}` : item.title, 'Titel');
+
+  try {
+    fs.mkdirSync(folder, { recursive: true });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 180000);
+    const response = await net.fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      clearTimeout(timer);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const type = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    const fromUrl = (path.extname(new URL(url).pathname) || '').toLowerCase();
+    const extension =
+      DOWNLOAD_TYPES[type] || (/^\.(mp3|ogg|wav|flac|m4a|aac)$/.test(fromUrl) ? fromUrl : '');
+    if (!extension) {
+      clearTimeout(timer);
+      throw new Error('Keine Audiodatei');
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    clearTimeout(timer);
+    if (buffer.length > 250 * 1024 * 1024) throw new Error('Datei zu groß');
+
+    let file = path.join(folder, stem + extension);
+    let existed = false;
+    if (fs.existsSync(file)) {
+      if (fs.statSync(file).size === buffer.length) existed = true;
+      else {
+        let n = 2;
+        while (fs.existsSync(path.join(folder, `${stem} (${n})${extension}`))) n += 1;
+        file = path.join(folder, `${stem} (${n})${extension}`);
+      }
+    }
+    if (!existed) fs.writeFileSync(file, buffer);
+
+    const credit = [
+      `Titel: ${cleanText(item.title, 200)}`,
+      item.artist ? `Von: ${cleanText(item.artist, 200)}` : '',
+      `Lizenz: ${license}${item.licenseUrl ? ` (${cleanUrl(item.licenseUrl)})` : ''}`,
+      item.link ? `Quelle: ${cleanUrl(item.link)}` : '',
+      '',
+      'Credit für deine Videobeschreibung:',
+      cleanText(item.credit || '', 800) || `"${cleanText(item.title, 200)}" – ${cleanText(item.artist, 200)} (${license})`,
+      '',
+      `Heruntergeladen mit CleanMusic am ${new Date().toLocaleDateString('de-DE')}.`,
+    ]
+      .filter((line, index, lines) => line !== '' || (lines[index - 1] && lines[index - 1] !== ''))
+      .join('\r\n');
+    fs.writeFileSync(file.replace(/\.[^.]+$/, '') + '.txt', credit + '\r\n', 'utf8');
+
+    downloadedFiles.add(file);
+    return { ok: true, path: file, name: path.basename(file), folder, existed, size: buffer.length };
+  } catch (error) {
+    const message = error.name === 'AbortError' ? 'Zeitüberschreitung' : friendlyNetError(error).message || error.message;
+    return { error: `Download fehlgeschlagen: ${message}` };
+  }
+});
+
+function knownDownload(file) {
+  if (typeof file !== 'string' || !path.isAbsolute(file)) return null;
+  const resolved = path.resolve(file);
+  if (!/\.(mp3|ogg|wav|flac|m4a|aac)$/i.test(resolved)) return null;
+  return fs.existsSync(resolved) ? resolved : null;
+}
+
+// Drag a downloaded file straight into a video editor.
+ipcMain.on('cutting-drag', (event, file) => {
+  const resolved = knownDownload(file);
+  if (!resolved) return;
+  try {
+    const icon = nativeImage.createFromPath(path.join(ROOT, 'renderer', 'assets', 'icon.png')).resize({ width: 48 });
+    event.sender.startDrag({ file: resolved, icon });
+  } catch {
+    /* ignore */
+  }
+});
+
+ipcMain.handle('cutting-reveal', (_event, file) => {
+  const resolved = knownDownload(file);
+  if (!resolved) return false;
+  shell.showItemInFolder(resolved);
+  return true;
+});
+
+ipcMain.handle('cutting-exists', (_event, files) =>
+  (Array.isArray(files) ? files : []).slice(0, 500).map((file) => Boolean(knownDownload(file)))
+);
+
+ipcMain.handle('cutting-open-folder', async (_event, folder) => {
+  const target = downloadBase(folder);
+  try {
+    fs.mkdirSync(target, { recursive: true });
+  } catch {
+    return 'Ordner konnte nicht angelegt werden.';
+  }
+  return shell.openPath(target);
 });
 
 ipcMain.handle('copy-text', (_event, text) => {
