@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.6.0**
+**Version 1.7.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -106,6 +106,18 @@ Suche erscheinen zusätzlich die aktuellen Deezer-Charts.
   Amazon Music … suchen". So springst du mit einem Klick vom 30-s-Treffer in
   den vollen Song im Dienst.
 
+### Übergänge zwischen Titeln
+
+*Einstellungen → Wiedergabe → Übergang*: **Crossfade** (2–12 Sekunden, ein zweiter
+Player blendet den alten Titel aus, während der neue einblendet) oder **Lückenlos** (der
+nächste Titel wird vorgeladen). Nicht bei Radio und „Titel wiederholen“.
+
+### Dein Rückblick
+
+In der Seitenleiste: Hörminuten, abgespielte Titel, Top-Künstler, Top-Titel, wann du hörst
+(nach Uhrzeit und Monat) und deine meistgenutzte Quelle – für diesen Monat, das Jahr oder
+alles. Gezählt wird nur lokal (`cleanmusic.stats.v1`), ab Version 1.7.
+
 ### Künstlerseiten
 
 Klick auf einen Künstlernamen (in Listen, in der Player-Leiste oder im Vollbild-Player):
@@ -176,6 +188,12 @@ bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import v
 
 ### Cutter-Modus (für Videos)
 
+> **Tempo & Wellenform (ab 1.7):** Musik-Tabs lassen sich nach Tempo filtern (langsam bis
+> sehr schnell – CleanMusic misst die BPM selbst). Für den laufenden Titel zeigt der
+> Cutter-Modus die **Wellenform**: Start/Ende setzen (Tasten **I**/**O**), Ausschnitt als
+> Schleife abspielen, Zeitmarken kopieren – und bei CC0/CC BY/Public Domain im Modus „Nur
+> Cutting“ den Ausschnitt **als WAV** mit Credit-.txt in `CleanMusic Cutting\Schnitte`.
+>
 > **Für dich (ab 1.5):** Vorschläge aus den Kategorien, die du am meisten nutzt – ohne
 > Titel, die du schon gecreditet hast (Mix, nur Musik, nur Sounds).
 >

@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('cm', {
   lyricsGet: (query) => ipcRenderer.invoke('lyrics-get', query),
   artistPage: (query) => ipcRenderer.invoke('artist-page', query),
   albumTracks: (id) => ipcRenderer.invoke('album-tracks', id),
+  audioBytes: (url, options) => ipcRenderer.invoke('audio-bytes', url, options || null),
+  cutSave: (item) => ipcRenderer.invoke('cut-save', item),
   onDeepLink: (listener) => {
     ipcRenderer.on('deep-link', (_event, link) => listener(link));
   },

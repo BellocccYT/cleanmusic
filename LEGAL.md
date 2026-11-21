@@ -189,6 +189,13 @@ CleanMusic zeigt Songtexte aus der freien Datenbank LRCLIB an, nur zur Anzeige b
 Hören. Songtexte sind meist urheberrechtlich geschützt – sie im Stream (OBS-Stil
 „Songtext“) öffentlich zu zeigen, liegt in deiner Verantwortung.
 
+## Ausschnitte (ab 1.7)
+
+Ausschnitte als WAV speichert CleanMusic nur bei CC0, CC BY und Public Domain (wie „Nur
+Cutting“). CC BY verlangt, Änderungen kenntlich zu machen – die Credit-.txt erinnert daran
+(„gekürzt“). Zum Messen von Tempo und Wellenform lädt CleanMusic die Datei nur in den
+Speicher; gespeichert wird nichts.
+
 ## Teilen-Seite (GitHub Pages)
 
 `bellocccyt.github.io/cleanmusic/s/` ist eine statische Seite ohne Cookies, Tracking oder

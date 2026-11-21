@@ -1643,6 +1643,28 @@ function createMainWindow() {
           v16.deepParsed = Boolean(deepOk && deepOk.src === 'deezer');
           v16.deepRejected = deepBad.every((link) => link === null);
           console.log('SMOKE_V16:', JSON.stringify(v16));
+
+          // 1.7: BPM, review, transitions, WAV export.
+          const v17 = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const out = {};
+              out.bpmSynthetic = [cm.bpmSynthetic(120), cm.bpmSynthetic(95), cm.bpmSynthetic(150)];
+              out.bpmReal = await cm.bpmOf('https://incompetech.com/music/royalty-free/mp3-royaltyfree/Monkeys%20Spinning%20Monkeys.mp3');
+              out.bpmForeign = await cm.bpmOf('https://example.com/x.mp3');
+              cm.statsTest({ id: 'test:1', kind: 'preview', title: 'Smoke Song', artist: 'Smoke Artist', sourceLabel: 'Vorschau' }, 125);
+              out.review = cm.reviewSummary('month');
+              cm.showView('review');
+              out.reviewView = Boolean(document.querySelector('#view-review .rv-tiles'));
+              cm.showView('home');
+              cm.setTransition('crossfade');
+              out.transition = cm.transitionMode();
+              cm.setTransition('off');
+              out.wav = cm.wavTest();
+              return out;
+            })()
+          `);
+          console.log('SMOKE_V17:', JSON.stringify(v17));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -4274,6 +4296,111 @@ function registerProtocol() {
     console.error('Protokoll cleanmusic:// nicht registriert:', error.message);
   }
 }
+
+/* --- Cutter analysis (1.7): audio bytes for BPM / waveform, cut export -- *
+ * Only free-licence hosts (the "Nur Cutting" allowlist) plus the preview CDNs
+ * of Deezer and Apple. The renderer decodes and measures; nothing is played
+ * from here. Cut export: only CC0 / CC BY / Public Domain, as WAV + credit. */
+
+const ANALYSIS_HOSTS = ['dzcdn.net', 'itunes.apple.com', 'mzstatic.com'];
+
+function analysisHostAllowed(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return allowedDownloadHost(url) || ANALYSIS_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle('audio-bytes', async (_event, url, options) => {
+  const target = cleanUrl(url);
+  if (!target || !analysisHostAllowed(target)) return { error: 'Diese Quelle kann nicht analysiert werden.' };
+  const full = Boolean(options && options.full);
+  const limit = full ? 30 * 1024 * 1024 : 3 * 1024 * 1024;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await net.fetch(target, {
+      signal: controller.signal,
+      headers: full ? {} : { Range: `bytes=0-${limit - 1}` },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (response.url && !analysisHostAllowed(response.url)) throw new Error('Weiterleitung nicht erlaubt');
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(Buffer.from(value));
+      total += value.byteLength;
+      if (total >= limit) {
+        if (full) throw new Error('Datei zu groß für die Wellenform');
+        try {
+          await reader.cancel();
+        } catch {
+          /* enough */
+        }
+        break;
+      }
+    }
+    return { bytes: Buffer.concat(chunks) };
+  } catch (error) {
+    return { error: error.name === 'AbortError' ? 'Zeitüberschreitung' : cleanText(error.message, 200) };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+ipcMain.handle('cut-save', async (_event, input) => {
+  const item = input && typeof input === 'object' ? input : {};
+  const license = cleanText(item.license, 40);
+  if (!DOWNLOAD_LICENSE.test(license)) return { error: 'Nur CC0, CC BY und Public Domain können als Ausschnitt gespeichert werden.' };
+  const raw = item.bytes;
+  const bytes = raw instanceof Uint8Array ? Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength) : null;
+  if (!bytes || bytes.length < 44 || bytes.length > 300 * 1024 * 1024) return { error: 'Ungültige Audiodaten.' };
+  if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') return { error: 'Ungültige Audiodaten.' };
+  const from = Math.max(0, Number(item.from) || 0);
+  const to = Math.max(from, Number(item.to) || 0);
+  const stamp = (secs) => `${Math.floor(secs / 60)}-${String(Math.floor(secs % 60)).padStart(2, '0')}`;
+  const title = cleanText(item.title, 200);
+  const artist = cleanText(item.artist, 200);
+  const folder = path.join(downloadBase(item.folder), 'Schnitte');
+  const stem = safeName(`${artist ? `${artist} - ` : ''}${title} (${stamp(from)} bis ${stamp(to)})`, 'Ausschnitt');
+  try {
+    fs.mkdirSync(folder, { recursive: true });
+    let file = path.join(folder, `${stem}.wav`);
+    let n = 2;
+    while (fs.existsSync(file)) {
+      file = path.join(folder, `${stem} (${n}).wav`);
+      n += 1;
+    }
+    fs.writeFileSync(file, bytes);
+    const credit = [
+      `Titel: ${title}`,
+      artist ? `Von: ${artist}` : '',
+      `Lizenz: ${license}${item.licenseUrl ? ` (${cleanUrl(item.licenseUrl)})` : ''}`,
+      item.link ? `Quelle: ${cleanUrl(item.link)}` : '',
+      `Ausschnitt: ${stamp(from).replace('-', ':')} bis ${stamp(to).replace('-', ':')} (gekürzt)`,
+      '',
+      'Credit für deine Videobeschreibung:',
+      cleanText(item.credit || '', 800) || `"${title}" – ${artist} (${license})`,
+      '',
+      'Bei CC BY: Gib an, dass du den Titel gekürzt hast (z. B. „gekürzt“ hinter den Credit).',
+      `Gespeichert mit CleanMusic am ${new Date().toLocaleDateString('de-DE')}.`,
+    ]
+      .filter((line, index, lines) => line !== '' || (lines[index - 1] && lines[index - 1] !== ''))
+      .join('\r\n');
+    fs.writeFileSync(file.replace(/\.wav$/i, '') + '.txt', credit + '\r\n', 'utf8');
+    downloadedFiles.add(file);
+    return { ok: true, path: file, name: path.basename(file) };
+  } catch (error) {
+    return { error: cleanText(error.message, 200) };
+  }
+});
 
 // Charts from a plugin (e.g. a top list of its source) for the home page.
 ipcMain.handle('plugin-charts', async (_event, id, limit) => {

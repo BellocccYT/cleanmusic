@@ -105,6 +105,8 @@
     creatorUsage: 'cleanmusic.creatorusage.v1', // { "tab:category": opens } for "Für dich"
     localView: 'cleanmusic.localview.v1', // { sort }
     localMoods: 'cleanmusic.localmoods.v1', // { folder: mood }
+    stats: 'cleanmusic.stats.v1', // { months: { "YYYY-MM": { secs, plays, hours, tracks, artists, sources } } }
+    bpm: 'cleanmusic.bpm.v1', // { entryId: bpm }
     history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
   };
 
@@ -209,6 +211,7 @@
       tab: 'ncs',
       category: { foryou: 'mix', ncs: 'top', classics: 'lustig', sfx: 'whoosh', games: 'retro', free: 'cinematic', youtube: 'gaming' },
       query: { sfx: '', games: '', free: '', youtube: '' },
+      tempo: 'all',
       lists: {},
     },
     credits: (readJSON(STORAGE.credits, []) || []).filter(
@@ -241,6 +244,8 @@
         bgMotion: true,
         streamSafe: false,
         lyrics: false,
+        transition: 'off', // off | gapless | crossfade
+        crossfadeSecs: 6,
         onboarded: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
         downloadDir: '',
@@ -799,6 +804,7 @@
       case 'artist': return artistList('artist');
       case 'album': return artistList('album');
       case 'shared': return state.sharedList || [];
+      case 'review': return reviewEntries();
       case 'radio': return state.radio.entries;
       case 'releases': return state.releases.tracks;
       case 'pcharts': return state.pluginCharts.items;
@@ -948,6 +954,7 @@
           ${licenseBadge(entry)}
           ${aiBadge(entry)}
         </span>
+        ${bpmBadge(entry)}
         ${lengthBadge(entry)}
         <div class="song-actions">
           ${downloadButton(entry)}
@@ -1631,6 +1638,7 @@
     history.sort((a, b) => b.last - a.last);
     history = history.slice(0, HISTORY_MAX);
     writeJSON(STORAGE.history, history);
+    statsPlay(entry);
   }
 
   function trackListening() {
@@ -1646,7 +1654,9 @@
       listen.last = 0;
     }
     const now = performance.now();
-    if (listen.last) listen.secs += Math.min(2, (now - listen.last) / 1000);
+    const delta = listen.last ? Math.min(2, (now - listen.last) / 1000) : 0;
+    listen.secs += delta;
+    statsListen(item, delta);
     listen.last = now;
     const needed = state.nowMode === 'preview' || item.kind === 'preview' ? 12 : 20;
     if (!listen.counted && listen.secs >= needed) {
@@ -3851,6 +3861,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.7.0': [
+      'Übergänge: Crossfade (2–12 s) oder lückenlos – Einstellungen → Wiedergabe.',
+      'Dein Rückblick (Seitenleiste): Hörminuten, Top-Künstler, Top-Titel und wann du hörst – nur lokal gezählt.',
+      'Cutter-Modus: Tempo-Filter (BPM wird gemessen) und Wellenform mit Start/Ende, Schleife und WAV-Export für freie Titel.',
+    ],
     '1.6.0': [
       'Künstlerseiten: Klick auf einen Künstlernamen – Top-Titel, Alben & Singles und ähnliche Künstler.',
       'Songs teilen: im +-Menü „Link zum Teilen kopieren“. Wer den Link öffnet, landet direkt in CleanMusic – oder bei Deezer, Spotify bzw. YouTube.',
@@ -4822,6 +4837,844 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * 1.7: transitions (crossfade / gapless), listening review,
+   * Cutter BPM + waveform with cut markers
+   * ---------------------------------------------------------------- */
+
+  /* --- Transitions ------------------------------------------------------ */
+
+  let fadeFactor = 1; // multiplies the volume while a crossfade runs
+  let transition = null; // { ghost, timer, mainBegin }
+  const warmed = new Set();
+  let warmAudio = null;
+
+  function transitionMode() {
+    return ['off', 'gapless', 'crossfade'].includes(state.settings.transition) ? state.settings.transition : 'off';
+  }
+
+  function crossfadeSecs() {
+    return Math.max(2, Math.min(12, Math.round(Number(state.settings.crossfadeSecs) || 6)));
+  }
+
+  function nextQueueEntry() {
+    const { items, index, upcoming } = state.queue;
+    if (state.playback.repeat === 'one') return null;
+    if (upcoming >= 0 && items[upcoming]) return items[upcoming];
+    return items[index + 1] || null;
+  }
+
+  function stopGhost() {
+    if (!transition) return;
+    const { ghost, timer } = transition;
+    clearInterval(timer);
+    transition = null;
+    try {
+      ghost.pause();
+      ghost.removeAttribute('src');
+      ghost.load();
+    } catch {
+      /* gone */
+    }
+    if (fadeFactor !== 1) {
+      fadeFactor = 1;
+      applyVolume();
+    }
+  }
+
+  // Gapless: get the next title ready while this one ends.
+  function warmNext(entry) {
+    const task = prefetchPluginEntry(entry);
+    if (task) task.catch(() => {});
+    const url = entry.url && /^(https:|blob:|file:)/i.test(entry.url) ? entry.url : '';
+    if (!url) return;
+    if (!warmAudio) warmAudio = new Audio();
+    warmAudio.preload = 'auto';
+    warmAudio.muted = true;
+    warmAudio.src = url;
+  }
+
+  // Crossfade: a second, temporary player keeps the old title running and
+  // fades it out, while the main player starts the next one and fades it in.
+  function startCrossfade(secs) {
+    const src = audio.currentSrc || audio.src;
+    if (!src) return;
+    const ghost = new Audio();
+    ghost.preload = 'auto';
+    transition = { ghost, timer: null, mainBegin: 0 };
+    const level = volumeLevel();
+    ghost.volume = vol.muted ? 0 : Math.min(1, level * level);
+    ghost.src = src;
+    const giveUp = setTimeout(() => {
+      if (transition && transition.ghost === ghost && !transition.timer) stopGhost();
+    }, 3000);
+    ghost.addEventListener(
+      'loadedmetadata',
+      () => {
+        try {
+          ghost.currentTime = audio.currentTime + 0.2;
+        } catch {
+          /* keep position */
+        }
+        ghost.play().catch(() => stopGhost());
+      },
+      { once: true }
+    );
+    ghost.addEventListener(
+      'playing',
+      () => {
+        clearTimeout(giveUp);
+        if (!transition || transition.ghost !== ghost) return;
+        fadeFactor = 0;
+        applyVolume();
+        stepQueue(1);
+        const from = ghost.volume;
+        const begin = performance.now();
+        transition.timer = setInterval(() => {
+          if (!transition) return;
+          const now = performance.now();
+          const ghostT = Math.min(1, (now - begin) / (secs * 1000));
+          ghost.volume = Math.max(0, from * (1 - ghostT));
+          if (!audio.paused && !transition.mainBegin) transition.mainBegin = now;
+          const mainT = transition.mainBegin ? Math.min(1, (now - transition.mainBegin) / (secs * 1000)) : 0;
+          if (fadeFactor !== mainT) {
+            fadeFactor = mainT;
+            applyVolume();
+          }
+          if ((ghostT >= 1 && mainT >= 1) || now - begin > 30000) stopGhost();
+        }, 60);
+      },
+      { once: true }
+    );
+  }
+
+  function maybeTransition() {
+    const mode = transitionMode();
+    if (mode === 'off' || transition || audio.paused) return;
+    const item = currentItem();
+    if (!item || item.kind === 'radio' || !Number.isFinite(audio.duration) || audio.duration < 20) return;
+    if (sleepTimer.endOfTrack) return;
+    const next = nextQueueEntry();
+    if (!next) return;
+    const left = audio.duration - audio.currentTime;
+    if (left <= 10 && !warmed.has(next.id)) {
+      warmed.add(next.id);
+      warmNext(next);
+    }
+    if (mode !== 'crossfade') return;
+    const secs = crossfadeSecs();
+    if (left <= secs && left > 1) startCrossfade(secs);
+  }
+
+  function transitionSettingsHtml() {
+    const mode = transitionMode();
+    return `
+          <label class="toggle-row">
+            <span>
+              <strong>Übergang zwischen Titeln</strong>
+              <small>Crossfade blendet weich über, „Lückenlos“ lädt den nächsten Titel vor. Nicht bei Radio und „Titel wiederholen“.</small>
+            </span>
+            <select id="opt-transition" class="select-input">
+              <option value="off" ${mode === 'off' ? 'selected' : ''}>Aus</option>
+              <option value="gapless" ${mode === 'gapless' ? 'selected' : ''}>Lückenlos</option>
+              <option value="crossfade" ${mode === 'crossfade' ? 'selected' : ''}>Crossfade</option>
+            </select>
+          </label>
+          <label class="toggle-row" ${mode === 'crossfade' ? '' : 'hidden'}>
+            <span>
+              <strong>Crossfade-Länge: <span id="crossfade-value">${crossfadeSecs()} s</span></strong>
+              <small>2 bis 12 Sekunden.</small>
+            </span>
+            <input type="range" id="opt-crossfade" min="2" max="12" step="1" value="${crossfadeSecs()}" />
+          </label>`;
+  }
+
+  /* --- Listening review ("Dein Jahr") ---------------------------------- */
+
+  let stats = readJSON(STORAGE.stats, null) || { months: {} };
+  if (!stats.months || typeof stats.months !== 'object') stats = { months: {} };
+  let statsTimer = null;
+  let reviewPeriod = 'year';
+
+  function monthKey(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function statsMonth() {
+    const key = monthKey();
+    if (!stats.months[key]) stats.months[key] = { secs: 0, plays: 0, hours: new Array(24).fill(0), tracks: {}, artists: {}, sources: {} };
+    return stats.months[key];
+  }
+
+  function saveStatsSoon() {
+    if (statsTimer) return;
+    statsTimer = setTimeout(() => {
+      statsTimer = null;
+      writeJSON(STORAGE.stats, stats);
+    }, 20000);
+  }
+
+  function statsListen(item, secs) {
+    if (!item || !(secs > 0)) return;
+    const month = statsMonth();
+    month.secs += secs;
+    month.hours[new Date().getHours()] += secs;
+    const source = item.sourceLabel || (item.kind === 'local' ? 'Lokal' : item.kind) || 'Sonstige';
+    month.sources[source] = (month.sources[source] || 0) + secs;
+    if (item.kind !== 'radio') {
+      const track = month.tracks[item.id] || (month.tracks[item.id] = { s: 0, p: 0, e: storable(item) });
+      track.s += secs;
+      const artist = primaryArtist(item.artist || '');
+      if (artist) {
+        const row = month.artists[artist] || (month.artists[artist] = { s: 0, p: 0 });
+        row.s += secs;
+      }
+      const ids = Object.keys(month.tracks);
+      if (ids.length > 700) {
+        ids.sort((a, b) => month.tracks[a].s - month.tracks[b].s).slice(0, ids.length - 600).forEach((id) => delete month.tracks[id]);
+      }
+    }
+    saveStatsSoon();
+  }
+
+  function statsPlay(entry) {
+    if (!entry || entry.kind === 'radio') return;
+    const month = statsMonth();
+    month.plays += 1;
+    const track = month.tracks[entry.id] || (month.tracks[entry.id] = { s: 0, p: 0, e: storable(entry) });
+    track.p += 1;
+    const artist = primaryArtist(entry.artist || '');
+    if (artist) {
+      const row = month.artists[artist] || (month.artists[artist] = { s: 0, p: 0 });
+      row.p += 1;
+    }
+    saveStatsSoon();
+  }
+
+  function reviewData(period) {
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const current = monthKey(now);
+    const keys = Object.keys(stats.months).filter((key) =>
+      period === 'month' ? key === current : period === 'year' ? key.startsWith(`${year}-`) : true
+    );
+    const out = { secs: 0, plays: 0, hours: new Array(24).fill(0), months: new Array(12).fill(0), tracks: {}, artists: {}, sources: {} };
+    keys.forEach((key) => {
+      const month = stats.months[key];
+      out.secs += month.secs || 0;
+      out.plays += month.plays || 0;
+      (month.hours || []).forEach((value, hour) => {
+        out.hours[hour] += value || 0;
+      });
+      if (key.startsWith(`${year}-`)) out.months[Number(key.slice(5)) - 1] += month.secs || 0;
+      Object.entries(month.tracks || {}).forEach(([id, row]) => {
+        const target = out.tracks[id] || (out.tracks[id] = { s: 0, p: 0, e: row.e });
+        target.s += row.s || 0;
+        target.p += row.p || 0;
+      });
+      Object.entries(month.artists || {}).forEach(([name, row]) => {
+        const target = out.artists[name] || (out.artists[name] = { s: 0, p: 0 });
+        target.s += row.s || 0;
+        target.p += row.p || 0;
+      });
+      Object.entries(month.sources || {}).forEach(([name, value]) => {
+        out.sources[name] = (out.sources[name] || 0) + value;
+      });
+    });
+    out.topTracks = Object.values(out.tracks)
+      .filter((row) => row.e)
+      .sort((a, b) => b.p - a.p || b.s - a.s)
+      .slice(0, 10);
+    out.topArtists = Object.entries(out.artists)
+      .sort((a, b) => b[1].s - a[1].s || b[1].p - a[1].p)
+      .slice(0, 10);
+    out.topSource = Object.entries(out.sources).sort((a, b) => b[1] - a[1])[0] || null;
+    return out;
+  }
+
+  function reviewEntries() {
+    return reviewData(reviewPeriod).topTracks.map((row) => row.e);
+  }
+
+  function minutes(secs) {
+    return Math.round((secs || 0) / 60).toLocaleString('de-DE');
+  }
+
+  function barList(rows, unit) {
+    const max = Math.max(1, ...rows.map((row) => row.value));
+    return rows
+      .map(
+        (row) => `
+          <div class="rv-row" title="${esc(row.label)}: ${esc(row.text)}">
+            <span class="rv-label">${row.html || esc(row.label)}</span>
+            <span class="rv-track"><i style="width:${Math.max(2, Math.round((row.value / max) * 100))}%"></i></span>
+            <span class="rv-value">${esc(row.text)}</span>
+          </div>`
+      )
+      .join('');
+  }
+
+  function columns(values, labels) {
+    const max = Math.max(1, ...values);
+    return `<div class="rv-columns">${values
+      .map(
+        (value, index) =>
+          `<span class="rv-col" title="${esc(labels[index])}: ${minutes(value)} Min."><i style="height:${value ? Math.max(4, Math.round((value / max) * 100)) : 0}%"></i><small>${esc(
+            labels[index].length > 3 ? labels[index].slice(0, 3) : labels[index]
+          )}</small></span>`
+      )
+      .join('')}</div>`;
+  }
+
+  function renderReview() {
+    const host = $('#view-review');
+    if (!host) return;
+    const data = reviewData(reviewPeriod);
+    const year = new Date().getFullYear();
+    const heading = reviewPeriod === 'month' ? 'Dein Monat' : reviewPeriod === 'year' ? `Dein Jahr ${year}` : 'Alles bisher';
+    const empty = !data.secs && !data.plays;
+    const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    const hourLabels = Array.from({ length: 24 }, (_value, hour) => `${hour} Uhr`);
+    const periods = [
+      ['month', 'Dieser Monat'],
+      ['year', `Jahr ${year}`],
+      ['all', 'Alles'],
+    ];
+    host.innerHTML = `
+      <div class="page review-page">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Rückblick</div>
+            <h2>${esc(heading)} in CleanMusic</h2>
+            <p>Gezählt wird nur auf diesem PC – nichts verlässt CleanMusic.</p>
+          </div>
+          <div class="page-actions">
+            <div class="radio-tags">${periods
+              .map(([id, label]) => `<button class="radio-tag ${reviewPeriod === id ? 'active' : ''}" data-review-period="${id}">${esc(label)}</button>`)
+              .join('')}</div>
+            ${empty ? '' : '<button class="btn ghost small" data-review-action="copy">Zusammenfassung kopieren</button>'}
+          </div>
+        </div>
+        ${
+          empty
+            ? '<div class="panel empty-search"><h3>Noch nichts gezählt</h3><p>Hörminuten, Top-Künstler und Top-Titel sammeln sich ab Version 1.7, sobald du Musik hörst.</p></div>'
+            : `
+        <div class="rv-tiles">
+          <div class="panel rv-tile"><strong>${minutes(data.secs)}</strong><span>Minuten gehört</span></div>
+          <div class="panel rv-tile"><strong>${data.plays.toLocaleString('de-DE')}</strong><span>Titel abgespielt</span></div>
+          <div class="panel rv-tile"><strong>${Object.keys(data.tracks).length.toLocaleString('de-DE')}</strong><span>verschiedene Titel</span></div>
+          <div class="panel rv-tile"><strong>${Object.keys(data.artists).length.toLocaleString('de-DE')}</strong><span>Künstler</span></div>
+        </div>
+        <div class="rv-grid">
+          <div class="panel">
+            <h3>Top-Künstler</h3>
+            ${
+              data.topArtists.length
+                ? barList(
+                    data.topArtists.map(([name, row]) => ({
+                      label: name,
+                      html: `<span class="artist-link" data-artist="${esc(name)}">${esc(name)}</span>`,
+                      value: row.s,
+                      text: `${minutes(row.s)} Min.`,
+                    }))
+                  )
+                : '<p class="muted">Noch keine Künstler.</p>'
+            }
+          </div>
+          <div class="panel">
+            <h3>Wann du hörst</h3>
+            ${columns(data.hours, hourLabels)}
+            ${data.topSource ? `<p class="muted small">Am meisten über: <strong>${esc(data.topSource[0])}</strong> (${minutes(data.topSource[1])} Min.)</p>` : ''}
+          </div>
+        </div>
+        ${reviewPeriod === 'year' ? `<div class="panel rv-months"><h3>Minuten pro Monat</h3>${columns(data.months, monthNames)}</div>` : ''}
+        <div class="artist-section-head"><h3>Top-Titel</h3>${
+          data.topTracks.length ? '<button class="link-btn" data-review-action="play">Alle abspielen</button>' : ''
+        }</div>
+        <div class="song-list">${data.topTracks.map((row, index) => songRow(row.e, index, 'review')).join('') || '<p class="muted">Noch keine Titel.</p>'}</div>`
+        }
+      </div>`;
+  }
+
+  async function copyReview() {
+    const data = reviewData(reviewPeriod);
+    const year = new Date().getFullYear();
+    const label = reviewPeriod === 'month' ? 'Mein Monat' : reviewPeriod === 'year' ? `Mein Jahr ${year}` : 'Mein CleanMusic';
+    const artists = data.topArtists.slice(0, 3).map(([name]) => name).join(', ');
+    const track = data.topTracks[0];
+    const text = `${label} in CleanMusic: ${minutes(data.secs)} Minuten Musik, ${data.plays} Titel${
+      artists ? ` · Top-Künstler: ${artists}` : ''
+    }${track ? ` · Top-Titel: „${track.e.title}“${track.e.artist ? ` von ${track.e.artist}` : ''}` : ''}`;
+    const ok = await bridge.copyText(text);
+    toast(ok ? 'Zusammenfassung kopiert' : 'Kopieren nicht möglich');
+  }
+
+  /* --- Cutter: BPM + waveform ------------------------------------------ */
+
+  let bpmCache = readJSON(STORAGE.bpm, {}) || {};
+  const bpmRunning = new Set();
+  let bpmQueue = [];
+  let bpmBusy = 0;
+  let bpmRenderTimer = null;
+  const TEMPOS = [
+    { id: 'all', label: 'Alle' },
+    { id: 'slow', label: 'Langsam < 90', min: 0, max: 90 },
+    { id: 'mid', label: 'Mittel 90–119', min: 90, max: 120 },
+    { id: 'fast', label: 'Schnell 120–139', min: 120, max: 140 },
+    { id: 'veryfast', label: 'Sehr schnell 140+', min: 140, max: 999 },
+  ];
+
+  function analysable(entry) {
+    return Boolean(entry && entry.url && /^https:\/\//i.test(entry.url) && (entry.kind === 'stream' || entry.kind === 'preview'));
+  }
+
+  let decodeRate = 22050;
+  async function decodeEntry(entry, options = {}) {
+    if (!bridge.audioBytes) throw new Error('Nicht verfügbar');
+    const result = await bridge.audioBytes(entry.url, { full: Boolean(options.full) });
+    if (!result || result.error || !result.bytes) throw new Error((result && result.error) || 'Audio nicht ladbar');
+    const bytes = result.bytes instanceof Uint8Array ? result.bytes : new Uint8Array(result.bytes);
+    const context = new OfflineAudioContext(2, 1, options.rate || decodeRate);
+    return context.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  }
+
+  // Tempo from the energy envelope (10 ms frames) by autocorrelation, 70–180 BPM.
+  function estimateBpm(buffer) {
+    const rate = buffer.sampleRate;
+    const data = buffer.getChannelData(0);
+    const start = Math.min(Math.max(0, data.length - rate * 20), Math.floor(rate * 3));
+    const end = Math.min(data.length, start + Math.floor(rate * 30));
+    const hop = Math.max(1, Math.floor(rate / 100));
+    const env = [];
+    let previous = 0;
+    for (let at = start; at + hop <= end; at += hop) {
+      let sum = 0;
+      for (let k = at; k < at + hop; k += 2) sum += data[k] * data[k];
+      const energy = Math.sqrt(sum / (hop / 2));
+      env.push(Math.max(0, energy - previous));
+      previous = energy;
+    }
+    if (env.length < 400) return 0;
+    const score = (lag) => {
+      let total = 0;
+      for (let k = 0; k + lag < env.length; k += 1) total += env[k] * env[k + lag];
+      return total;
+    };
+    let bestLag = 0;
+    let best = 0;
+    const scores = {};
+    for (let lag = 33; lag <= 86; lag += 1) {
+      scores[lag] = score(lag);
+      if (scores[lag] > best) {
+        best = scores[lag];
+        bestLag = lag;
+      }
+    }
+    if (!bestLag) return 0;
+    // Octave check: music often repeats every half beat too – prefer the
+    // double tempo when it fits almost as well (72 → 144 BPM).
+    const half = Math.round(bestLag / 2);
+    if (half >= 33) {
+      const halfScore = Math.max(score(half - 1), score(half), score(half + 1));
+      if (halfScore >= best * 0.55) {
+        bestLag = [half - 1, half, half + 1].reduce((pick, lag) => (score(lag) > score(pick) ? lag : pick), half);
+        best = score(bestLag);
+      }
+    }
+    const left = scores[bestLag - 1] || score(bestLag - 1);
+    const right = scores[bestLag + 1] || score(bestLag + 1);
+    const curve = left - 2 * best + right;
+    const shift = curve ? (0.5 * (left - right)) / curve : 0;
+    let bpm = 6000 / (bestLag + Math.max(-0.5, Math.min(0.5, shift)));
+    while (bpm < 70) bpm *= 2;
+    while (bpm >= 180) bpm /= 2;
+    return Math.round(bpm);
+  }
+
+  function bpmBadge(entry) {
+    const bpm = bpmCache[entry.id];
+    return bpm ? `<span class="song-preview bpm-badge" title="Gemessenes Tempo">${bpm} BPM</span>` : '';
+  }
+
+  function queueBpm(entries) {
+    entries
+      .filter((entry) => analysable(entry) && !bpmCache[entry.id] && !bpmRunning.has(entry.id))
+      .forEach((entry) => {
+        bpmRunning.add(entry.id);
+        bpmQueue.push(entry);
+      });
+    pumpBpm();
+  }
+
+  function pumpBpm() {
+    while (bpmBusy < 2 && bpmQueue.length) {
+      const entry = bpmQueue.shift();
+      bpmBusy += 1;
+      decodeEntry(entry)
+        .then((buffer) => {
+          const bpm = estimateBpm(buffer);
+          if (bpm) {
+            bpmCache[entry.id] = bpm;
+            const ids = Object.keys(bpmCache);
+            if (ids.length > 3000) ids.slice(0, ids.length - 3000).forEach((id) => delete bpmCache[id]);
+            writeJSON(STORAGE.bpm, bpmCache);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          bpmBusy -= 1;
+          clearTimeout(bpmRenderTimer);
+          bpmRenderTimer = setTimeout(() => {
+            if (state.view === 'creator') renderCreatorList();
+          }, 400);
+          pumpBpm();
+        });
+    }
+  }
+
+  function tempoOf(id) {
+    return TEMPOS.find((tempo) => tempo.id === id) || TEMPOS[0];
+  }
+
+  function filterByTempo(items) {
+    const tempo = tempoOf(state.creator.tempo);
+    if (tempo.id === 'all') return items;
+    return items.filter((entry) => {
+      const bpm = bpmCache[entry.id];
+      return bpm && bpm >= tempo.min && bpm < tempo.max;
+    });
+  }
+
+  function tempoRow(tab) {
+    if (!tab || tab.kind === 'plugin' || isSfxTab(tab)) return '';
+    const list = creatorList();
+    const items = list ? list.items : [];
+    const open = items.filter((entry) => analysable(entry) && !bpmCache[entry.id]).length;
+    const active = state.creator.tempo || 'all';
+    return `
+      <div class="radio-tags tempo-row">
+        <span class="muted small">Tempo:</span>
+        ${TEMPOS.map((tempo) => `<button class="radio-tag ${active === tempo.id ? 'active' : ''}" data-tempo="${tempo.id}">${esc(tempo.label)}</button>`).join('')}
+        ${open ? `<button class="link-btn" data-tempo-measure>${bpmQueue.length || bpmBusy ? `Messe … noch ${open}` : `Tempo messen (${open})`}</button>` : ''}
+      </div>`;
+  }
+
+  // Waveform + cut markers for the creator title that is playing.
+  const cut = { id: null, peaks: null, duration: 0, in: 0, out: 0, loop: false, loading: false, error: null };
+
+  function cutEntry() {
+    const item = currentItem();
+    return item && analysable(item) ? item : null;
+  }
+
+  async function loadWaveform(entry) {
+    cut.id = entry.id;
+    cut.peaks = null;
+    cut.loading = true;
+    cut.error = null;
+    cut.in = 0;
+    cut.out = 0;
+    cut.loop = false;
+    renderCutPanel();
+    try {
+      const buffer = await decodeEntry(entry, { full: true });
+      if (cut.id !== entry.id) return;
+      const data = buffer.getChannelData(0);
+      const bars = 480;
+      const size = Math.max(1, Math.floor(data.length / bars));
+      const peaks = [];
+      for (let bar = 0; bar < bars; bar += 1) {
+        let peak = 0;
+        const from = bar * size;
+        for (let k = from; k < from + size && k < data.length; k += 4) peak = Math.max(peak, Math.abs(data[k]));
+        peaks.push(peak);
+      }
+      const top = Math.max(0.01, ...peaks);
+      cut.peaks = peaks.map((value) => value / top);
+      cut.duration = buffer.duration;
+      cut.out = buffer.duration;
+      if (!bpmCache[entry.id]) {
+        const bpm = estimateBpm(buffer);
+        if (bpm) {
+          bpmCache[entry.id] = bpm;
+          writeJSON(STORAGE.bpm, bpmCache);
+        }
+      }
+    } catch (error) {
+      if (cut.id === entry.id) cut.error = error.message;
+    }
+    if (cut.id === entry.id) {
+      cut.loading = false;
+      renderCutPanel();
+    }
+  }
+
+  function canExportCut(entry) {
+    const key = licenseKey(entry && entry.license);
+    return Boolean(entry && (key === 'free' || key === 'by') && state.settings.downloads === 'cutting' && bridge.cutSave);
+  }
+
+  function renderCutPanel() {
+    const host = $('#cut-panel');
+    if (!host) return;
+    const entry = cutEntry();
+    if (!entry) {
+      host.innerHTML = '';
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    if (cut.id !== entry.id && !cut.loading) {
+      loadWaveform(entry);
+      return;
+    }
+    const length = Math.max(0, cut.out - cut.in);
+    host.innerHTML = `
+      <div class="panel cut-panel">
+        <div class="cut-head">
+          <strong>Wellenform · ${esc(entry.title)}</strong>
+          <span class="muted small">${bpmCache[entry.id] ? `${bpmCache[entry.id]} BPM · ` : ''}Start ${fmtTime(cut.in)} · Ende ${fmtTime(cut.out)} · Länge ${fmtTime(length)}</span>
+        </div>
+        ${
+          cut.loading
+            ? '<div class="search-status"><span class="spinner small"></span><span>Wellenform wird berechnet …</span></div>'
+            : cut.error
+              ? `<p class="muted small">${esc(cut.error)}</p>`
+              : '<canvas id="cut-wave" class="cut-wave" height="84"></canvas>'
+        }
+        <div class="row cut-actions">
+          <button class="btn ghost small" data-cut="in" title="Start an der aktuellen Stelle (Taste I)">Start setzen (I)</button>
+          <button class="btn ghost small" data-cut="out" title="Ende an der aktuellen Stelle (Taste O)">Ende setzen (O)</button>
+          <button class="btn ${cut.loop ? 'primary' : 'ghost'} small" data-cut="loop">${cut.loop ? 'Schleife an' : 'Ausschnitt abspielen'}</button>
+          <button class="btn ghost small" data-cut="reset">Zurücksetzen</button>
+          <button class="btn ghost small" data-cut="copy" title="Zeitmarken für dein Schnittprogramm kopieren">Marken kopieren</button>
+          ${canExportCut(entry) ? '<button class="btn ghost small" data-cut="save" title="Ausschnitt als WAV mit Credit-.txt in den Cutting-Ordner">Als WAV speichern</button>' : ''}
+        </div>
+      </div>`;
+    drawWave();
+  }
+
+  function drawWave() {
+    const canvas = $('#cut-wave');
+    if (!canvas || !cut.peaks) return;
+    const width = canvas.clientWidth || 600;
+    const ratio = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(width * ratio)) {
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(84 * ratio);
+    }
+    const ctx = canvas.getContext('2d');
+    const styles = getComputedStyle(document.documentElement);
+    const accent = styles.getPropertyValue('--accent').trim() || '#5b8cff';
+    const muted = styles.getPropertyValue('--muted-2').trim() || '#5f6a7c';
+    const text = styles.getPropertyValue('--text').trim() || '#fff';
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, 84);
+    const duration = cut.duration || 1;
+    const inX = (cut.in / duration) * width;
+    const outX = (cut.out / duration) * width;
+    const step = width / cut.peaks.length;
+    cut.peaks.forEach((peak, index) => {
+      const x = index * step;
+      const h = Math.max(1, peak * 76);
+      ctx.fillStyle = x >= inX && x <= outX ? accent : muted;
+      ctx.fillRect(x, 42 - h / 2, Math.max(1, step - 1), h);
+    });
+    ctx.fillStyle = text;
+    ctx.fillRect(Math.round(inX), 0, 2, 84);
+    ctx.fillRect(Math.round(outX) - 2, 0, 2, 84);
+    const item = currentItem();
+    if (item && item.id === cut.id && Number.isFinite(audio.currentTime)) {
+      const x = Math.round((audio.currentTime / duration) * width);
+      ctx.fillStyle = text;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(x, 0, 1, 84);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function setCutMark(which) {
+    const item = currentItem();
+    if (!item || item.id !== cut.id || !cut.duration) return;
+    const time = Math.max(0, Math.min(cut.duration, audio.currentTime || 0));
+    if (which === 'in') {
+      cut.in = time;
+      if (cut.out <= cut.in) cut.out = cut.duration;
+    } else {
+      cut.out = time;
+      if (cut.in >= cut.out) cut.in = 0;
+    }
+    renderCutPanel();
+  }
+
+  function cutTick() {
+    if (!cut.peaks) return;
+    const item = currentItem();
+    if (!item || item.id !== cut.id) return;
+    if (cut.loop && cut.out - cut.in > 0.5 && (audio.currentTime >= cut.out || audio.currentTime < cut.in - 0.3)) {
+      audio.currentTime = cut.in;
+    }
+    if (state.view === 'creator') drawWave();
+  }
+
+  function wavBytes(buffer, from, to) {
+    const rate = buffer.sampleRate;
+    const channels = Math.min(2, buffer.numberOfChannels);
+    const start = Math.max(0, Math.floor(from * rate));
+    const end = Math.min(buffer.length, Math.floor(to * rate));
+    const frames = Math.max(0, end - start);
+    const out = new DataView(new ArrayBuffer(44 + frames * channels * 2));
+    const write = (offset, textValue) => [...textValue].forEach((char, index) => out.setUint8(offset + index, char.charCodeAt(0)));
+    write(0, 'RIFF');
+    out.setUint32(4, 36 + frames * channels * 2, true);
+    write(8, 'WAVE');
+    write(12, 'fmt ');
+    out.setUint32(16, 16, true);
+    out.setUint16(20, 1, true);
+    out.setUint16(22, channels, true);
+    out.setUint32(24, rate, true);
+    out.setUint32(28, rate * channels * 2, true);
+    out.setUint16(32, channels * 2, true);
+    out.setUint16(34, 16, true);
+    write(36, 'data');
+    out.setUint32(40, frames * channels * 2, true);
+    const data = Array.from({ length: channels }, (_value, channel) => buffer.getChannelData(channel));
+    let offset = 44;
+    for (let frame = start; frame < end; frame += 1) {
+      for (let channel = 0; channel < channels; channel += 1) {
+        const sample = Math.max(-1, Math.min(1, data[channel][frame]));
+        out.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
+    }
+    return new Uint8Array(out.buffer);
+  }
+
+  async function saveCut() {
+    const entry = cutEntry();
+    if (!entry || entry.id !== cut.id || !canExportCut(entry)) return;
+    if (cut.out - cut.in < 0.2) {
+      toast('Setz erst Start und Ende.');
+      return;
+    }
+    toast('Ausschnitt wird gespeichert …');
+    try {
+      const buffer = await decodeEntry(entry, { full: true, rate: 44100 });
+      const bytes = wavBytes(buffer, cut.in, cut.out);
+      const result = await bridge.cutSave({
+        bytes,
+        title: entry.title,
+        artist: entry.artist,
+        license: entry.license,
+        licenseUrl: entry.licenseUrl,
+        credit: entry.credit,
+        link: entry.link,
+        from: cut.in,
+        to: cut.out,
+        folder: state.settings.downloadDir,
+      });
+      toast(result && result.ok ? `Gespeichert: ${result.name} – zum Schnittprogramm ziehen` : (result && result.error) || 'Speichern fehlgeschlagen');
+    } catch (error) {
+      toast(`Speichern fehlgeschlagen: ${error.message}`);
+    }
+  }
+
+  function wireCutterExtras() {
+    const view = $('#view-creator');
+    if (view) {
+      view.addEventListener('click', async (event) => {
+        const tempo = event.target.closest('[data-tempo]');
+        if (tempo) {
+          state.creator.tempo = tempo.dataset.tempo;
+          if (state.creator.tempo !== 'all') queueBpm(creatorList() ? creatorList().items : []);
+          renderCreator();
+          return;
+        }
+        if (event.target.closest('[data-tempo-measure]')) {
+          queueBpm(creatorList() ? creatorList().items : []);
+          renderCreator();
+          return;
+        }
+        const button = event.target.closest('[data-cut]');
+        if (button) {
+          switch (button.dataset.cut) {
+            case 'in':
+            case 'out':
+              setCutMark(button.dataset.cut);
+              return;
+            case 'loop':
+              cut.loop = !cut.loop;
+              if (cut.loop && cut.out > cut.in) audio.currentTime = cut.in;
+              renderCutPanel();
+              return;
+            case 'reset':
+              cut.in = 0;
+              cut.out = cut.duration;
+              cut.loop = false;
+              renderCutPanel();
+              return;
+            case 'copy': {
+              const ok = await bridge.copyText(`${fmtTime(cut.in)} – ${fmtTime(cut.out)} (${fmtTime(cut.out - cut.in)})`);
+              toast(ok ? 'Zeitmarken kopiert' : 'Kopieren nicht möglich');
+              return;
+            }
+            case 'save':
+              saveCut();
+              return;
+            default:
+              return;
+          }
+        }
+        const canvas = event.target.closest('#cut-wave');
+        if (canvas && cut.duration) {
+          const item = currentItem();
+          if (!item || item.id !== cut.id) return;
+          const rect = canvas.getBoundingClientRect();
+          audio.currentTime = Math.max(0, Math.min(cut.duration, ((event.clientX - rect.left) / rect.width) * cut.duration));
+          drawWave();
+        }
+      });
+    }
+    document.addEventListener('keydown', (event) => {
+      if (state.view !== 'creator' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.target.closest && event.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (event.key === 'i' || event.key === 'I') setCutMark('in');
+      if (event.key === 'o' || event.key === 'O') setCutMark('out');
+    });
+  }
+
+  function wireReview() {
+    const view = $('#view-review');
+    if (view) {
+      view.addEventListener('click', (event) => {
+        const period = event.target.closest('[data-review-period]');
+        if (period) {
+          reviewPeriod = period.dataset.reviewPeriod;
+          renderReview();
+          return;
+        }
+        const action = event.target.closest('[data-review-action]');
+        if (!action) return;
+        if (action.dataset.reviewAction === 'copy') copyReview();
+        if (action.dataset.reviewAction === 'play') playList('review', 0);
+      });
+    }
+    window.addEventListener('beforeunload', () => {
+      clearTimeout(statsTimer);
+      writeJSON(STORAGE.stats, stats);
+    });
+  }
+
+  let lastCutId = null;
+  function syncCutPanel() {
+    if (state.view !== 'creator') return;
+    const entry = cutEntry();
+    const id = entry ? entry.id : null;
+    if (id === lastCutId) return;
+    lastCutId = id;
+    renderCutPanel();
+  }
+
+  /* ---------------------------------------------------------------- *
    * Queue + autoplay
    *
    * The queue is state.queue.items with the playing title at .index.
@@ -5282,7 +6135,7 @@
     const engine =
       viz && viz.setOutput
         ? viz.setOutput({
-            gain: vol.muted ? 0 : gain,
+            gain: vol.muted ? 0 : gain * fadeFactor,
             normalize: Boolean(state.settings.normalize),
             bass: Number(state.settings.bass) || 0,
             treble: Number(state.settings.treble) || 0,
@@ -5299,7 +6152,7 @@
       audio.volume = 1;
       audio.muted = false;
     } else {
-      audio.volume = Math.min(1, gain);
+      audio.volume = Math.min(1, gain * fadeFactor);
       audio.muted = vol.muted;
     }
     updateVolumeUi();
@@ -5665,7 +6518,7 @@
 
   function creatorItems() {
     const list = creatorList();
-    return list ? list.items : [];
+    return list ? filterByTempo(list.items) : [];
   }
 
   function openverseCache() {
@@ -5915,6 +6768,7 @@
             </div>
 
             <div class="radio-tags creator-chips">${chips}</div>
+            ${tempoRow(tab)}
 
             ${
               tab.search
@@ -5933,6 +6787,7 @@
                 : ''
             }
 
+            <div id="cut-panel" hidden></div>
             <div id="creator-list"></div>
           </div>
 
@@ -5942,6 +6797,8 @@
 
     renderCreatorList();
     renderCredits();
+    lastCutId = null;
+    syncCutPanel();
   }
 
   function renderCreatorList() {
@@ -5972,14 +6829,24 @@
       return;
     }
 
+    const visible = creatorItems();
+    if (!visible.length) {
+      host.innerHTML = `
+        <div class="panel empty-search">
+          <h3>Kein Titel in diesem Tempo</h3>
+          <p>${bpmQueue.length || bpmBusy ? 'Das Tempo wird gerade gemessen – passende Titel erscheinen gleich.' : 'Wähle ein anderes Tempo oder „Alle“.'}</p>
+        </div>`;
+      return;
+    }
+
     host.innerHTML = `
       <div class="results-head">
-        <span>${list.items.length} ${tab.kind === 'sfx' || tab.id === 'sfx' ? 'Sounds' : 'Titel'}</span>
+        <span>${visible.length} ${tab.kind === 'sfx' || tab.id === 'sfx' ? 'Sounds' : 'Titel'}</span>
         <span class="muted small">${esc(creatorNote(tab))}</span>
         <button class="btn ghost small results-action" data-creator-action="play-all">${ICONS.play} Alle abspielen</button>
       </div>
       <div class="song-list">
-        ${list.items.map((entry, index) => songRow(entry, index, 'creator')).join('')}
+        ${visible.map((entry, index) => songRow(entry, index, 'creator')).join('')}
       </div>
       ${
         list.loading
@@ -6875,6 +7742,8 @@
     audio.addEventListener('timeupdate', () => {
       updateMediaPosition();
       updateLyricLine();
+      maybeTransition();
+      cutTick();
     });
   }
 
@@ -7070,6 +7939,7 @@
     updateStreamBadge();
     updateBackgroundCover();
     ensureLyrics();
+    syncCutPanel();
     if (!bridge.playerState) return;
     clearTimeout(playerStateTimer);
     playerStateTimer = setTimeout(() => {
@@ -7821,6 +8691,7 @@
             </span>
             <input type="checkbox" id="opt-lyrics" ${lyricsOn() ? 'checked' : ''} />
           </label>
+          ${transitionSettingsHtml()}
           <label class="toggle-row">
             <span>
               <strong>Beim Schließen im Infobereich weiterlaufen</strong>
@@ -7966,6 +8837,7 @@ ${updatePanel()}
     host.classList.toggle('active', name === 'service');
     setActiveService(name === 'service' ? state.currentService : null);
 
+    if (name === 'review') renderReview();
     if (name === 'search') {
       renderSearchResults();
       if (!state.charts.loaded) loadCharts();
@@ -8747,6 +9619,29 @@ ${updatePanel()}
         return;
       }
 
+      if (event.target.id === 'opt-transition') {
+        state.settings.transition = event.target.value;
+        saveSettings();
+        if (state.settings.transition !== 'crossfade') stopGhost();
+        renderSettings();
+        toast(
+          state.settings.transition === 'crossfade'
+            ? `Crossfade an – ${crossfadeSecs()} Sekunden`
+            : state.settings.transition === 'gapless'
+              ? 'Lückenlos an – der nächste Titel wird vorgeladen'
+              : 'Übergänge aus'
+        );
+        return;
+      }
+
+      if (event.target.id === 'opt-crossfade') {
+        state.settings.crossfadeSecs = Number(event.target.value) || 6;
+        saveSettings();
+        const label = $('#crossfade-value');
+        if (label) label.textContent = `${crossfadeSecs()} s`;
+        return;
+      }
+
       if (event.target.id === 'opt-update') {
         if (bridge.updateSet) {
           bridge
@@ -9097,6 +9992,8 @@ ${updatePanel()}
     wireOnboarding();
     wireLocalExtras();
     wireArtistPage();
+    wireCutterExtras();
+    wireReview();
     wireGlobal();
 
     // Visualizer: analyses the <audio> element, draws in the player bar
@@ -9389,6 +10286,51 @@ ${updatePanel()}
       refreshDownloadButtons();
     },
     playerSnapshot: () => playerSnapshot(),
+    bpmSynthetic: (bpm) => {
+      const rate = 22050;
+      const buffer = new AudioBuffer({ length: rate * 40, sampleRate: rate, numberOfChannels: 1 });
+      const data = buffer.getChannelData(0);
+      const period = Math.round((60 / bpm) * rate);
+      for (let at = 0; at < data.length; at += period) {
+        for (let k = 0; k < 800 && at + k < data.length; k += 1) data[at + k] = Math.sin(k / 3) * Math.exp(-k / 150);
+      }
+      return estimateBpm(buffer);
+    },
+    bpmOf: async (url) => {
+      try {
+        return estimateBpm(await decodeEntry({ url, kind: 'stream' }));
+      } catch (error) {
+        return error.message;
+      }
+    },
+    statsTest: (entry, secs) => {
+      statsPlay(entry);
+      statsListen(entry, secs);
+      return true;
+    },
+    reviewSummary: (period) => {
+      const data = reviewData(period || 'month');
+      return {
+        minutes: Math.round(data.secs / 60),
+        plays: data.plays,
+        topArtist: data.topArtists[0] ? data.topArtists[0][0] : '',
+        topTrack: data.topTracks[0] ? data.topTracks[0].e.title : '',
+      };
+    },
+    setTransition: (mode) => {
+      state.settings.transition = mode;
+      saveSettings();
+    },
+    transitionMode: () => transitionMode(),
+    wavTest: () => {
+      const buffer = new AudioBuffer({ length: 22050, sampleRate: 22050, numberOfChannels: 2 });
+      const bytes = wavBytes(buffer, 0.25, 0.75);
+      return {
+        head: String.fromCharCode(...bytes.slice(0, 4)) + String.fromCharCode(...bytes.slice(8, 12)),
+        size: bytes.length,
+        expected: 44 + 11025 * 2 * 2,
+      };
+    },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),
     artistPage: () => {
