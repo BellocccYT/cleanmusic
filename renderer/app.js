@@ -3871,6 +3871,9 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.11.2': [
+      'Plugin-Einstellungen: neuer Knopf „Speichern“ übernimmt alle Felder auf einmal – Änderungen gehen nicht mehr verloren, wenn man direkt ins nächste Feld klickt.',
+    ],
     '1.11.1': [
       'Playlist-Import: CSV-Dateien mit Spalte „Song“ statt „Track Name“ und Längen wie 3:45 werden jetzt erkannt (z. B. Exporte von Playlist-Analyse-Seiten).',
     ],
@@ -9073,13 +9076,32 @@
           </div>`;
       })
       .join('');
-    return `<div class="plugin-settings"><div class="ps-title">Einstellungen</div>${rows}</div>`;
+    return `<div class="plugin-settings"><div class="ps-title">Einstellungen</div>${rows}<div class="ps-actions"><button class="btn primary small" data-plugin-save="${esc(plugin.id)}">Speichern</button></div></div>`;
   }
 
   async function savePluginSetting(id, field, value) {
     try {
       const result = await bridge.pluginSettingsSet(id, { [field]: value });
       if (result && result.error) toast(`Plugin-Einstellung: ${result.error}`);
+      // No full re-render here – it would throw away what is being typed in the next field.
+      if (result && Array.isArray(result.plugins)) state.plugins.list = result.plugins.length ? result.plugins : state.plugins.list;
+    } catch (error) {
+      toast(`Plugin-Einstellung: ${error.message}`);
+    }
+  }
+
+  // „Speichern“: all fields of one plugin in one go (nothing typed gets lost).
+  async function savePluginForm(id) {
+    const patch = {};
+    document.querySelectorAll('#view-settings [data-plugin-setting]').forEach((input) => {
+      if (input.dataset.pluginSetting !== id) return;
+      const type = input.dataset.type;
+      patch[input.dataset.field] = type === 'toggle' ? input.checked : type === 'number' ? Number(input.value) : input.value;
+    });
+    try {
+      const result = await bridge.pluginSettingsSet(id, patch);
+      if (result && result.error) toast(`Plugin-Einstellung: ${result.error}`);
+      else toast('Plugin-Einstellungen gespeichert ✓');
       applyPluginList(result);
     } catch (error) {
       toast(`Plugin-Einstellung: ${error.message}`);
@@ -10012,6 +10034,12 @@ ${updatePanel()}
     $('#view-settings').addEventListener('click', async (event) => {
       if (event.target.closest('#btn-musickit')) {
         bridge.openMusickit();
+        return;
+      }
+
+      const pluginSave = event.target.closest('[data-plugin-save]');
+      if (pluginSave) {
+        savePluginForm(pluginSave.dataset.pluginSave);
         return;
       }
 

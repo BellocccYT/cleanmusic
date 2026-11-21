@@ -5734,3 +5734,10 @@ html.cover-vinyl .np-art::after {
     animation: none !important;
   }
 }
+
+/* 1.11.2: plugin settings save button */
+.ps-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
