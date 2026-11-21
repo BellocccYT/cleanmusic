@@ -203,6 +203,8 @@
         miniViz: true,
         normalize: false,
         volumeBoost: false,
+        theme: 'nacht',
+        coverAccent: false,
       },
       readJSON(STORAGE.settings, {})
     ),
@@ -2891,6 +2893,7 @@
     badge.dataset.tone = tone;
     badge.hidden = !text;
     updateNowPlayingActions();
+    applyArtworkColors(item ? item.artwork : '');
     syncFullscreen();
     pushPresence();
   }
@@ -3786,6 +3789,9 @@
     root.style.setProperty('--fs-a', a.join(', '));
     root.style.setProperty('--fs-b', b.join(', '));
     window.CMVisualizer.setColors(a, b);
+    coverRgb = a === DEFAULT_A ? null : a;
+    state.coverColors = coverRgb ? [rgbToHex(a), rgbToHex(b)] : null;
+    applyAccent();
   }
 
   function rgbToHsl(r, g, b) {
@@ -3914,6 +3920,131 @@
     document.body.classList.toggle('viz-off', !state.settings.visualizer);
     document.body.classList.toggle('mini-viz-off', !state.settings.miniViz);
     window.CMVisualizer.wake();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Themes
+   *
+   * Palettes live in themes.js. Every slot becomes a CSS variable, colours
+   * used with transparency also as an "r, g, b" triplet. "Akzent aus Cover"
+   * replaces the accent with the cover colour of the current title, adjusted
+   * so it stays readable on light and dark themes.
+   * ---------------------------------------------------------------- */
+
+  const THEMES = Array.isArray(window.CM_THEMES) ? window.CM_THEMES : [];
+  let coverRgb = null; // vivid colour of the current cover, if any
+
+  function hexToRgb(hex) {
+    const value = String(hex || '').replace('#', '');
+    if (!/^[0-9a-f]{6}$/i.test(value)) return [0, 0, 0];
+    return [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16));
+  }
+
+  function rgbToHex(rgb) {
+    return `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  function currentTheme() {
+    return THEMES.find((theme) => theme.id === state.settings.theme) || THEMES[0] || null;
+  }
+
+  function applyTheme() {
+    const theme = currentTheme();
+    if (!theme) return;
+    const c = theme.colors;
+    const root = document.documentElement;
+    const vars = {
+      '--bg': c.bg,
+      '--bg-2': c.bg2,
+      '--panel': c.panel,
+      '--panel-2': c.panel2,
+      '--panel-3': c.panel3,
+      '--border': c.border,
+      '--border-soft': c.borderSoft,
+      '--text': c.text,
+      '--muted': c.muted,
+      '--muted-2': c.muted2,
+      '--accent-2': c.accent2,
+      '--danger': c.danger,
+      '--ok': c.ok,
+      '--warn': c.warn,
+      '--on-accent': c.onAccent,
+      '--bg-rgb': hexToRgb(c.bg).join(', '),
+      '--panel-rgb': hexToRgb(c.panel2).join(', '),
+      '--border-rgb': hexToRgb(c.border).join(', '),
+      '--muted-rgb': hexToRgb(c.muted).join(', '),
+      '--accent-2-rgb': hexToRgb(c.accent2).join(', '),
+      '--danger-rgb': hexToRgb(c.danger).join(', '),
+      '--ok-rgb': hexToRgb(c.ok).join(', '),
+      '--warn-rgb': hexToRgb(c.warn).join(', '),
+      '--tint': theme.light ? '24, 32, 48' : '255, 255, 255',
+      '--shadow': theme.light ? '0 18px 48px rgba(24, 32, 48, 0.16)' : '0 20px 60px rgba(0, 0, 0, 0.5)',
+    };
+    Object.entries(vars).forEach(([name, value]) => root.style.setProperty(name, value));
+    root.style.colorScheme = theme.light ? 'light' : 'dark';
+    root.dataset.theme = theme.id;
+    root.dataset.mode = theme.light ? 'light' : 'dark';
+    applyAccent();
+    if (bridge.setTitleBar) bridge.setTitleBar({ color: c.bg, symbolColor: c.text });
+  }
+
+  // Theme accent, or the cover colour brought to a readable lightness.
+  function accentRgb() {
+    const theme = currentTheme();
+    const base = hexToRgb(theme ? theme.colors.accent : '#5b8cff');
+    if (!state.settings.coverAccent || !coverRgb) return base;
+    const [h, sat, l] = rgbToHsl(coverRgb[0], coverRgb[1], coverRgb[2]);
+    const light = Boolean(theme && theme.light);
+    const lightness = light ? Math.min(0.42, Math.max(0.3, l)) : Math.min(0.72, Math.max(0.62, l));
+    return hslToRgb(h, Math.min(0.88, Math.max(0.5, sat)), lightness);
+  }
+
+  function applyAccent() {
+    const rgb = accentRgb();
+    const root = document.documentElement;
+    root.style.setProperty('--accent', rgbToHex(rgb));
+    root.style.setProperty('--accent-rgb', rgb.join(', '));
+  }
+
+  function setTheme(id) {
+    if (!THEMES.some((theme) => theme.id === id)) return;
+    state.settings.theme = id;
+    saveSettings();
+    applyTheme();
+    renderSettings();
+  }
+
+  function themePanel() {
+    const active = currentTheme();
+    return `
+      <div class="panel" id="theme-panel">
+        <h3>Aussehen</h3>
+        <div class="theme-grid">
+          ${THEMES.map((theme) => {
+            const c = theme.colors;
+            const style = `--t-bg:${c.bg};--t-panel:${c.panel3};--t-text:${c.text};--t-accent:${c.accent};--t-accent-2:${c.accent2};--t-border:${c.border}`;
+            return `
+              <button class="theme-card ${active && active.id === theme.id ? 'active' : ''}" data-theme-id="${esc(theme.id)}" style="${style}" title="${esc(theme.name)}">
+                <span class="theme-preview" aria-hidden="true">
+                  <i class="tp-side"></i><i class="tp-line"></i><i class="tp-line short"></i><i class="tp-dot"></i><i class="tp-dot two"></i>
+                </span>
+                <strong>${esc(theme.name)}</strong>
+                <small>${theme.light ? 'Hell' : 'Dunkel'}</small>
+              </button>`;
+          }).join('')}
+        </div>
+        <label class="toggle-row" style="margin-top:14px">
+          <span>
+            <strong>Akzentfarbe aus dem Cover</strong>
+            <small>Knöpfe, Regler und Markierungen übernehmen die Farbe des laufenden Titels.</small>
+          </span>
+          <input type="checkbox" id="opt-cover-accent" ${state.settings.coverAccent ? 'checked' : ''} />
+        </label>
+        <p class="muted small" style="margin-top:10px">
+          Farbpaletten von Catppuccin, Dracula, Nord, Tokyo Night, Rosé Pine, Gruvbox und Everforest,
+          jeweils unter MIT-Lizenz (siehe THIRD-PARTY-NOTICES.md).
+        </p>
+      </div>`;
   }
 
   /* ---------------------------------------------------------------- *
@@ -4346,6 +4477,8 @@
             <input type="checkbox" id="opt-boost" ${state.settings.volumeBoost ? 'checked' : ''} />
           </label>
         </div>
+
+        ${themePanel()}
 
         ${visualizerPanel()}
 
@@ -4953,6 +5086,12 @@
         return;
       }
 
+      const themeCard = event.target.closest('[data-theme-id]');
+      if (themeCard) {
+        setTheme(themeCard.dataset.themeId);
+        return;
+      }
+
       const vizStyle = event.target.closest('[data-viz-style]');
       if (vizStyle) {
         setVisualizerStyle(vizStyle.dataset.vizStyle);
@@ -5030,6 +5169,14 @@
               ? 'Lautstärke wird angeglichen'
               : 'Lautstärke-Angleichung aus'
         );
+        return;
+      }
+
+      if (event.target.id === 'opt-cover-accent') {
+        state.settings.coverAccent = event.target.checked;
+        saveSettings();
+        applyAccent();
+        toast(event.target.checked ? 'Akzentfarbe folgt dem Cover' : 'Akzentfarbe vom Theme');
         return;
       }
 
@@ -5287,6 +5434,7 @@
    * ---------------------------------------------------------------- */
 
   function init() {
+    applyTheme();
     window.addEventListener('error', (event) => {
       console.error(`Renderer error: ${event.message}`);
     });
@@ -5382,6 +5530,15 @@
       showView('creator');
     },
     collectCreditAt: (key, index) => collectCredit(entryAt(key, index)),
+    theme: () => ({
+      id: currentTheme() ? currentTheme().id : null,
+      themes: THEMES.map((theme) => theme.id),
+      accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      bg: getComputedStyle(document.body).backgroundColor,
+      coverAccent: state.settings.coverAccent,
+      cover: state.coverColors || null,
+    }),
+    setTheme: (id) => setTheme(id),
     volume: () => ({
       level: vol.level,
       muted: vol.muted,

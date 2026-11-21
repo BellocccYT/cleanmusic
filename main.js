@@ -526,6 +526,17 @@ function createMainWindow() {
           (() => ({
             navItems: document.querySelectorAll('#sidebar .nav-item').length,
             hasAudio: Boolean(document.querySelector('#audio')),
+            themes: (() => {
+              const cm = window.CleanMusic;
+              const start = cm.theme().id;
+              const ids = cm.theme().themes;
+              const applied = ids.filter((id) => {
+                cm.setTheme(id);
+                return cm.theme().id === id && cm.theme().accent.startsWith('#');
+              }).length;
+              cm.setTheme(start);
+              return { count: ids.length, applied, active: cm.theme().id, bg: cm.theme().bg };
+            })(),
             debug: window.CleanMusic.state(),
           }))()
         `);
@@ -1480,6 +1491,19 @@ ipcMain.handle('discord-set', (_event, patch) => {
   writeConfig({ discord: next });
   presence.configure(next);
   return { config: next, status: presence.status() };
+});
+
+// Theme colours for the native window controls.
+ipcMain.on('set-titlebar', (_event, colors) => {
+  const hex = (value) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+  if (!colors || !hex(colors.color) || !hex(colors.symbolColor)) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    mainWindow.setTitleBarOverlay({ color: colors.color, symbolColor: colors.symbolColor, height: 40 });
+    mainWindow.setBackgroundColor(colors.color);
+  } catch {
+    /* not supported on this platform */
+  }
 });
 
 ipcMain.on('discord-update', (_event, track) => {

@@ -28,7 +28,9 @@
       "preload.js",
       "discord-rpc.js",
       "renderer/**/*",
-      "package.json"
+      "package.json",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.md"
     ],
     "asar": true,
     "compression": "normal",

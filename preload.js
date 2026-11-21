@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('cm', {
   discordGet: () => ipcRenderer.invoke('discord-get'),
   discordSet: (patch) => ipcRenderer.invoke('discord-set', patch),
   discordUpdate: (track) => ipcRenderer.send('discord-update', track || null),
+  setTitleBar: (colors) => ipcRenderer.send('set-titlebar', colors || null),
   onDiscordStatus: (listener) => {
     ipcRenderer.on('discord-status', (_event, status) => listener(status));
   },
