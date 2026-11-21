@@ -9,7 +9,7 @@ Stufe wird einzeln getestet, released und über die Update-Suche verteilt.
 | --- | --- |
 | **0.10** | Warteschlange + Autoplay – **erledigt** |
 | **0.11** | Epidemic Sound und Artlist.io im Cutter-Modus – **erledigt** |
-| **0.12** | Erste-Schritte-Assistent |
+| **0.12** | Erste-Schritte-Assistent – **erledigt** |
 | **0.13** | Englische Oberfläche (Deutsch/Englisch umschaltbar) |
 | **1.0** | Installer zusätzlich zur portablen EXE, Feinschliff, Release |
 

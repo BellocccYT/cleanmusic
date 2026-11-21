@@ -1100,6 +1100,44 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_QUEUE:', JSON.stringify(queueResult));
+
+          // First steps assistant + "what's new" card (0.12).
+          const onboardingResult = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const ob = cm.onboarding;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const autoShown = ob.state().open;
+              ob.open();
+              const steps = [];
+              const first = ob.state();
+              ob.click('[data-ob-theme="dracula"]');
+              const themed = cm.theme().id;
+              for (let i = 0; i < 5; i += 1) {
+                steps.push(ob.state().title);
+                ob.click('[data-ob-action="next"]');
+                await wait(50);
+              }
+              const done = ob.state();
+              cm.setTheme('nacht');
+              const shown = cm.whatsNew('0.12.0');
+              const card = !document.querySelector('#whatsnew-card').hidden;
+              document.querySelector('#whatsnew-card [data-whatsnew="ok"]').click();
+              const cardClosed = document.querySelector('#whatsnew-card').hidden;
+              return {
+                autoShownInSmoke: autoShown,
+                firstRun: first.firstRun,
+                themes: first.themes,
+                themed,
+                steps,
+                options: steps.length,
+                closed: !done.open,
+                onboarded: done.onboarded,
+                whatsNew: shown && card && cardClosed,
+              };
+            })()
+          `);
+          console.log('SMOKE_ONBOARDING:', JSON.stringify(onboardingResult));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -1327,6 +1365,8 @@ ipcMain.handle('open-external', async (_event, url) => {
 });
 
 ipcMain.handle('get-info', () => ({
+  version: app.getVersion(),
+  smoke: isSmoke,
   electron: process.versions.electron,
   chrome: process.versions.chrome,
   node: process.versions.node,

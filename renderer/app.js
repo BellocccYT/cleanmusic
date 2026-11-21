@@ -101,8 +101,17 @@
     openverseCache: 'cleanmusic.ovcache.v1',
     downloads: 'cleanmusic.downloads.v1', // entry id → { path, at }
     creatorDownloads: 'cleanmusic.creatordl.v1', // [{ path, name, service, at }]
+    seenVersion: 'cleanmusic.seenversion.v1', // last version the user saw "what's new" for
     history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
   };
+
+  const FIRST_RUN = (() => {
+    try {
+      return [STORAGE.settings, STORAGE.collection, STORAGE.library].every((key) => localStorage.getItem(key) === null);
+    } catch {
+      return false;
+    }
+  })();
 
   const RECS_MAX_AGE = 6 * 60 * 60 * 1000;
 
@@ -220,6 +229,7 @@
         theme: 'nacht',
         coverAccent: false,
         autoplay: true, // suggestions after single titles (search)
+        onboarded: false,
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
         downloadDir: '',
       },
@@ -3430,6 +3440,266 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * First steps (onboarding) + "Neu in dieser Version"
+   *
+   * The assistant opens on the very first start (nothing stored yet) and
+   * can be opened again from the settings. Existing users get a short
+   * "what's new" card once after an update instead.
+   * ---------------------------------------------------------------- */
+
+  const WHATS_NEW = {
+    '0.12.0': [
+      'Erste-Schritte-Assistent – jederzeit unter Einstellungen → System → „Erste Schritte“.',
+      'Seit 0.11: Epidemic Sound und Artlist im Cutter-Modus, Abo-Downloads im Cutting-Ordner.',
+      'Seit 0.10: Warteschlange, „Als Nächstes“ und Autoplay nach Suchtreffern.',
+    ],
+  };
+
+  const ONBOARDING_STEPS = 5;
+  let onboardingStep = 0;
+
+  function onboardingThemes() {
+    const active = currentTheme();
+    return THEMES.map((theme) => {
+      const c = theme.colors;
+      const style = `--t-bg:${c.bg};--t-panel:${c.panel3};--t-text:${c.text};--t-accent:${c.accent};--t-accent-2:${c.accent2};--t-border:${c.border}`;
+      return `
+        <button class="theme-card ${active && active.id === theme.id ? 'active' : ''}" data-ob-theme="${esc(theme.id)}" style="${style}" title="${esc(theme.name)}">
+          <span class="theme-preview" aria-hidden="true">
+            <i class="tp-side"></i><i class="tp-line"></i><i class="tp-line short"></i><i class="tp-dot"></i><i class="tp-dot two"></i>
+          </span>
+          <strong>${esc(theme.name)}</strong>
+        </button>`;
+    }).join('');
+  }
+
+  function onboardingToggle(id, title, text, on) {
+    return `
+      <label class="toggle-row">
+        <span><strong>${title}</strong><small>${text}</small></span>
+        <input type="checkbox" data-ob-option="${id}" ${on ? 'checked' : ''} />
+      </label>`;
+  }
+
+  function onboardingBody(step) {
+    switch (step) {
+      case 0:
+        return `
+          <div class="ob-hero">
+            <img class="ob-logo" src="assets/logo.svg" alt="" />
+            <div>
+              <h2>Willkommen bei CleanMusic</h2>
+              <p>Alle Musikdienste an einem Ort, eigene Musik, Radio – und ein Cutter-Modus mit Musik und Sounds für deine Videos. Such dir zuerst einen Look aus:</p>
+            </div>
+          </div>
+          <div class="theme-grid ob-themes">${onboardingThemes()}</div>`;
+      case 1: {
+        const count = state.library.entries.length;
+        return `
+          <h2>Deine Musik</h2>
+          <p>MP3, FLAC, WAV, M4A … aus deinen Ordnern laufen direkt in CleanMusic – ohne Login, ohne Internet.</p>
+          <div class="ob-folder">
+            <button class="btn primary" data-ob-action="folder">${ICONS.folder} Musikordner hinzufügen</button>
+            <span class="muted small" id="ob-folder-count">${count ? `${count} Titel in deiner Bibliothek` : 'Optional – geht auch später unter „Lokale Musik“.'}</span>
+          </div>`;
+      }
+      case 2:
+        return `
+          <h2>So spielt CleanMusic</h2>
+          <div class="ob-tiles">
+            <div class="ob-tile">${ICONS.search}<strong>Suchen & reinhören</strong><span>30-Sekunden-Vorschauen aus Apple Music und Deezer, danach Autoplay mit Vorschlägen. ♥ und + sammeln alles in Favoriten und Playlists.</span></div>
+            <div class="ob-tile">${ICONS.radio}<strong>Radio</strong><span>Tausende Sender live, volle Songs, ohne Login.</span></div>
+            <div class="ob-tile">${ICONS.spark}<strong>Deine Dienste</strong><span>Spotify, YouTube Music, Apple Music & Co. laufen als offizielle Web-Player eingebettet – dein Login bleibt.</span></div>
+            <div class="ob-tile">${ICONS.scissors}<strong>Cutter-Modus</strong><span>Musik und Sounds für Videos mit Lizenz und fertigem Credit – plus Epidemic Sound und Artlist mit deinem Abo.</span></div>
+          </div>`;
+      case 3:
+        return `
+          <h2>Deine Einstellungen</h2>
+          <p>Alles lässt sich später unter Einstellungen ändern.</p>
+          <div class="ob-options">
+            ${onboardingToggle('autoplay', 'Autoplay', 'Nach einem Titel aus der Suche passende Vorschläge weiterspielen.', autoplayOn())}
+            ${onboardingToggle('updates', 'Beim Start nach Updates suchen', 'Neue Versionen mit einem Klick installieren.', updateInfo ? updateInfo.auto : true)}
+            ${onboardingToggle('downloads', 'Downloads „Nur Cutting“', 'Freie Musik und Sounds (CC0, CC BY) mit Credit-Datei herunterladen.', state.settings.downloads === 'cutting')}
+            ${onboardingToggle('visualizer', 'Visualizer', 'Tanzt im Vollbild-Player zur Musik.', state.settings.visualizer)}
+            ${onboardingToggle('tray', 'Beim Schließen im Infobereich weiterlaufen', 'Das X versteckt nur das Fenster, die Musik läuft weiter.', Boolean(state.closeToTray))}
+          </div>`;
+      default:
+        return `
+          <h2>Plugins & los geht's</h2>
+          <p>CleanMusic bringt keine Plugins mit. Du kannst unter Einstellungen → Plugins selbst welche hinzufügen – etwa das OBS-Overlay oder Streamer.bot für Streams. Plugins starten nie von allein, erst wenn du sie einschaltest.</p>
+          <ul class="ob-tips">
+            <li><kbd>Strg K</kbd> sucht, <kbd>F</kbd> öffnet den Vollbild-Player, <kbd>M</kbd> schaltet stumm.</li>
+            <li>Rechtsklick auf einen Titel: „Als Nächstes abspielen“ oder in eine Playlist.</li>
+            <li>Dieser Assistent: Einstellungen → System → „Erste Schritte“.</li>
+          </ul>`;
+    }
+  }
+
+  function renderOnboarding() {
+    const root = $('#onboarding');
+    if (!root) return;
+    const step = onboardingStep;
+    const last = step === ONBOARDING_STEPS - 1;
+    root.innerHTML = `
+      <div class="ob-card" role="dialog" aria-modal="true" aria-label="Erste Schritte">
+        <div class="ob-progress">${Array.from({ length: ONBOARDING_STEPS }, (_, i) => `<i class="${i <= step ? 'on' : ''}"></i>`).join('')}</div>
+        <div class="ob-body">${onboardingBody(step)}</div>
+        <div class="ob-actions">
+          <button class="btn ghost small" data-ob-action="skip">${last ? 'Zu den Einstellungen' : 'Überspringen'}</button>
+          <span class="ob-spacer"></span>
+          ${step > 0 ? '<button class="btn ghost small" data-ob-action="back">Zurück</button>' : ''}
+          <button class="btn primary small" data-ob-action="next">${last ? 'Los geht\'s' : 'Weiter'}</button>
+        </div>
+      </div>`;
+  }
+
+  function openOnboarding() {
+    const root = $('#onboarding');
+    if (!root) return;
+    onboardingStep = 0;
+    root.hidden = false;
+    renderOnboarding();
+  }
+
+  function closeOnboarding(target) {
+    const root = $('#onboarding');
+    if (!root || root.hidden) return;
+    root.hidden = true;
+    root.innerHTML = '';
+    state.settings.onboarded = true;
+    saveSettings();
+    markVersionSeen();
+    if (target === 'settings') showView('settings');
+  }
+
+  function applyOnboardingOption(id, on) {
+    switch (id) {
+      case 'autoplay':
+        state.settings.autoplay = on;
+        saveSettings();
+        renderQueuePanel();
+        break;
+      case 'updates':
+        if (bridge.updateSet) bridge.updateSet({ auto: on }).then(onUpdateState).catch(() => {});
+        break;
+      case 'downloads':
+        state.settings.downloads = on ? 'cutting' : 'off';
+        saveSettings();
+        refreshDownloadButtons();
+        break;
+      case 'visualizer':
+        setVisualizerEnabled(on);
+        break;
+      case 'tray':
+        if (bridge.traySet) {
+          bridge
+            .traySet({ closeToTray: on })
+            .then((result) => {
+              state.closeToTray = Boolean(result && result.closeToTray);
+            })
+            .catch(() => {});
+        }
+        break;
+      default:
+    }
+    renderSettings();
+  }
+
+  async function onOnboardingClick(event) {
+    const theme = event.target.closest('[data-ob-theme]');
+    if (theme) {
+      state.settings.theme = theme.dataset.obTheme;
+      saveSettings();
+      applyTheme();
+      renderOnboarding();
+      return;
+    }
+    const action = event.target.closest('[data-ob-action]');
+    if (!action) return;
+    switch (action.dataset.obAction) {
+      case 'folder':
+        await addFolder();
+        renderOnboarding();
+        return;
+      case 'back':
+        onboardingStep = Math.max(0, onboardingStep - 1);
+        renderOnboarding();
+        return;
+      case 'next':
+        if (onboardingStep >= ONBOARDING_STEPS - 1) {
+          closeOnboarding();
+          return;
+        }
+        onboardingStep += 1;
+        renderOnboarding();
+        return;
+      case 'skip':
+        closeOnboarding(onboardingStep >= ONBOARDING_STEPS - 1 ? 'settings' : null);
+        return;
+      default:
+    }
+  }
+
+  function currentVersion() {
+    return (state.info && state.info.version) || '';
+  }
+
+  function markVersionSeen() {
+    const version = currentVersion();
+    if (version) writeJSON(STORAGE.seenVersion, version);
+  }
+
+  function showWhatsNew(version) {
+    const notes = WHATS_NEW[version];
+    const card = $('#whatsnew-card');
+    if (!notes || !card) return false;
+    card.innerHTML = `
+      <span class="update-icon">${ICONS.spark}</span>
+      <div class="update-text">
+        <strong>Neu in CleanMusic ${esc(version)}</strong>
+        <ul class="whatsnew-list">${notes.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>
+      </div>
+      <div class="update-actions">
+        <button class="btn primary small" data-whatsnew="ok">Alles klar</button>
+        <button class="btn ghost small" data-whatsnew="tour">Erste Schritte ansehen</button>
+      </div>`;
+    card.hidden = false;
+    return true;
+  }
+
+  // Called once the app version is known (getInfo).
+  function startupGuide() {
+    if (state.info && state.info.smoke) return;
+    if (FIRST_RUN && !state.settings.onboarded) {
+      openOnboarding();
+      return;
+    }
+    const version = currentVersion();
+    const seen = readJSON(STORAGE.seenVersion, '');
+    if (version && seen !== version) {
+      showWhatsNew(version);
+      markVersionSeen();
+    }
+  }
+
+  function wireOnboarding() {
+    $('#onboarding').addEventListener('click', onOnboardingClick);
+    $('#onboarding').addEventListener('change', (event) => {
+      const option = event.target.closest('[data-ob-option]');
+      if (option) applyOnboardingOption(option.dataset.obOption, option.checked);
+    });
+    $('#whatsnew-card').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-whatsnew]');
+      if (!button) return;
+      $('#whatsnew-card').hidden = true;
+      if (button.dataset.whatsnew === 'tour') openOnboarding();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !$('#onboarding').hidden) closeOnboarding();
+    });
+  }
+
+  /* ---------------------------------------------------------------- *
    * Queue + autoplay
    *
    * The queue is state.queue.items with the playing title at .index.
@@ -6037,6 +6307,7 @@
     const widevine = info.widevine;
 
     const facts = [
+      ['CleanMusic', info.version || '–'],
       ['Electron', info.electron || '–'],
       ['Chromium', info.chrome || '–'],
       ['Plattform', info.platform || '–'],
@@ -6147,6 +6418,9 @@
           <dl class="facts">
             ${facts.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('')}
           </dl>
+          <div class="row" style="margin-top:12px">
+            <button class="btn ghost small" data-onboarding="open">Erste Schritte erneut zeigen</button>
+          </div>
         </div>
 
 ${updatePanel()}
@@ -6781,6 +7055,11 @@ ${updatePanel()}
         return;
       }
 
+      if (event.target.closest('[data-onboarding]')) {
+        openOnboarding();
+        return;
+      }
+
       const updateButton = event.target.closest('[data-update]');
       if (updateButton) {
         onUpdateAction(updateButton.dataset.update);
@@ -7270,6 +7549,7 @@ ${updatePanel()}
     renderSettings();
     wirePlayer();
     wireQueuePanel();
+    wireOnboarding();
     wireGlobal();
 
     // Visualizer: analyses the <audio> element, draws in the player bar
@@ -7354,6 +7634,7 @@ ${updatePanel()}
         state.info = info;
         renderSettings();
         updateStatusChips();
+        startupGuide();
       })
       .catch(() => {});
 
@@ -7416,6 +7697,24 @@ ${updatePanel()}
           }
         : null,
     importBackup: (data) => importBackup(data),
+    onboarding: {
+      open: () => openOnboarding(),
+      state: () => ({
+        open: !$('#onboarding').hidden,
+        step: onboardingStep,
+        title: ($('#onboarding h2') || {}).textContent || '',
+        themes: document.querySelectorAll('#onboarding [data-ob-theme]').length,
+        options: document.querySelectorAll('#onboarding [data-ob-option]').length,
+        onboarded: Boolean(state.settings.onboarded),
+        firstRun: FIRST_RUN,
+      }),
+      click: (selector) => {
+        const el = document.querySelector('#onboarding ' + selector);
+        if (el) el.click();
+        return Boolean(el);
+      },
+    },
+    whatsNew: (version) => showWhatsNew(version),
     queue: () => ({
       index: state.queue.index,
       kind: state.queue.kind,
