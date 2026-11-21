@@ -5234,6 +5234,13 @@
           </label>
           <label class="toggle-row">
             <span>
+              <strong>Beim Schließen im Infobereich weiterlaufen</strong>
+              <small>Das X versteckt CleanMusic nur, die Musik läuft weiter. Beenden über das Symbol im Infobereich.</small>
+            </span>
+            <input type="checkbox" id="opt-tray" ${state.closeToTray ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
               <strong>Lautstärke angleichen</strong>
               <small>Gleicht laute und leise Titel sanft an, damit du nicht ständig nachregeln musst.</small>
             </span>
@@ -6022,6 +6029,17 @@
         return;
       }
 
+      if (event.target.id === 'opt-tray') {
+        const wanted = event.target.checked;
+        (bridge.traySet ? bridge.traySet({ closeToTray: wanted }) : Promise.resolve({ closeToTray: false }))
+          .then((result) => {
+            state.closeToTray = Boolean(result && result.closeToTray);
+            toast(state.closeToTray ? 'Schließen versteckt CleanMusic im Infobereich' : 'Schließen beendet CleanMusic');
+          })
+          .catch(() => {});
+        return;
+      }
+
       if (event.target.id === 'opt-normalize' || event.target.id === 'opt-boost') {
         const boost = event.target.id === 'opt-boost';
         state.settings[boost ? 'volumeBoost' : 'normalize'] = event.target.checked;
@@ -6352,6 +6370,16 @@
       });
     }
     if (bridge.onPluginsChanged) bridge.onPluginsChanged(() => refreshPlugins(false));
+
+    if (bridge.trayGet) {
+      bridge
+        .trayGet()
+        .then((result) => {
+          state.closeToTray = Boolean(result && result.closeToTray);
+          renderSettings();
+        })
+        .catch(() => {});
+    }
 
     if (bridge.cuttingDefaultFolder) {
       bridge

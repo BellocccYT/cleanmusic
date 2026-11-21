@@ -16,6 +16,7 @@ const {
   net,
   clipboard,
   nativeImage,
+  Tray,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -43,12 +44,7 @@ const hasInstanceLock = isSmoke || app.requestSingleInstanceLock();
 if (!hasInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  });
+  app.on('second-instance', () => showMainWindow());
 }
 
 /* ------------------------------------------------------------------ *
@@ -926,6 +922,7 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_EXTRAS:', JSON.stringify(extrasResult));
+          console.log('SMOKE_TRAY:', JSON.stringify({ tray: Boolean(tray && !tray.isDestroyed()), state: trayKey }));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -2256,6 +2253,7 @@ ipcMain.on('player-state', (_event, raw) => {
   playerState.muted = Boolean(raw.muted);
   playerState.at = Date.now();
 
+  updateTray();
   if (trackChanged) emitPluginEvent('nowplaying');
   if (volumeChanged) emitPluginEvent('volume');
   emitPluginEvent('state');
@@ -2730,11 +2728,97 @@ app.on('web-contents-created', (_event, contents) => {
   }
 });
 
+/* ------------------------------------------------------------------ *
+ * Tray icon: title in the tooltip, mini controls, optional close-to-tray
+ * ------------------------------------------------------------------ */
+
+let tray = null;
+let quitting = false;
+let trayKey = '';
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function closeToTray() {
+  return Boolean(readConfig().closeToTray);
+}
+
+function updateTray(force = false) {
+  if (!tray || tray.isDestroyed()) return;
+  const track = playerState.track;
+  const key = JSON.stringify([track && track.title, track && track.artist, playerState.playing]);
+  if (!force && key === trayKey) return;
+  trayKey = key;
+
+  const line = track ? (track.artist ? `${track.artist} – ${track.title}` : track.title) : '';
+  const tooltip = line ? `CleanMusic\n${playerState.playing ? '▶' : '⏸'} ${line}` : 'CleanMusic';
+  tray.setToolTip(tooltip.slice(0, 127));
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: line ? line.slice(0, 60) : 'Nichts ausgewählt', enabled: false },
+      { type: 'separator' },
+      {
+        label: playerState.playing ? 'Pause' : 'Abspielen',
+        enabled: Boolean(track),
+        click: () => sendPlayerCommand('toggle'),
+      },
+      { label: 'Nächster Titel', enabled: Boolean(track), click: () => sendPlayerCommand('next') },
+      { label: 'Vorheriger Titel', enabled: Boolean(track), click: () => sendPlayerCommand('previous') },
+      { type: 'separator' },
+      { label: 'CleanMusic öffnen', click: () => showMainWindow() },
+      {
+        label: 'Beenden',
+        click: () => {
+          quitting = true;
+          app.quit();
+        },
+      },
+    ])
+  );
+}
+
+function createTray() {
+  if (tray) return;
+  try {
+    const icon = nativeImage
+      .createFromPath(path.join(ROOT, 'renderer', 'assets', 'icon.png'))
+      .resize({ width: 16, height: 16, quality: 'best' });
+    tray = new Tray(icon);
+    tray.on('click', () => showMainWindow());
+    updateTray(true);
+  } catch (error) {
+    tray = null;
+    console.error('Tray:', error.message);
+  }
+}
+
+ipcMain.handle('tray-get', () => ({ closeToTray: closeToTray() }));
+ipcMain.handle('tray-set', (_event, patch) => {
+  const next = Boolean(patch && patch.closeToTray);
+  writeConfig({ closeToTray: next });
+  return { closeToTray: next };
+});
+
 app.whenReady().then(() => {
   if (!hasInstanceLock) return;
   Menu.setApplicationMenu(null);
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
   createMainWindow();
+  createTray();
+  // Close button → tray (only if the user switched it on).
+  // Windows shutting down / logging off must never be blocked by the tray mode.
+  mainWindow.on('session-end', () => {
+    quitting = true;
+  });
+  mainWindow.on('close', (event) => {
+    if (quitting || isSmoke || !tray || !closeToTray()) return;
+    event.preventDefault();
+    mainWindow.hide();
+  });
   if (!isSmoke) presence.configure(discordConfig());
 
   app.on('activate', () => {
@@ -2746,4 +2830,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => presence.shutdown());
+app.on('before-quit', () => {
+  quitting = true;
+  presence.shutdown();
+  if (tray && !tray.isDestroyed()) tray.destroy();
+});
