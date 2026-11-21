@@ -2396,7 +2396,9 @@ body.is-dragging #sidebar [data-drop] {
   fill: currentColor;
 }
 
-.song-actions .icon-btn:not(.song-play):not(.fav.on) {
+/* :where() keeps this rule weak, so hover/playing and the credit/download
+   buttons below can show their icons (with :not() alone it outweighed them). */
+.song-actions .icon-btn:where(:not(.song-play):not(.fav.on)) {
   opacity: 0;
   transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
 }
@@ -4101,7 +4103,16 @@ body.fs-open .toast {
 
 /* Downloads ("Nur Cutting") ------------------------------------------ */
 
-.dl-btn.done {
+.song-actions .icon-btn.dl-btn {
+  opacity: 0.8;
+  color: color-mix(in srgb, var(--accent-2) 70%, var(--text));
+}
+
+.song-row:hover .song-actions .icon-btn.dl-btn {
+  opacity: 1;
+}
+
+.song-actions .icon-btn.dl-btn.done {
   color: var(--ok);
   cursor: grab;
 }
