@@ -1,3 +1,12 @@
+> **Musik. Dein Setup. Ein Startpunkt.** CleanMusic bringt offizielle Web-Player, lokale Wiedergabe und Tools für Stream und Schnitt zusammen – ehrlich über Grenzen, lokal bei deinen Daten.
+
+<!-- Drei GIF-Platzhalter: bis zu animierten Demos zeigen sie repräsentative Screenshots. -->
+<p align="center">
+  <img src="marketing/screenshots/obs-overlay.png" alt="GIF-Platzhalter – Streamer: Overlay und Als Nächstes" width="32%" />
+  <img src="marketing/screenshots/cutter-wellenform.png" alt="GIF-Platzhalter – Cutter-Modus mit Wellenform" width="32%" />
+  <img src="marketing/screenshots/vollbild-plattenspieler.png" alt="GIF-Platzhalter – Vollbild-Player" width="32%" />
+</p>
+
 <p align="center"><img src="build/icon.png" width="128" alt="CleanMusic-Logo" /></p>
 
 # CleanMusic – The Music Launcher
