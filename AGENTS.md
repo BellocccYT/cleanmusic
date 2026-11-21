@@ -17,6 +17,8 @@ bleiben unverändert. Plan: `docs/PLAN-YTMUSIC-IMPORT.md`.
 (Openverse/Freesound mit Lizenzfilter), Kevin-MacLeod-Kategorie „Gaming & Retro“
 und der Mini-Visualizer-Fix für die optionale Audio-Kette. Englisch liegt auf 1.4.
 
+Nächstes: **1.4.0** – Songwünsche per Link (als Nächstes + Playlist), KI-Filter, YouTube im Cutter-Modus mit Content-ID-Hinweis. Bauplan: `docs/PLAN-1.4.md`.
+
 ## Aufbau
 
 - `main.js` – Hauptprozess: Fenster, IPC, Widevine, Katalog/Charts/Radio, Vorschläge, Cutter-Quellen (Deezer-Playlisten, Openverse), Plugin-Lader, Discord-Steuerung, Smoke-Test.
