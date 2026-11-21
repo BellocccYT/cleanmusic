@@ -537,6 +537,10 @@ THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 
 ## Nächste sinnvolle Schritte
 
+Der Fahrplan zu **1.0** steht in [docs/PLAN-1.0.md](docs/PLAN-1.0.md): Warteschlange + Autoplay,
+Epidemic Sound und Artlist im Cutter-Modus, Erste-Schritte-Assistent, englische Oberfläche,
+Installer. Danach:
+
 0. **Streamer.bot Phase 2:** Titelwechsel als WebSocket-Ereignis direkt in Streamer.bot
    (Phase 1 mit !song/!skip/!pause ist fertig). Plan: [docs/PLAN-STREAMERBOT.md](docs/PLAN-STREAMERBOT.md).
 
