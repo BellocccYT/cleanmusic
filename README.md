@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 0.10.0**
+**Version 0.11.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -119,6 +119,17 @@ Titel und fertigem Credit:
 - Lizenz-Badge (CC0 · CC BY · NCS) und ↗ zur Quelle bzw. zum Download beim Urheber.
 - Openverse erlaubt ohne Konto ~200 Anfragen am Tag; CleanMusic speichert
   Ergebnisse deshalb 24 h zwischen.
+
+### Epidemic Sound & Artlist (mit deinem Abo)
+
+Unter **Creator** in der Seitenleiste und als Knöpfe im **Cutter-Modus** laufen die
+offiziellen Web-Apps von **Epidemic Sound** und **Artlist** eingebettet – Login bleibt
+gespeichert. Was du dort über deren Download-Knöpfe mit deinem Abo herunterlädst,
+speichert CleanMusic ohne Rückfrage in `Musik\CleanMusic Cutting\Epidemic Sound\`
+bzw. `…\Artlist\`, mit einer `– Lizenz.txt`-Notiz daneben. Im Cutter-Modus stehen
+die letzten Abo-Downloads unter den Video-Credits – zum Ziehen ins Schnittprogramm.
+Gespeichert werden nur Audiodateien (und ZIP mit Stems). CleanMusic greift nicht an
+den Web-Apps vorbei auf Dateien zu.
 
 ### Downloads: nur freie Dateien für Videos
 
@@ -360,7 +371,7 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-0.10.0-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-0.11.0-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
@@ -382,7 +393,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-0.10.0.AppImage`.
+Ergebnis: `release/CleanMusic-0.11.0.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die

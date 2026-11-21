@@ -73,4 +73,25 @@ window.CM_SERVICES = [
     url: 'https://soundcloud.com',
     search: (q) => `https://soundcloud.com/search?q=${encodeURIComponent(q)}`,
   },
+  // Creator services: subscription libraries for video music and sound
+  // effects. Shown under "Creator" and in the cutter mode, not in the
+  // music search menus.
+  {
+    id: 'epidemic',
+    name: 'Epidemic Sound',
+    short: 'ES',
+    color: '#b18cff',
+    note: 'Abo · Musik & Soundeffekte für Creator',
+    url: 'https://www.epidemicsound.com/music/featured/',
+    creator: true,
+  },
+  {
+    id: 'artlist',
+    name: 'Artlist',
+    short: 'AL',
+    color: '#ffd23f',
+    note: 'Abo · Musik & Soundeffekte für Creator',
+    url: 'https://artlist.io/royalty-free-music',
+    creator: true,
+  },
 ];

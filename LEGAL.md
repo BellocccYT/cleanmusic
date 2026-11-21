@@ -105,6 +105,15 @@ Verhalten.
   herunterladen“ gibt es nicht und wird es nicht geben – das würde Urheber- und
   Nutzungsrechte der Dienste verletzen.
 
+## Epidemic Sound & Artlist
+
+- Eingebettet werden die **offiziellen Web-Apps**; du meldest dich mit deinem eigenen
+  Konto an. Downloads entstehen nur über deren eigene Download-Knöpfe – CleanMusic legt
+  sie lediglich im Cutting-Ordner ab und schreibt eine Lizenz-Notiz daneben.
+- Die Lizenz kommt von deinem Abo und gilt nach den Bedingungen des jeweiligen Dienstes
+  (z. B. nur für verknüpfte Kanäle, neue Veröffentlichungen nur mit aktivem Abo).
+  CleanMusic entfernt keine Wasserzeichen und lädt nichts ohne Abo.
+
 ## Cutter-Modus: Was du in Videos verwenden darfst
 
 Der Cutter-Modus zeigt nur Quellen, deren Nutzung in Videos ausdrücklich

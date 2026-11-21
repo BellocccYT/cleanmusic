@@ -8,7 +8,7 @@ Stufe wird einzeln getestet, released und über die Update-Suche verteilt.
 | Stufe | Inhalt |
 | --- | --- |
 | **0.10** | Warteschlange + Autoplay – **erledigt** |
-| **0.11** | Epidemic Sound und Artlist.io im Cutter-Modus |
+| **0.11** | Epidemic Sound und Artlist.io im Cutter-Modus – **erledigt** |
 | **0.12** | Erste-Schritte-Assistent |
 | **0.13** | Englische Oberfläche (Deutsch/Englisch umschaltbar) |
 | **1.0** | Installer zusätzlich zur portablen EXE, Feinschliff, Release |
@@ -47,7 +47,7 @@ dauerhafter Sitzung (Login bleibt).
   bzw. `…\Artlist\` (Hauptprozess: `will-download` nur für diese beiden
   Sitzungen), zeigt sie danach zum Ziehen ins Schnittprogramm an und legt eine
   `.txt` mit Hinweis „Lizenz über dein Abo – Kanal ggf. beim Dienst freischalten“ ab.
-- Für alle anderen Dienste (Spotify, Apple, …) bleiben Downloads gesperrt.
+- Für alle anderen Dienste (Spotify, Apple, …) ändert sich nichts; CleanMusic greift dort nichts ab.
 - CleanMusic umgeht nichts: keine Wasserzeichen-Entfernung, kein Download
   ohne Abo, kein Zugriff an der Web-App vorbei.
 - Risiko: Google-Login kann eingebettete Fenster ablehnen → E-Mail-Login oder

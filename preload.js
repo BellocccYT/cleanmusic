@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('cm', {
   creditsSave: (text) => ipcRenderer.invoke('credits-save', text),
   pluginCharts: (id, limit) => ipcRenderer.invoke('plugin-charts', id, limit),
   cuttingDefaultFolder: () => ipcRenderer.invoke('cutting-default-folder'),
+  creatorDownloadsConfig: (config) => ipcRenderer.invoke('creator-downloads-config', config),
+  onCreatorDownload: (listener) => {
+    ipcRenderer.on('creator-download', (_event, info) => listener(info));
+  },
   cuttingDownload: (item) => ipcRenderer.invoke('cutting-download', item),
   cuttingDrag: (file) => ipcRenderer.send('cutting-drag', file),
   cuttingReveal: (file) => ipcRenderer.invoke('cutting-reveal', file),

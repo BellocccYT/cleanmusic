@@ -4454,3 +4454,64 @@ body.fs-open .toast {
 .queue-hint {
   color: color-mix(in srgb, var(--warn) 60%, var(--text));
 }
+
+/* Creator services ---------------------------------------------------- */
+
+.creator-tab.creator-service {
+  margin-left: 4px;
+}
+
+.creator-tab.creator-service .svc-badge,
+.abo-open .svc-badge {
+  margin-right: 2px;
+}
+
+.abo-downloads {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.abo-open {
+  margin: 10px 0 4px;
+  gap: 6px;
+}
+
+.abo-list {
+  list-style: none;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.abo-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.abo-list li > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.abo-list strong {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.abo-list span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.abo-list .dl-btn.done {
+  opacity: 1;
+  color: var(--ok);
+  flex: 0 0 auto;
+}

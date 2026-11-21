@@ -914,6 +914,48 @@ function createMainWindow() {
           console.error('SMOKE_DOWNLOAD_FAIL:', error.message);
         }
 
+        // Creator services (0.11): sidebar, cutter buttons, session downloads
+        // into a throwaway cutting folder.
+        try {
+          const creatorDir = path.join(app.getPath('temp'), 'cleanmusic-smoke-creator');
+          fs.rmSync(creatorDir, { recursive: true, force: true });
+          creatorDownloadFolder = creatorDir;
+          const ses = session.fromPartition('persist:cm-epidemic');
+          ses.downloadURL('https://incompetech.com/music/royalty-free/mp3-royaltyfree/Fluffing%20a%20Duck.mp3');
+          ses.downloadURL('https://example.com/');
+          const target = path.join(creatorDir, 'Epidemic Sound');
+          let files = [];
+          for (let i = 0; i < 60; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            files = fs.existsSync(target) ? fs.readdirSync(target) : [];
+            if (files.some((name) => name.endsWith('.mp3')) && files.some((name) => name.endsWith('.txt'))) break;
+          }
+          const ui = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              cm.setCreator('classics', 'lustig');
+              await new Promise((resolve) => setTimeout(resolve, 400));
+              return {
+                services: cm.creatorServices.services(),
+                sidebar: document.querySelectorAll('#creator-nav [data-service]').length,
+                musicSidebar: document.querySelectorAll('#service-nav [data-service]').length,
+                cutterButtons: document.querySelectorAll('#view-creator .creator-tabs [data-creator-service]').length,
+                aboList: document.querySelectorAll('#creator-credits .abo-list li').length,
+                listed: cm.creatorServices.downloads().map((item) => item.service + ': ' + item.name),
+                homeCards: document.querySelectorAll('#view-home .service-card').length,
+              };
+            })()
+          `);
+          const note = files.find((name) => name.endsWith('.txt'));
+          ui.files = files;
+          ui.licenseNote = note ? fs.readFileSync(path.join(target, note), 'utf8').includes('Abo') : false;
+          creatorDownloadFolder = '';
+          console.log('SMOKE_CREATOR_SERVICES:', JSON.stringify(ui));
+          fs.rmSync(creatorDir, { recursive: true, force: true });
+        } catch (error) {
+          console.error('SMOKE_CREATOR_SERVICES_FAIL:', error.message);
+        }
+
         // Home: new releases, listening history, "Wiederentdecken".
         try {
           const homeResult = await mainWindow.webContents.executeJavaScript(`
@@ -1892,8 +1934,93 @@ ipcMain.handle('cutting-download', async (_event, input) => {
 function knownDownload(file) {
   if (typeof file !== 'string' || !path.isAbsolute(file)) return null;
   const resolved = path.resolve(file);
-  if (!/\.(mp3|ogg|wav|flac|m4a|aac)$/i.test(resolved)) return null;
+  if (!/\.(mp3|ogg|wav|flac|m4a|aac|aiff?|zip)$/i.test(resolved)) return null;
   return fs.existsSync(resolved) ? resolved : null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Creator services (Epidemic Sound, Artlist): their official web apps
+ * run embedded like every other service. Files the user downloads there
+ * with the official download buttons (their subscription licence) are
+ * saved into the cutting folder instead of asking where to put them.
+ * Nothing is fetched past the web app; other services are unchanged.
+ * ------------------------------------------------------------------ */
+
+const CREATOR_SERVICES = {
+  epidemic: { label: 'Epidemic Sound', site: 'https://www.epidemicsound.com' },
+  artlist: { label: 'Artlist', site: 'https://artlist.io' },
+};
+const CREATOR_FILES = /\.(mp3|wav|aiff?|flac|m4a|aac|ogg|zip)$/i;
+let creatorDownloadFolder = '';
+
+ipcMain.handle('creator-downloads-config', (_event, config) => {
+  creatorDownloadFolder = config && typeof config.folder === 'string' ? config.folder : '';
+  return { folder: downloadBase(creatorDownloadFolder) };
+});
+
+function creatorLicenseNote(service, file) {
+  return [
+    `Datei: ${path.basename(file)}`,
+    `Quelle: ${service.label} (${service.site})`,
+    `Heruntergeladen mit CleanMusic über dein ${service.label}-Konto am ${new Date().toLocaleDateString('de-DE')}.`,
+    '',
+    `Lizenz: Die Nutzung ist über dein ${service.label}-Abo lizenziert – es gelten dessen Nutzungsbedingungen.`,
+    'Wichtig: Kanäle (YouTube, Twitch, …) ggf. im Konto des Dienstes verknüpfen bzw. freischalten,',
+    'damit es keine Copyright-Meldungen gibt. Ohne aktives Abo endet die Lizenz für neue Projekte.',
+  ].join('\r\n');
+}
+
+function wireCreatorDownloads() {
+  Object.entries(CREATOR_SERVICES).forEach(([id, service]) => {
+    const partition = session.fromPartition(`persist:cm-${id}`);
+    partition.on('will-download', (event, item) => {
+      const original = item.getFilename() || 'download';
+      if (!CREATOR_FILES.test(original)) {
+        event.preventDefault();
+        sendToRenderer('creator-download', {
+          service: service.label,
+          state: 'blocked',
+          name: cleanText(original, 120),
+          error: 'Nur Audio-Dateien (und ZIP mit Stems) werden gespeichert.',
+        });
+        return;
+      }
+
+      const extension = path.extname(original).toLowerCase();
+      const stem = safeName(path.basename(original, path.extname(original)), 'Download');
+      const folder = path.join(downloadBase(creatorDownloadFolder), service.label);
+      try {
+        fs.mkdirSync(folder, { recursive: true });
+      } catch {
+        event.preventDefault();
+        sendToRenderer('creator-download', { service: service.label, state: 'failed', name: original, error: 'Ordner nicht beschreibbar.' });
+        return;
+      }
+      let file = path.join(folder, stem + extension);
+      for (let n = 2; fs.existsSync(file); n += 1) file = path.join(folder, `${stem} (${n})${extension}`);
+      item.setSavePath(file);
+      sendToRenderer('creator-download', { service: service.label, state: 'started', name: path.basename(file) });
+
+      item.once('done', (_event, state) => {
+        if (state !== 'completed') {
+          sendToRenderer('creator-download', { service: service.label, state: 'failed', name: path.basename(file), error: state });
+          return;
+        }
+        try {
+          fs.writeFileSync(file.replace(/\.[^.]+$/, '') + ' – Lizenz.txt', creatorLicenseNote(service, file) + '\r\n', 'utf8');
+        } catch {
+          /* the file itself is what matters */
+        }
+        downloadedFiles.add(file);
+        sendToRenderer('creator-download', {
+          service: service.label,
+          state: 'completed',
+          name: path.basename(file),
+          path: file,
+        });
+      });
+    });
+  });
 }
 
 // Drag a downloaded file straight into a video editor.
@@ -3351,6 +3478,7 @@ app.whenReady().then(() => {
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
   createMainWindow();
   createTray();
+  wireCreatorDownloads();
   // Update check on every start (setting "Beim Start nach Updates suchen").
   if (!isSmoke && updateConfig().auto) {
     setTimeout(() => checkForUpdates().catch(() => {}), 4000);

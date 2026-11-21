@@ -100,6 +100,7 @@
     credits: 'cleanmusic.credits.v1',
     openverseCache: 'cleanmusic.ovcache.v1',
     downloads: 'cleanmusic.downloads.v1', // entry id → { path, at }
+    creatorDownloads: 'cleanmusic.creatordl.v1', // [{ path, name, service, at }]
     history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
   };
 
@@ -1047,7 +1048,7 @@
     const menu = $('#service-menu');
     menu.innerHTML = `
       <div class="service-menu-label">${esc(entry.title)}${entry.artist ? ` · ${esc(entry.artist)}` : ''}</div>
-      ${SERVICES.map(
+      ${SERVICES.filter((service) => !service.creator).map(
         (service) => `
           <button class="service-menu-item" data-menu-service="${service.id}">
             <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
@@ -1116,7 +1117,14 @@
    * ---------------------------------------------------------------- */
 
   function buildSidebar() {
-    $('#service-nav').innerHTML = SERVICES.map(
+    const serviceButton = (service) => `
+        <button class="nav-item service-item" data-service="${service.id}">
+          <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
+          <span class="svc-name">${esc(service.name)}</span>
+        </button>`;
+    const creatorNav = $('#creator-nav');
+    if (creatorNav) creatorNav.innerHTML = SERVICES.filter((service) => service.creator).map(serviceButton).join('');
+    $('#service-nav').innerHTML = SERVICES.filter((service) => !service.creator).map(
       (service) => `
         <button class="nav-item service-item" data-service="${service.id}">
           <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
@@ -1334,7 +1342,7 @@
   }
 
   function buildHome() {
-    const cards = SERVICES.map(
+    const cards = SERVICES.filter((service) => !service.creator).map(
       (service) => `
         <article class="service-card" style="--svc:${service.color}">
           <div class="service-card-top">
@@ -2272,7 +2280,7 @@
     const fullPlugin = matchPlugin();
     const finder = searchPlugin();
 
-    const targets = SERVICES.map(
+    const targets = SERVICES.filter((service) => !service.creator).map(
       (service) => `
         <button class="search-target" data-search-service="${service.id}" style="--svc:${service.color}">
           <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
@@ -2588,7 +2596,7 @@
     }
 
     const isNew = !state.views.has(service.id);
-    const searchUrl = options.query ? service.search(options.query) : null;
+    const searchUrl = options.query && typeof service.search === 'function' ? service.search(options.query) : null;
     const view = ensureServiceView(service, searchUrl || undefined);
 
     // A freshly attached webview must get its URL through `src`; loadURL()
@@ -3971,6 +3979,108 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Creator services (Epidemic Sound, Artlist) – downloads made in their
+   * official web apps land in the cutting folder and are listed here.
+   * ---------------------------------------------------------------- */
+
+  const creatorDownloads = (readJSON(STORAGE.creatorDownloads, []) || []).filter(
+    (item) => item && typeof item.path === 'string'
+  );
+
+  function creatorServices() {
+    return SERVICES.filter((service) => service.creator);
+  }
+
+  function syncCreatorDownloadFolder() {
+    if (bridge.creatorDownloadsConfig) {
+      bridge.creatorDownloadsConfig({ folder: state.settings.downloadDir || '' }).catch(() => {});
+    }
+  }
+
+  function onCreatorDownload(info) {
+    if (!info) return;
+    if (info.state === 'started') {
+      toast(`${info.service}: „${info.name}“ wird gespeichert …`);
+      return;
+    }
+    if (info.state === 'completed' && info.path) {
+      creatorDownloads.unshift({ path: info.path, name: info.name, service: info.service, at: Date.now() });
+      creatorDownloads.splice(30);
+      writeJSON(STORAGE.creatorDownloads, creatorDownloads);
+      toast(`${info.service}: „${info.name}“ gespeichert – im Cutter-Modus zum Schnittprogramm ziehen`);
+      renderCredits();
+      return;
+    }
+    toast(`${info.service}: ${info.error || 'Download fehlgeschlagen'}`);
+  }
+
+  async function checkCreatorDownloads() {
+    if (!creatorDownloads.length || !bridge.cuttingExists) return;
+    try {
+      const exists = await bridge.cuttingExists(creatorDownloads.map((item) => item.path));
+      let changed = false;
+      for (let i = creatorDownloads.length - 1; i >= 0; i -= 1) {
+        if (!exists[i]) {
+          creatorDownloads.splice(i, 1);
+          changed = true;
+        }
+      }
+      if (changed) {
+        writeJSON(STORAGE.creatorDownloads, creatorDownloads);
+        renderCredits();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function creatorDownloadsHtml() {
+    const services = creatorServices();
+    if (!services.length) return '';
+    const list = creatorDownloads.slice(0, 12);
+    return `
+      <div class="abo-downloads">
+        <div class="credits-head">
+          <h3>Abo-Downloads</h3>
+          <span class="credits-count">${creatorDownloads.length}</span>
+        </div>
+        <p class="muted small">
+          Was du in ${services.map((service) => esc(service.name)).join(' oder ')} mit deinem Abo herunterlädst,
+          landet im Cutting-Ordner – mit einer Lizenz-Notiz daneben.
+        </p>
+        <div class="row abo-open">
+          ${services
+            .map(
+              (service) =>
+                `<button class="btn ghost small" data-creator-service="${esc(service.id)}">
+                  <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>${esc(service.name)}
+                </button>`
+            )
+            .join('')}
+        </div>
+        ${
+          list.length
+            ? `<ul class="abo-list">
+                ${list
+                  .map(
+                    (item) => `
+                      <li>
+                        <button class="icon-btn dl-btn done" data-dl-file="${esc(item.path)}" data-abo-reveal="${esc(item.path)}" draggable="true"
+                          title="Ins Schnittprogramm ziehen – Klick zeigt die Datei">${ICONS.file}</button>
+                        <div>
+                          <strong title="${esc(item.name)}">${esc(item.name)}</strong>
+                          <span>${esc(item.service)}</span>
+                        </div>
+                      </li>`
+                  )
+                  .join('')}
+              </ul>`
+            : '<p class="credits-empty">Noch keine Abo-Downloads.</p>'
+        }
+      </div>`;
+  }
+
+  /* ---------------------------------------------------------------- *
    * Downloads ("Nur Cutting")
    *
    * Only freely licensed files from the cutter mode (CC0, CC BY, Public
@@ -4093,7 +4203,8 @@
         <p>
           CleanMusic lädt ausschließlich frei lizenzierte Dateien aus dem Cutter-Modus herunter
           (CC0, CC BY, Public Domain) – jeweils mit einer Credit-Datei daneben. Streams,
-          Vorschauen und Plugin-Titel lassen sich nicht herunterladen.
+          Vorschauen und Plugin-Titel lassen sich nicht herunterladen. Was du in Epidemic Sound oder
+          Artlist mit deinem Abo herunterlädst, landet ebenfalls in diesem Ordner.
         </p>
         <div class="row dl-modes">
           <button class="radio-tag ${mode === 'off' ? 'active' : ''}" data-dl-mode="off">Aus</button>
@@ -4307,7 +4418,13 @@
           </div>
         </div>
 
-        <div class="creator-tabs">${tabs}</div>
+        <div class="creator-tabs">${tabs}${creatorServices()
+          .map(
+            (service) => `<button class="creator-tab creator-service" data-creator-service="${esc(service.id)}" title="${esc(service.name)} öffnen (dein Abo)">
+                <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span><span>${esc(service.name)}</span>
+              </button>`
+          )
+          .join('')}</div>
 
         <div class="creator-grid">
           <div class="creator-main">
@@ -4504,7 +4621,8 @@
               <button class="btn ghost small" data-creator-action="clear-credits">Leeren</button>
             </div>`
           : '<p class="credits-empty">Noch leer.</p>'
-      }`;
+      }
+      ${creatorDownloadsHtml()}`;
   }
 
   /* ---------------------------------------------------------------- *
@@ -4977,7 +5095,41 @@
    * ---------------------------------------------------------------- */
 
   let updateInfo = null;
-  let updateDismissed = null; // version the user clicked "Später" for
+  let updateDismissed = null; // version the user snoozed
+  let updateSnoozeTimer = null;
+  let chimedFor = null; // version the chime already played for (this showing)
+  const UPDATE_SNOOZE = 2 * 60 * 60 * 1000;
+
+  // Short, quiet two-tone chime – synthesized, no audio file. Silent when
+  // CleanMusic is muted; follows the volume a little.
+  function playUpdateChime() {
+    if (vol.muted) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const now = ctx.currentTime + 0.02;
+      const peak = 0.05 + 0.08 * Math.min(1, Math.max(0.3, volumeLevel()));
+      [
+        [784, 0],
+        [1175, 0.13],
+      ].forEach(([freq, at]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, now + at);
+        gain.gain.exponentialRampToValueAtTime(peak, now + at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.7);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + at);
+        osc.stop(now + at + 0.75);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 1500);
+    } catch {
+      /* no audio device – the card is enough */
+    }
+  }
 
   function formatSize(bytes) {
     const mb = (Number(bytes) || 0) / (1024 * 1024);
@@ -5002,24 +5154,27 @@
         (info.status === 'error' && info.asset));
     card.hidden = !show;
     if (!show) return;
+    if (info.status === 'available' && chimedFor !== info.latest) {
+      chimedFor = info.latest;
+      playUpdateChime();
+    }
 
     let body = '';
     if (info.status === 'available') {
       body = `
         <div class="update-text">
-          <strong>CleanMusic ${esc(info.latest)} ist da</strong>
+          <strong>CleanMusic ${esc(info.latest)} ist da – möchtest du updaten?</strong>
           <small>Du hast ${esc(info.current)}.${
             info.installable && info.asset ? ` Download ${esc(formatSize(info.asset.size))}, danach Neustart.` : ''
-          }</small>
+          }${info.notes ? ' <button class="link-btn" data-update="notes">Was ist neu?</button>' : ''}</small>
         </div>
         <div class="update-actions">
           ${
             info.installable && info.asset
-              ? '<button class="btn primary small" data-update="download">Aktualisieren</button>'
-              : '<button class="btn primary small" data-update="open">Zur Download-Seite</button>'
+              ? '<button class="btn primary small" data-update="download">Updaten</button>'
+              : '<button class="btn primary small" data-update="open">Updaten (Download-Seite)</button>'
           }
-          ${info.notes ? '<button class="btn ghost small" data-update="notes">Was ist neu?</button>' : ''}
-          <button class="btn ghost small" data-update="later">Später</button>
+          <button class="btn ghost small" data-update="later">Erinnere mich später noch einmal</button>
         </div>`;
     } else if (info.status === 'downloading') {
       const pct = Math.round((info.progress || 0) * 100);
@@ -5128,10 +5283,21 @@
         if (ok) onUpdateAction(updateInfo.installable && updateInfo.asset ? 'download' : 'open');
         return;
       }
-      case 'later':
-        updateDismissed = updateInfo ? updateInfo.latest : null;
+      case 'later': {
+        const version = updateInfo ? updateInfo.latest : null;
+        updateDismissed = version;
         $('#update-card').hidden = true;
+        // Ask again later in this session – and on every start anyway.
+        clearTimeout(updateSnoozeTimer);
+        updateSnoozeTimer = setTimeout(() => {
+          if (updateDismissed !== version) return;
+          updateDismissed = null;
+          chimedFor = null;
+          renderUpdateCard();
+        }, UPDATE_SNOOZE);
+        if (updateInfo && updateInfo.status === 'available') toast('Okay – ich erinnere dich in 2 Stunden und beim nächsten Start.');
         return;
+      }
       default:
     }
   }
@@ -6658,6 +6824,7 @@ ${updatePanel()}
           if (picked) {
             state.settings.downloadDir = picked;
             saveSettings();
+            syncCreatorDownloadFolder();
             renderSettings();
           }
         } else if (action === 'open' && bridge.cuttingOpenFolder) {
@@ -6666,6 +6833,7 @@ ${updatePanel()}
         } else if (action === 'reset') {
           state.settings.downloadDir = '';
           saveSettings();
+          syncCreatorDownloadFolder();
           renderSettings();
         }
         return;
@@ -6862,6 +7030,23 @@ ${updatePanel()}
 
     // Cutter mode
     $('#view-creator').addEventListener('click', (event) => {
+      const creatorService = event.target.closest('[data-creator-service]');
+      if (creatorService) {
+        openService(creatorService.dataset.creatorService);
+        return;
+      }
+
+      const aboReveal = event.target.closest('[data-abo-reveal]');
+      if (aboReveal && bridge.cuttingReveal) {
+        bridge.cuttingReveal(aboReveal.dataset.aboReveal).then((ok) => {
+          if (!ok) {
+            toast('Datei nicht mehr da.');
+            checkCreatorDownloads();
+          }
+        });
+        return;
+      }
+
       const tab = event.target.closest('[data-creator-tab]');
       if (tab) {
         state.creator.tab = tab.dataset.creatorTab;
@@ -7148,6 +7333,9 @@ ${updatePanel()}
         .catch(() => {});
     }
     checkDownloads();
+    syncCreatorDownloadFolder();
+    checkCreatorDownloads();
+    if (bridge.onCreatorDownload) bridge.onCreatorDownload(onCreatorDownload);
 
     bridge.onDiscordStatus((status) => {
       state.discord.status = status || {};
@@ -7216,6 +7404,8 @@ ${updatePanel()}
     },
     collectCreditAt: (key, index) => collectCredit(entryAt(key, index)),
     downloadAt: (key, index) => downloadEntry(entryAt(key, index)),
+    creatorServices: { services: () => creatorServices().map((service) => service.id), downloads: () => creatorDownloads.slice() },
+    simulateCreatorDownload: (info) => onCreatorDownload(info),
     mediaSession: () =>
       'mediaSession' in navigator && navigator.mediaSession.metadata
         ? {
@@ -7245,6 +7435,7 @@ ${updatePanel()}
       status: ($('#update-status') || {}).textContent || '',
     }),
     showUpdate: (info) => onUpdateState(info),
+    updateChimed: () => chimedFor,
     sleep: (value) => {
       if (value !== undefined) setSleepTimer(value);
       return { label: sleepLabel(), active: $('#btn-sleep').classList.contains('active') };
