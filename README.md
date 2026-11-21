@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.5.0**
+**Version 1.6.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -105,6 +105,22 @@ Suche erscheinen zusätzlich die aktuellen Deezer-Charts.
 - Der **Globus-Button** pro Titel öffnet ein Menü: „In Spotify / YouTube Music /
   Amazon Music … suchen". So springst du mit einem Klick vom 30-s-Treffer in
   den vollen Song im Dienst.
+
+### Künstlerseiten
+
+Klick auf einen Künstlernamen (in Listen, in der Player-Leiste oder im Vollbild-Player):
+Top-Titel, Alben & Singles (Klick zeigt die Titel) und ähnliche Künstler – Daten aus der
+offenen Deezer-Schnittstelle.
+
+### Songs teilen
+
+Im **+**-Menü eines Titels: **Link zum Teilen kopieren**. Der Link
+(`https://bellocccyt.github.io/cleanmusic/s/?…`) ist in Discord, WhatsApp & Co. anklickbar
+und öffnet den Song direkt in CleanMusic (`cleanmusic://` – der Installer registriert das,
+die portable EXE beim Start). Ohne CleanMusic zeigt die Seite den Song bei Deezer, Apple
+Music bzw. YouTube Music, eine Spotify-Suche und den Download. Die Seite liegt in `site/`
+und wird per GitHub Pages veröffentlicht (`.github/workflows/pages.yml`); sie speichert
+nichts und hat keine Statistik.
 
 ### Lokale Musik nach Ordner und Stimmung
 

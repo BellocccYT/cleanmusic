@@ -189,6 +189,12 @@ CleanMusic zeigt Songtexte aus der freien Datenbank LRCLIB an, nur zur Anzeige b
 Hören. Songtexte sind meist urheberrechtlich geschützt – sie im Stream (OBS-Stil
 „Songtext“) öffentlich zu zeigen, liegt in deiner Verantwortung.
 
+## Teilen-Seite (GitHub Pages)
+
+`bellocccyt.github.io/cleanmusic/s/` ist eine statische Seite ohne Cookies, Tracking oder
+Speicherung. Titel und Artist stehen nur im Link selbst; die Seite verweist auf die
+offiziellen Seiten von Deezer, Apple Music, YouTube Music und Spotify.
+
 ## OBS-Overlay-Plugin
 
 - Liegt nur als **optionales Plugin** im Ordner `extras/plugins/` und ist nicht

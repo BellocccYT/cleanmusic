@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CleanMusic</title>
+<meta name="description" content="CleanMusic – The Music Launcher: alle Streaming-Dienste an einem Ort." />
+<link rel="icon" href="icon.png" />
+<style>
+  :root { --bg: #080a0e; --panel: #11161f; --border: #232c3a; --text: #e8ecf3; --muted: #8d99ac; --accent: #5b8cff; --accent2: #35e0c0; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) { --bg: #f4f6fb; --panel: #ffffff; --border: #dfe4ee; --text: #182030; --muted: #5d6a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); color: var(--text); font: 15px/1.5 'Segoe UI', system-ui, -apple-system, sans-serif; }
+  main { max-width: 460px; text-align: center; padding: 28px 24px; border-radius: 22px; background: var(--panel); border: 1px solid var(--border); }
+  img { width: 72px; height: 72px; border-radius: 18px; }
+  h1 { margin: 12px 0 4px; }
+  p { color: var(--muted); }
+  a.button { display: inline-block; margin-top: 14px; padding: 12px 20px; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #06121a; font-weight: 800; text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+  <img src="icon.png" alt="" />
+  <h1>CleanMusic</h1>
+  <p>The Music Launcher – alle Streaming-Dienste an einem Ort, eigene Wiedergabe, Cutter-Modus für Videos und Tools für Streamer.</p>
+  <a class="button" href="https://github.com/BellocccYT/cleanmusic/releases/latest">Herunterladen</a>
+</main>
+</body>
+</html>

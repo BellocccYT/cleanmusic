@@ -5021,3 +5021,134 @@ html.bg-still #app-bg::after {
   padding: 2px 6px;
   font-size: 12px;
 }
+
+/* ------------------------------------------------------------------ *
+ * 1.6: artist pages, artist links
+ * ------------------------------------------------------------------ */
+.artist-link {
+  cursor: pointer;
+}
+.artist-link:hover,
+#np-artist:hover,
+#fs-artist:hover {
+  text-decoration: underline;
+  color: var(--text);
+}
+#np-artist,
+#fs-artist {
+  cursor: pointer;
+}
+.artist-hero {
+  display: flex;
+  gap: 24px;
+  align-items: flex-end;
+  margin-bottom: 22px;
+}
+.artist-photo {
+  width: 168px;
+  height: 168px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: var(--shadow);
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+  font-size: 48px;
+}
+.artist-head h2 {
+  margin: 2px 0 4px;
+  font-size: 34px;
+  line-height: 1.1;
+}
+.artist-head p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+.artist-back {
+  margin-bottom: 8px;
+}
+.artist-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 22px 0 10px;
+}
+.artist-section-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.artist-albums {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+.artist-album {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+}
+.artist-album:hover {
+  border-color: var(--border);
+  background: var(--panel-2);
+}
+.artist-album img,
+.artist-album-blank {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+}
+.artist-album strong {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artist-album small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.artist-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.artist-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px 5px 5px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+}
+.artist-chip:hover {
+  background: var(--panel-2);
+}
+.artist-chip img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.artist-note {
+  margin-top: 22px;
+}
+@media (max-width: 760px) {
+  .artist-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .artist-photo {
+    width: 120px;
+    height: 120px;
+  }
+}

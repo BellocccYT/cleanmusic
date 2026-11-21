@@ -61,7 +61,10 @@ const hasInstanceLock = isSmoke || app.requestSingleInstanceLock();
 if (!hasInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMainWindow());
+  app.on('second-instance', (_event, argv) => {
+    showMainWindow();
+    handleDeepLinkArgs(argv);
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -1616,6 +1619,30 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_V15:', JSON.stringify(v15));
+
+          // 1.6: artist page, share link, deep link (cleanmusic://).
+          const deepOk = parseDeepLink('cleanmusic://play?src=deezer&id=3135553&t=One%20More%20Time&a=Daft%20Punk');
+          const deepBad = [
+            'cleanmusic://play?src=file&id=1',
+            'cleanmusic://play?src=youtube&id=../../x',
+            'https://evil.example/?src=deezer&id=1',
+          ].map((link) => parseDeepLink(link));
+          const v16 = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const share = cm.shareUrl({ id: 'deezer:3135553', kind: 'preview', title: 'One More Time', artist: 'Daft Punk' });
+              await cm.openArtist({ name: 'Daft Punk' });
+              const artist = cm.artistPage();
+              cm.showView('home');
+              return { share, artist };
+            })()
+          `);
+          sendToRenderer('deep-link', deepOk);
+          await new Promise((resolve) => setTimeout(resolve, 6000));
+          v16.deepLink = await mainWindow.webContents.executeJavaScript('(window.CleanMusic.playerSnapshot().track || {}).title || ""');
+          v16.deepParsed = Boolean(deepOk && deepOk.src === 'deezer');
+          v16.deepRejected = deepBad.every((link) => link === null);
+          console.log('SMOKE_V16:', JSON.stringify(v16));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -4127,6 +4154,127 @@ ipcMain.handle('lyrics-get', async (_event, query) => {
   return out;
 });
 
+/* --- Artist pages (1.6): Deezer's public API ------------------------ */
+
+function deezerArtistCard(artist) {
+  if (!artist || !artist.id) return null;
+  return {
+    id: Number(artist.id),
+    name: cleanText(artist.name, 200),
+    picture: cleanUrl(artist.picture_xl || artist.picture_big || artist.picture_medium || '', /^https:\/\//i),
+    fans: Number(artist.nb_fan) || 0,
+  };
+}
+
+ipcMain.handle('artist-page', async (_event, input) => {
+  const query = input && typeof input === 'object' ? input : {};
+  try {
+    let id = Number(query.deezerId) || 0;
+    const name = cleanText(query.name, 120).trim();
+    if (!id) {
+      if (!name) return { error: 'Kein Künstler angegeben.' };
+      const found = await fetchJson(`https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=1`);
+      id = found && Array.isArray(found.data) && found.data[0] ? Number(found.data[0].id) : 0;
+      if (!id) return { error: `„${name}“ wurde bei Deezer nicht gefunden.` };
+    }
+    const [artist, top, albums, related] = await Promise.all([
+      fetchJson(`https://api.deezer.com/artist/${id}`),
+      fetchJson(`https://api.deezer.com/artist/${id}/top?limit=20`).catch(() => null),
+      fetchJson(`https://api.deezer.com/artist/${id}/albums?limit=40`).catch(() => null),
+      fetchJson(`https://api.deezer.com/artist/${id}/related?limit=12`).catch(() => null),
+    ]);
+    const card = deezerArtistCard(artist);
+    if (!card) return { error: 'Künstler nicht gefunden.' };
+    return {
+      artist: Object.assign(card, { albums: Number(artist.nb_album) || 0, link: cleanUrl(artist.link) }),
+      top: normalizeDeezer(top || {}),
+      albums: (albums && Array.isArray(albums.data) ? albums.data : [])
+        .map((album) => ({
+          id: Number(album.id) || 0,
+          title: cleanText(album.title, 200),
+          cover: cleanUrl(album.cover_medium || album.cover || '', /^https:\/\//i),
+          year: cleanText(album.release_date, 10).slice(0, 4),
+          type: cleanText(album.record_type, 20),
+        }))
+        .filter((album) => album.id),
+      related: (related && Array.isArray(related.data) ? related.data : []).map(deezerArtistCard).filter(Boolean),
+      error: null,
+    };
+  } catch (error) {
+    return { error: friendlyNetError(error).message || error.message };
+  }
+});
+
+ipcMain.handle('album-tracks', async (_event, albumId) => {
+  const id = Number(albumId) || 0;
+  if (!id) return { title: '', tracks: [], error: 'Kein Album.' };
+  try {
+    const album = await fetchJson(`https://api.deezer.com/album/${id}`);
+    const cover = {
+      id,
+      title: album && album.title,
+      cover: album && album.cover,
+      cover_small: album && album.cover_small,
+      cover_medium: album && album.cover_medium,
+      cover_big: album && album.cover_big,
+      cover_xl: album && album.cover_xl,
+      md5_image: album && album.md5_image,
+    };
+    const tracks = (album && album.tracks && Array.isArray(album.tracks.data) ? album.tracks.data : []).map((track) =>
+      Object.assign({}, track, { album: cover })
+    );
+    return { title: cleanText(album && album.title, 200), tracks: normalizeDeezer({ data: tracks }), error: null };
+  } catch (error) {
+    return { title: '', tracks: [], error: friendlyNetError(error).message || error.message };
+  }
+});
+
+/* --- Share links (1.6) ------------------------------------------------ *
+ * https://bellocccyt.github.io/cleanmusic/s/?src=…&id=…&t=…&a=… opens
+ * cleanmusic://play?… – CleanMusic is registered for that scheme (installer:
+ * electron-builder "protocols", portable: the outer EXE at runtime). A link
+ * only says which song to look up; it never opens files or other pages. */
+
+let pendingDeepLink = null;
+let rendererReady = false;
+
+function parseDeepLink(raw) {
+  try {
+    const url = new URL(String(raw || ''));
+    if (url.protocol !== 'cleanmusic:') return null;
+    const src = String(url.searchParams.get('src') || '');
+    if (!['deezer', 'apple', 'youtube', 'search'].includes(src)) return null;
+    const id = String(url.searchParams.get('id') || '');
+    if ((src === 'deezer' || src === 'apple') && !/^\d{1,20}$/.test(id)) return null;
+    if (src === 'youtube' && !/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
+    const title = cleanText(url.searchParams.get('t') || '', 200).replace(/[\u0000-\u001f]+/g, ' ');
+    const artist = cleanText(url.searchParams.get('a') || '', 200).replace(/[\u0000-\u001f]+/g, ' ');
+    if (src === 'search' && !title) return null;
+    return { src, id: src === 'search' ? '' : id, title, artist };
+  } catch {
+    return null;
+  }
+}
+
+function handleDeepLinkArgs(argv) {
+  const raw = (Array.isArray(argv) ? argv : []).find((arg) => /^cleanmusic:\/\//i.test(String(arg)));
+  const link = raw ? parseDeepLink(raw) : null;
+  if (!link) return false;
+  if (rendererReady && mainWindow && !mainWindow.isDestroyed()) sendToRenderer('deep-link', link);
+  else pendingDeepLink = link;
+  return true;
+}
+
+function registerProtocol() {
+  if (isSmoke || !app.isPackaged) return;
+  try {
+    if (process.env.PORTABLE_EXECUTABLE_FILE) app.setAsDefaultProtocolClient('cleanmusic', process.env.PORTABLE_EXECUTABLE_FILE, []);
+    else app.setAsDefaultProtocolClient('cleanmusic');
+  } catch (error) {
+    console.error('Protokoll cleanmusic:// nicht registriert:', error.message);
+  }
+}
+
 // Charts from a plugin (e.g. a top list of its source) for the home page.
 ipcMain.handle('plugin-charts', async (_event, id, limit) => {
   const plugin = readyPlugin(id, 'charts');
@@ -4599,6 +4747,17 @@ app.whenReady().then(() => {
   createMainWindow();
   createTray();
   wireCreatorDownloads();
+  // Shared links (cleanmusic://): handle one from the start command, register the scheme.
+  mainWindow.webContents.on('did-finish-load', () => {
+    rendererReady = true;
+    if (pendingDeepLink) {
+      const link = pendingDeepLink;
+      pendingDeepLink = null;
+      setTimeout(() => sendToRenderer('deep-link', link), 1500);
+    }
+  });
+  handleDeepLinkArgs(process.argv);
+  registerProtocol();
   // Update check on every start (setting "Beim Start nach Updates suchen").
   if (!isSmoke) cleanupSetupUpdate();
   if (!isSmoke && updateConfig().auto) {

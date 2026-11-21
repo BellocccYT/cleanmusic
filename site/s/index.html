@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Song in CleanMusic öffnen</title>
+<meta name="description" content="Jemand hat dir einen Song geschickt – öffne ihn in CleanMusic oder hör ihn beim Streamingdienst an." />
+<meta property="og:title" content="Song in CleanMusic anhören" />
+<meta property="og:description" content="Öffnet direkt in CleanMusic – oder bei Deezer, Spotify und YouTube Music." />
+<meta property="og:image" content="https://bellocccyt.github.io/cleanmusic/icon.png" />
+<meta name="robots" content="noindex" />
+<link rel="icon" href="../icon.png" />
+<style>
+  :root {
+    --bg: #080a0e;
+    --panel: #11161f;
+    --border: #232c3a;
+    --text: #e8ecf3;
+    --muted: #8d99ac;
+    --accent: #5b8cff;
+    --accent2: #35e0c0;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --border: #dfe4ee;
+      --text: #182030;
+      --muted: #5d6a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px 16px;
+    background: radial-gradient(120% 90% at 0% 0%, rgba(91, 140, 255, 0.18), transparent 60%),
+      radial-gradient(110% 90% at 100% 100%, rgba(53, 224, 192, 0.14), transparent 60%), var(--bg);
+    color: var(--text);
+    font: 15px/1.5 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  main {
+    width: 100%;
+    max-width: 440px;
+    padding: 28px 24px;
+    border-radius: 22px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+    text-align: center;
+  }
+  .logo { width: 56px; height: 56px; border-radius: 14px; }
+  .eyebrow { margin: 14px 0 2px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); }
+  h1 { margin: 0; font-size: 24px; line-height: 1.25; overflow-wrap: anywhere; }
+  .artist { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+  .open {
+    display: block;
+    margin: 22px 0 10px;
+    padding: 13px 16px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    color: #06121a;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .hint { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+  .links { display: grid; gap: 8px; }
+  .links a {
+    display: block;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .links a:hover, .open:hover { filter: brightness(1.08); }
+  .download { margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .download a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="../icon.png" alt="CleanMusic" />
+  <div class="eyebrow">Geteilter Song</div>
+  <h1 id="title">Song</h1>
+  <p class="artist" id="artist"></p>
+  <a class="open" id="open" href="#">In CleanMusic öffnen</a>
+  <p class="hint" id="hint">Öffnet sich gleich von selbst, wenn CleanMusic installiert ist.</p>
+  <div class="links" id="links"></div>
+  <p class="download">Noch kein CleanMusic? <a href="https://github.com/BellocccYT/cleanmusic/releases/latest">Kostenlos herunterladen</a></p>
+</main>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const src = params.get('src') || '';
+  const id = params.get('id') || '';
+  const title = (params.get('t') || '').slice(0, 200);
+  const artist = (params.get('a') || '').slice(0, 200);
+  const valid =
+    (src === 'deezer' && /^\d{1,20}$/.test(id)) ||
+    (src === 'apple' && /^\d{1,20}$/.test(id)) ||
+    (src === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(id)) ||
+    (src === 'search' && title);
+
+  document.getElementById('title').textContent = title || 'Song';
+  document.getElementById('artist').textContent = artist;
+  if (title) document.title = (artist ? artist + ' – ' : '') + title + ' · CleanMusic';
+
+  const open = document.getElementById('open');
+  const links = document.getElementById('links');
+  const add = (label, href) => {
+    const a = document.createElement('a');
+    a.href = href;
+    a.rel = 'noopener noreferrer';
+    a.textContent = label;
+    links.appendChild(a);
+  };
+
+  if (!valid) {
+    open.hidden = true;
+    document.getElementById('hint').textContent = 'Dieser Link ist unvollständig.';
+    return;
+  }
+
+  const deep = new URLSearchParams({ src, t: title });
+  if (src !== 'search') deep.set('id', id);
+  if (artist) deep.set('a', artist);
+  const deepUrl = 'cleanmusic://play?' + deep.toString();
+  open.href = deepUrl;
+
+  const query = encodeURIComponent((artist + ' ' + title).trim());
+  if (src === 'deezer') add('Bei Deezer anhören', 'https://www.deezer.com/track/' + id);
+  if (src === 'apple') add('Bei Apple Music anhören', 'https://music.apple.com/song/' + id);
+  if (src === 'youtube') add('Bei YouTube Music anhören', 'https://music.youtube.com/watch?v=' + id);
+  add('Bei Spotify suchen', 'https://open.spotify.com/search/' + query);
+  if (src !== 'youtube') add('Bei YouTube Music suchen', 'https://music.youtube.com/search?q=' + query);
+
+  setTimeout(() => { location.href = deepUrl; }, 400);
+})();
+</script>
+</body>
+</html>

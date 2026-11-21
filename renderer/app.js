@@ -796,6 +796,9 @@
       case 'recs': return visibleRecs();
       case 'favorites': return filteredFavorites();
       case 'local': return visibleLocal();
+      case 'artist': return artistList('artist');
+      case 'album': return artistList('album');
+      case 'shared': return state.sharedList || [];
       case 'radio': return state.radio.entries;
       case 'releases': return state.releases.tracks;
       case 'pcharts': return state.pluginCharts.items;
@@ -930,7 +933,13 @@
         <div class="song-art">${songArt(entry)}</div>
         <div class="song-info">
           <div class="song-title">${esc(entry.title)}</div>
-          <div class="song-sub">${esc(sub)}</div>
+          <div class="song-sub">${
+            entry.artist && !['local', 'radio', 'stream'].includes(entry.kind)
+              ? `<span class="artist-link" data-artist="${esc(entry.artist)}"${
+                  entry.source === 'deezer' && entry.artistId ? ` data-artist-deezer="${esc(entry.artistId)}"` : ''
+                } title="Künstlerseite öffnen">${esc(entry.artist)}</span>${entry.album ? ` · ${esc(entry.album)}` : ''}`
+              : esc(sub)
+          }</div>
         </div>
         <span class="song-badges">
           <span class="song-source" data-source="${esc(entry.source || entry.kind)}">${esc(
@@ -1450,6 +1459,14 @@
     const current = currentItem();
     const queueable = !(entries.length === 1 && current && entries[0].id === current.id);
     menu.innerHTML = `
+      ${
+        entries.length === 1 && entries[0].title
+          ? `<button class="service-menu-item" data-ctx-share>
+              <span class="menu-ic">${ICONS.copy}</span>
+              <span class="menu-text">Link zum Teilen kopieren</span>
+            </button>`
+          : ''
+      }
       ${
         queueable
           ? `<button class="service-menu-item" data-ctx-queue="next">
@@ -3834,6 +3851,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.6.0': [
+      'Künstlerseiten: Klick auf einen Künstlernamen – Top-Titel, Alben & Singles und ähnliche Künstler.',
+      'Songs teilen: im +-Menü „Link zum Teilen kopieren“. Wer den Link öffnet, landet direkt in CleanMusic – oder bei Deezer, Spotify bzw. YouTube.',
+    ],
     '1.5.0': [
       'Hintergründe (Aurora, Verlauf, Farbwolken, Cover, Sternenhimmel) und sechs neue Themes – Einstellungen → Aussehen.',
       'Stream-sicher-Modus: zeigt, ob der Titel frei lizenziert ist; Songwünsche kommen dann nur aus freier Musik.',
@@ -4550,6 +4571,257 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * 1.6: artist pages, sharing, shared links
+   * ---------------------------------------------------------------- */
+
+  const SHARE_PAGE = 'https://bellocccyt.github.io/cleanmusic/s/';
+
+  function artistList(key) {
+    const page = state.artistPage;
+    if (!page || !page.data) return [];
+    if (key === 'album') return page.album ? page.album.tracks : [];
+    return page.data.top;
+  }
+
+  async function openArtist(query) {
+    const raw = String((query && query.name) || '').trim();
+    const name = primaryArtist(raw) || raw;
+    const deezerId = Number(query && query.deezerId) || 0;
+    if (!name && !deezerId) return;
+    const from = state.view === 'artist' ? (state.artistPage && state.artistPage.from) || 'home' : state.view;
+    state.artistPage = { name, deezerId, data: null, loading: true, error: null, album: null, from };
+    if (state.fullscreen) closeFullscreen();
+    showView('artist');
+    renderArtist();
+    let result;
+    try {
+      result = await bridge.artistPage({ name, deezerId });
+    } catch (error) {
+      result = { error: error.message };
+    }
+    if (!state.artistPage || state.artistPage.name !== name || state.artistPage.deezerId !== deezerId) return;
+    state.artistPage.loading = false;
+    state.artistPage.error = (result && result.error) || null;
+    state.artistPage.data =
+      result && !result.error
+        ? {
+            artist: result.artist,
+            top: (result.top || []).map(previewEntry),
+            albums: result.albums || [],
+            related: result.related || [],
+          }
+        : null;
+    renderArtist();
+  }
+
+  function renderArtist() {
+    const host = $('#view-artist');
+    if (!host) return;
+    const page = state.artistPage || {};
+    if (page.loading) {
+      host.innerHTML = `<div class="page"><div class="search-status"><span class="spinner small"></span><span>${esc(page.name || 'Künstler')} wird geladen …</span></div></div>`;
+      return;
+    }
+    if (page.error || !page.data) {
+      host.innerHTML = `
+        <div class="page">
+          <div class="panel empty-search">
+            <h3>${esc(page.name || 'Künstler')}</h3>
+            <p>${esc(page.error || 'Nichts gefunden.')}</p>
+            <div class="row"><button class="btn ghost small" data-artist-action="back">Zurück</button></div>
+          </div>
+        </div>`;
+      return;
+    }
+    const { artist, top, albums, related } = page.data;
+    const album = page.album;
+    const kind = (type) => (type === 'single' ? 'Single' : type === 'ep' ? 'EP' : type === 'compile' ? 'Compilation' : 'Album');
+    host.innerHTML = `
+      <div class="page artist-page">
+        <div class="artist-hero">
+          ${artist.picture ? `<img class="artist-photo" src="${esc(artist.picture)}" alt="" />` : '<div class="artist-photo">♪</div>'}
+          <div class="artist-head">
+            <button class="link-btn artist-back" data-artist-action="back">← Zurück</button>
+            <div class="eyebrow">Künstler</div>
+            <h2>${esc(artist.name)}</h2>
+            <p>${[artist.fans ? `${artist.fans.toLocaleString('de-DE')} Fans auf Deezer` : '', artist.albums ? `${artist.albums} Veröffentlichungen` : '']
+              .filter(Boolean)
+              .join(' · ')}</p>
+            <div class="row">
+              ${top.length ? `<button class="btn primary" data-artist-action="play">${ICONS.play} Top-Titel abspielen</button>` : ''}
+              ${top.length ? `<button class="btn ghost" data-artist-action="shuffle">${ICONS.shuffle} Shuffle</button>` : ''}
+            </div>
+          </div>
+        </div>
+        ${
+          album
+            ? `<div class="artist-section-head" id="artist-album"><h3>${esc(album.title)}</h3><button class="link-btn" data-artist-action="close-album">Schließen</button></div>
+               <div class="song-list">${album.tracks.map((entry, index) => songRow(entry, index, 'album')).join('') || '<p class="muted">Keine Vorschauen.</p>'}</div>`
+            : ''
+        }
+        <div class="artist-section-head"><h3>Beliebteste Titel</h3></div>
+        <div class="song-list">${top.map((entry, index) => songRow(entry, index, 'artist')).join('') || '<p class="muted">Keine Vorschauen gefunden.</p>'}</div>
+        ${
+          albums.length
+            ? `<div class="artist-section-head"><h3>Alben & Singles</h3></div>
+               <div class="artist-albums">${albums
+                 .map(
+                   (item) => `<button class="artist-album" data-album-id="${item.id}" title="${esc(item.title)}">
+                     ${item.cover ? `<img src="${esc(item.cover)}" alt="" loading="lazy" />` : '<span class="artist-album-blank">♪</span>'}
+                     <strong>${esc(item.title)}</strong>
+                     <small>${esc([item.year, kind(item.type)].filter(Boolean).join(' · '))}</small>
+                   </button>`
+                 )
+                 .join('')}</div>`
+            : ''
+        }
+        ${
+          related.length
+            ? `<div class="artist-section-head"><h3>Ähnliche Künstler</h3></div>
+               <div class="artist-related">${related
+                 .map(
+                   (item) => `<button class="artist-chip" data-artist-id="${item.id}" data-artist-name="${esc(item.name)}">
+                     ${item.picture ? `<img src="${esc(item.picture)}" alt="" loading="lazy" />` : ''}<span>${esc(item.name)}</span>
+                   </button>`
+                 )
+                 .join('')}</div>`
+            : ''
+        }
+        <p class="muted small artist-note">Daten: Deezer. Titel spielen als 30-Sekunden-Vorschau – mit Quellen-Plugin und „volle Titel“ in voller Länge.</p>
+      </div>`;
+  }
+
+  async function openArtistAlbum(id) {
+    const page = state.artistPage;
+    if (!page || !page.data || !bridge.albumTracks) return;
+    page.album = { id, title: 'Album wird geladen …', tracks: [] };
+    renderArtist();
+    let result;
+    try {
+      result = await bridge.albumTracks(id);
+    } catch (error) {
+      result = { tracks: [], error: error.message };
+    }
+    if (state.artistPage !== page || !page.album || page.album.id !== id) return;
+    page.album = { id, title: result.title || 'Album', tracks: (result.tracks || []).map(previewEntry) };
+    renderArtist();
+    const head = $('#artist-album');
+    if (head) head.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  function wireArtistPage() {
+    const view = $('#view-artist');
+    if (view) {
+      view.addEventListener('click', (event) => {
+        const action = event.target.closest('[data-artist-action]');
+        const page = state.artistPage;
+        if (action) {
+          switch (action.dataset.artistAction) {
+            case 'back':
+              showView(page && page.from && page.from !== 'artist' ? page.from : 'home');
+              return;
+            case 'play':
+              playList('artist', 0);
+              return;
+            case 'shuffle':
+              playListShuffled('artist');
+              return;
+            case 'close-album':
+              if (page) page.album = null;
+              renderArtist();
+              return;
+            default:
+              return;
+          }
+        }
+        const albumButton = event.target.closest('[data-album-id]');
+        if (albumButton) {
+          openArtistAlbum(Number(albumButton.dataset.albumId));
+          return;
+        }
+        const chip = event.target.closest('[data-artist-id]');
+        if (chip) openArtist({ name: chip.dataset.artistName, deezerId: Number(chip.dataset.artistId) });
+      });
+    }
+    // Artist name in the player bar and the fullscreen player.
+    ['#np-artist', '#fs-artist'].forEach((selector) => {
+      const el = $(selector);
+      if (!el) return;
+      el.addEventListener('click', () => {
+        const item = currentItem();
+        if (!item || !item.artist || item.kind === 'radio' || item.kind === 'stream') return;
+        openArtist({ name: item.artist, deezerId: item.source === 'deezer' && item.artistId ? Number(item.artistId) : 0 });
+      });
+    });
+    if (bridge.onDeepLink) bridge.onDeepLink((link) => openDeepLink(link));
+  }
+
+  /* --- Sharing ---------------------------------------------------------- */
+
+  function shareParams(entry) {
+    const params = new URLSearchParams();
+    const id = String(entry.id || '');
+    if (/^deezer:\d+$/.test(id)) {
+      params.set('src', 'deezer');
+      params.set('id', id.slice(7));
+    } else if (/^apple:\d+$/.test(id)) {
+      params.set('src', 'apple');
+      params.set('id', id.slice(6));
+    } else if (entry.kind === 'plugin' && /^[A-Za-z0-9_-]{11}$/.test(String(entry.refId || ''))) {
+      params.set('src', 'youtube');
+      params.set('id', entry.refId);
+    } else {
+      params.set('src', 'search');
+    }
+    params.set('t', String(entry.title || '').slice(0, 120));
+    if (entry.artist) params.set('a', String(entry.artist).slice(0, 120));
+    return params;
+  }
+
+  function shareUrl(entry) {
+    return `${SHARE_PAGE}?${shareParams(entry)}`;
+  }
+
+  async function shareEntry(entry) {
+    if (!entry || !entry.title) return;
+    const text = `„${entry.title}“${entry.artist ? ` von ${entry.artist}` : ''} – in CleanMusic anhören: ${shareUrl(entry)}`;
+    const ok = await bridge.copyText(text);
+    toast(ok ? 'Link kopiert – in Discord, WhatsApp & Co. einfügen' : 'Kopieren nicht möglich');
+  }
+
+  // A shared link was opened (cleanmusic://play?…): find the song and play it.
+  async function openDeepLink(link) {
+    if (!link || !link.src) return;
+    toast(`Geteilter Song „${link.title || 'Titel'}“ wird geladen …`);
+    let entry = null;
+    try {
+      if ((link.src === 'deezer' || link.src === 'apple') && bridge.requestLink) {
+        const url = link.src === 'deezer' ? `https://www.deezer.com/track/${link.id}` : `https://music.apple.com/song/${link.id}`;
+        const result = await bridge.requestLink(url);
+        if (result && result.track) entry = previewEntry(result.track);
+      } else if (link.src === 'youtube') {
+        const plugin = readyPlugins('lookup')[0];
+        if (plugin && bridge.pluginLookup) {
+          const result = await bridge.pluginLookup(plugin.id, `https://www.youtube.com/watch?v=${link.id}`);
+          if (result && result.item) entry = pluginEntry(plugin, result.item);
+        }
+      }
+      if (!entry && link.title) {
+        const found = await findRequestTrack(`${link.artist || ''} ${link.title}`.trim(), 'auto', 0);
+        if (found && !found.tooLong) entry = found;
+      }
+    } catch {
+      entry = null;
+    }
+    if (!entry) {
+      toast('Der geteilte Song wurde nicht gefunden.');
+      return;
+    }
+    state.sharedList = [entry];
+    playList('shared', 0);
+  }
+
+  /* ---------------------------------------------------------------- *
    * Queue + autoplay
    *
    * The queue is state.queue.items with the playing title at .index.
@@ -4560,7 +4832,7 @@
    *   out, autoplay appends suggestions for it (flag `autoplay`).
    * ---------------------------------------------------------------- */
 
-  const SINGLE_CONTEXTS = ['search', 'ext'];
+  const SINGLE_CONTEXTS = ['search', 'ext', 'shared'];
   const AUTOPLAY_KINDS = ['preview', 'plugin'];
   let autoplayTask = null;
   let queuePanelOpen = false;
@@ -7899,6 +8171,13 @@ ${updatePanel()}
    * ---------------------------------------------------------------- */
 
   function onRowClick(event) {
+    const artistLink = event.target.closest('[data-artist]');
+    if (artistLink) {
+      event.preventDefault();
+      event.stopPropagation();
+      openArtist({ name: artistLink.dataset.artist, deezerId: Number(artistLink.dataset.artistDeezer) || 0 });
+      return;
+    }
     const row = event.target.closest('[data-list][data-index]');
     if (!row) return;
 
@@ -8040,6 +8319,13 @@ ${updatePanel()}
       if (sleepItem) {
         hideMenus();
         setSleepTimer(sleepItem.dataset.sleep);
+        return;
+      }
+
+      if (event.target.closest('[data-ctx-share]')) {
+        const entry = ctxEntries[0];
+        hideMenus();
+        shareEntry(entry);
         return;
       }
 
@@ -8810,6 +9096,7 @@ ${updatePanel()}
     wireQueuePanel();
     wireOnboarding();
     wireLocalExtras();
+    wireArtistPage();
     wireGlobal();
 
     // Visualizer: analyses the <audio> element, draws in the player bar
@@ -9102,6 +9389,19 @@ ${updatePanel()}
       refreshDownloadButtons();
     },
     playerSnapshot: () => playerSnapshot(),
+    shareUrl: (entry) => shareUrl(entry || {}),
+    openArtist: (query) => openArtist(query || {}),
+    artistPage: () => {
+      const page = state.artistPage || {};
+      return {
+        name: page.name || '',
+        error: page.error || null,
+        top: page.data ? page.data.top.length : 0,
+        albums: page.data ? page.data.albums.length : 0,
+        related: page.data ? page.data.related.length : 0,
+        view: state.view,
+      };
+    },
     setBackground: (id) => setBackground(id),
     setStreamSafe: (on) => setStreamSafe(on),
     creatorForYou: (filter) => creatorForYou(filter || 'mix'),

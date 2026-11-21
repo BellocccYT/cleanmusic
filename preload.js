@@ -89,6 +89,11 @@ contextBridge.exposeInMainWorld('cm', {
   pluginLookup: (id, url) => ipcRenderer.invoke('plugin-lookup', id, url),
   requestLink: (url) => ipcRenderer.invoke('request-link', url),
   lyricsGet: (query) => ipcRenderer.invoke('lyrics-get', query),
+  artistPage: (query) => ipcRenderer.invoke('artist-page', query),
+  albumTracks: (id) => ipcRenderer.invoke('album-tracks', id),
+  onDeepLink: (listener) => {
+    ipcRenderer.on('deep-link', (_event, link) => listener(link));
+  },
   pluginDownload: (id, item) => ipcRenderer.invoke('plugin-download', id, item),
   pluginResolve: (id, refId, force) => ipcRenderer.invoke('plugin-resolve', id, refId, Boolean(force)),
   pluginMatch: (id, track) => ipcRenderer.invoke('plugin-match', id, track),
