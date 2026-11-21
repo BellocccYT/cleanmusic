@@ -509,7 +509,7 @@ THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 ## Nächste sinnvolle Schritte
 
 0. **Streamer.bot-Plugin** (für 1.0 geplant): Befehle wie !song / !skip und
-   Titelwechsel als Ereignisse – als eigenes, optionales Plugin über die Plugin-API v2.
+   Titelwechsel als Ereignisse – als eigenes, optionales Plugin über die Plugin-API v2. Plan: [docs/PLAN-STREAMERBOT.md](docs/PLAN-STREAMERBOT.md).
 
 1. **Cloud-freier Sync** zwischen PCs über einen selbst gewählten Ordner.
 3. **Cutter-Extras:** BPM-Filter, Wellenform mit Schnittmarken, Sounds per Drag & Drop in den Editor.
