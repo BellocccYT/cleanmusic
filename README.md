@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 0.9.0**
+**Version 0.10.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -201,6 +201,19 @@ Unter **Radio** findest du tausende öffentliche Sender über die
 - LIVE-Anzeige statt Fortschrittsbalken
 - läuft im selben Player wie lokale Titel und Vorschauen
 
+### Warteschlange & Autoplay
+
+- **„Als Nächstes abspielen“** und **„Zur Warteschlange hinzufügen“** über das
+  +-Menü oder per **Rechtsklick** auf jeden Titel. Eingereihte Titel kommen immer
+  zuerst – auch bei Zufallswiedergabe und wenn du eine andere Liste startest.
+- **Warteschlange** (Listen-Symbol in der Player-Leiste): läuft gerade, von dir
+  eingereiht, Rest der Liste, Autoplay. Ziehen zum Sortieren, ✕ zum Entfernen,
+  Klick zum Abspielen.
+- **Autoplay** (Standard an): Ein Titel aus der Suche spielt allein, danach laufen
+  passende Vorschläge weiter (Artist-Radio, bei Plugin-Titeln deren verwandte Titel).
+  Auch am Ende einer Liste geht es so weiter. Nicht bei Radio, lokalen Dateien
+  und Cutter-Sounds. Abschaltbar in der Warteschlange oder unter *Einstellungen → Wiedergabe*.
+
 ### Player
 
 - Shuffle und Repeat (aus / alle / Titel) mit gespeichertem Zustand
@@ -347,7 +360,7 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-0.9.0-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-0.10.0-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
@@ -369,7 +382,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-0.9.0.AppImage`.
+Ergebnis: `release/CleanMusic-0.10.0.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die

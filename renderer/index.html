@@ -114,6 +114,8 @@
 
       <div id="update-card" class="update-card" role="status" hidden></div>
 
+      <aside id="queue-panel" class="queue-panel" aria-label="Warteschlange" hidden></aside>
+
       <div id="loading" class="loading hidden">
         <div class="spinner"></div>
         <span id="loading-text">Lädt …</span>
@@ -174,6 +176,9 @@
 
       <div class="right-controls">
         <canvas id="mini-viz" class="mini-viz" aria-hidden="true"></canvas>
+        <button class="icon-btn" id="btn-queue" title="Warteschlange">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h12"></path><path d="M4 11h12"></path><path d="M4 16h7"></path><path d="M15 14.5v6l5-3z"></path></svg>
+        </button>
         <button class="icon-btn" id="btn-sleep" title="Schlaf-Timer">
           <svg class="ic" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"></path></svg>
         </button>

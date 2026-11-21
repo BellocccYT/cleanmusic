@@ -27,6 +27,8 @@
       '<svg class="ic" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.4-9.2-8.9C1.5 8.1 3.4 4.6 6.9 4.6c2.2 0 3.9 1.3 5.1 3 1.2-1.7 2.9-3 5.1-3 3.5 0 5.4 3.5 4.1 6.7-2 4.5-9.2 8.9-9.2 8.9Z"></path></svg>',
     plus:
       '<svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
+    queueNext:
+      '<svg class="ic" viewBox="0 0 24 24"><path d="M4 7h9"></path><path d="M4 12h9"></path><path d="M4 17h5"></path><path d="M15 9.5v9l6-4.5z"></path></svg>',
     list:
       '<svg class="ic" viewBox="0 0 24 24"><path d="M4 6h11"></path><path d="M4 11h11"></path><path d="M4 16h6"></path><path d="M18 18.5V8l3-1"></path><circle cx="16" cy="18.5" r="2"></circle></svg>',
     shuffle:
@@ -216,6 +218,7 @@
         treble: 0, // dB, −6 … +6
         theme: 'nacht',
         coverAccent: false,
+        autoplay: true, // suggestions after single titles (search)
         downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
         downloadDir: '',
       },
@@ -785,10 +788,19 @@
   }
 
   function playList(key, index) {
-    const items = listEntries(key).slice();
-    if (!items[index]) return;
-    state.queue = { items, index, kind: key, upcoming: -1 };
-    playFromQueue(index);
+    const list = listEntries(key);
+    const entry = list[index];
+    if (!entry) return;
+    // A search hit plays on its own – autoplay continues with suggestions
+    // instead of the other search results.
+    const single = autoplayOn() && SINGLE_CONTEXTS.includes(key);
+    const items = single ? [entry] : list.slice();
+    const start = single ? 0 : index;
+    // Titles the user queued stay queued when another list starts.
+    const pending = state.queue.items.length ? pendingQueued() : [];
+    items.splice(start + 1, 0, ...pending);
+    state.queue = { items, index: start, kind: key, upcoming: -1 };
+    playFromQueue(start);
   }
 
   function playListShuffled(key) {
@@ -1056,7 +1068,22 @@
       entries.length === 1 ? `„${entries[0].title}“ hinzufügen zu` : `${entries.length} Titel hinzufügen zu`;
     const playlists = state.collection.playlists;
 
+    const current = currentItem();
+    const queueable = !(entries.length === 1 && current && entries[0].id === current.id);
     menu.innerHTML = `
+      ${
+        queueable
+          ? `<button class="service-menu-item" data-ctx-queue="next">
+              <span class="menu-ic">${ICONS.queueNext}</span>
+              <span class="menu-text">Als Nächstes abspielen</span>
+            </button>
+            <button class="service-menu-item" data-ctx-queue="end">
+              <span class="menu-ic">${ICONS.list}</span>
+              <span class="menu-text">Zur Warteschlange hinzufügen</span>
+            </button>
+            <div class="menu-sep"></div>`
+          : ''
+      }
       <div class="service-menu-label">${esc(label)}</div>
       ${playlists
         .map(
@@ -2973,6 +3000,13 @@
 
   function planUpcoming() {
     const { items, index } = state.queue;
+    // Titles the user queued always come next – also with shuffle.
+    if (items[index + 1] && items[index + 1].queued) {
+      state.queue.upcoming = index + 1;
+      if (state.fullscreen) renderUpNext();
+      return;
+    }
+    if (autoplayEligible()) maybeAutoplay();
     if (items.length < 2) {
       state.queue.upcoming = -1;
       return;
@@ -3037,6 +3071,16 @@
   function stepQueue(direction) {
     const items = state.queue.items;
     if (!items.length) return;
+
+    if (direction > 0 && autoplayEligible()) {
+      const task = maybeAutoplay();
+      if (task) {
+        task.then(() => {
+          if (state.queue.index < state.queue.items.length - 1) playFromQueue(state.queue.index + 1);
+        });
+        return;
+      }
+    }
 
     const current = state.queue.index;
     let next;
@@ -3141,6 +3185,7 @@
     pushPresence();
     pushPlayerState();
     updateMediaSession();
+    renderQueuePanel();
   }
 
   function updateNowPlayingActions() {
@@ -3267,7 +3312,10 @@
 
       const { items, index } = state.queue;
       const atEnd = index >= items.length - 1;
-      if (state.playback.repeat === 'off' && !state.playback.shuffle && atEnd) return;
+      if (state.playback.repeat === 'off' && !state.playback.shuffle && atEnd) {
+        if (autoplayEligible()) stepQueue(1);
+        return;
+      }
 
       stepQueue(1);
     });
@@ -3370,6 +3418,331 @@
     });
     [volume, $('#btn-mute'), $('#volume-pct')].forEach((el) => {
       if (el) el.addEventListener('wheel', onVolumeWheel, { passive: false });
+    });
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Queue + autoplay
+   *
+   * The queue is state.queue.items with the playing title at .index.
+   * - Titles you add ("Als Nächstes" / "Zur Warteschlange") are copies
+   *   flagged `queued` and sit right after the current title. They always
+   *   come next – also with shuffle – and survive starting another list.
+   * - A title clicked in the search plays on its own; when the queue runs
+   *   out, autoplay appends suggestions for it (flag `autoplay`).
+   * ---------------------------------------------------------------- */
+
+  const SINGLE_CONTEXTS = ['search', 'ext'];
+  const AUTOPLAY_KINDS = ['preview', 'plugin'];
+  let autoplayTask = null;
+  let queuePanelOpen = false;
+
+  function autoplayOn() {
+    return state.settings.autoplay !== false;
+  }
+
+  // Titles the user queued that have not played yet.
+  function pendingQueued() {
+    const { items, index } = state.queue;
+    return items.slice(index + 1).filter((entry) => entry.queued);
+  }
+
+  function queueCopy(entry, flags) {
+    return Object.assign({}, entry, { queued: false, autoplay: false }, flags);
+  }
+
+  function enqueue(entries, mode = 'end') {
+    const list = (Array.isArray(entries) ? entries : [entries]).filter(Boolean);
+    if (!list.length) return;
+    const copies = list.map((entry) => queueCopy(entry, { queued: true }));
+    const q = state.queue;
+
+    if (q.index < 0 || !q.items[q.index]) {
+      state.queue = { items: copies, index: 0, kind: 'queue', upcoming: -1 };
+      playFromQueue(0);
+      toast(copies.length === 1 ? `„${copies[0].title}“ wird abgespielt` : `${copies.length} Titel werden abgespielt`);
+      return;
+    }
+
+    let at = q.index + 1;
+    if (mode === 'end') {
+      while (at < q.items.length && q.items[at].queued) at += 1;
+    }
+    q.items.splice(at, 0, ...copies);
+    planUpcoming();
+    schedulePrefetch();
+    renderQueuePanel();
+    const name = copies.length === 1 ? `„${copies[0].title}“` : `${copies.length} Titel`;
+    toast(mode === 'next' ? `${name} kommt als Nächstes` : `${name} in der Warteschlange`);
+  }
+
+  function autoplayEligible() {
+    const { items, index } = state.queue;
+    const item = items[index];
+    return Boolean(
+      autoplayOn() &&
+        item &&
+        AUTOPLAY_KINDS.includes(item.kind) &&
+        !state.playback.shuffle &&
+        state.playback.repeat === 'off' &&
+        index >= items.length - 1
+    );
+  }
+
+  function maybeAutoplay() {
+    if (autoplayTask) return autoplayTask;
+    if (!autoplayEligible() || !bridge.recommendations) return null;
+    const seed = currentItem();
+    autoplayTask = fetchAutoplay(seed)
+      .catch(() => 0)
+      .finally(() => {
+        autoplayTask = null;
+      });
+    return autoplayTask;
+  }
+
+  async function fetchAutoplay(seed) {
+    const name = primaryArtist(seed.artist);
+    const artists = name && name.length > 1 ? [{ name, deezerId: seed.source === 'deezer' ? seed.artistId || null : null }] : [];
+    const pluginSeeds = [];
+    if (seed.kind === 'plugin' && seed.refId) {
+      const plugin = pluginById(seed.pluginId);
+      if (isPluginReady(plugin) && plugin.capabilities.related) pluginSeeds.push({ id: plugin.id, refIds: [seed.refId] });
+    }
+    if (!artists.length && !pluginSeeds.length) return 0;
+
+    const result = await bridge.recommendations({ artists, pluginSeeds });
+    // The user may have started something else meanwhile.
+    const now = currentItem();
+    if (!now || now.id !== seed.id) return 0;
+
+    const known = new Set();
+    state.queue.items.forEach((entry) => {
+      known.add(entry.id);
+      known.add(matchKey(entry));
+    });
+    const keep = (entry) => entry && !known.has(entry.id) && !known.has(matchKey(entry));
+    const tracks = (Array.isArray(result.tracks) ? result.tracks : []).map(previewEntry).filter(keep);
+    const videos = (Array.isArray(result.pluginItems) ? result.pluginItems : [])
+      .map((item) => {
+        const plugin = pluginById(item.pluginId);
+        return plugin ? pluginEntry(plugin, item) : null;
+      })
+      .filter(keep);
+    // Plugin titles first when the seed came from a plugin (same source, full titles).
+    const merged = seed.kind === 'plugin' ? mergeRecs(shuffled(videos), shuffled(tracks)) : mergeRecs(shuffled(tracks), shuffled(videos));
+    const picked = [];
+    const seen = new Set();
+    merged.forEach((entry) => {
+      const key = matchKey(entry);
+      if (picked.length >= 12 || seen.has(key)) return;
+      seen.add(key);
+      picked.push(queueCopy(entry, { autoplay: true }));
+    });
+    if (!picked.length) return 0;
+
+    state.queue.items.push(...picked);
+    planUpcoming();
+    schedulePrefetch();
+    renderQueuePanel();
+    if (state.fullscreen) renderUpNext();
+    return picked.length;
+  }
+
+  function removeFromQueue(position) {
+    const q = state.queue;
+    if (position <= q.index || position >= q.items.length) return;
+    q.items.splice(position, 1);
+    planUpcoming();
+    schedulePrefetch();
+    renderQueuePanel();
+    if (state.fullscreen) renderUpNext();
+  }
+
+  function moveInQueue(from, to) {
+    const q = state.queue;
+    if (from <= q.index || to <= q.index || from >= q.items.length || to >= q.items.length || from === to) return;
+    const [entry] = q.items.splice(from, 1);
+    q.items.splice(to, 0, entry);
+    planUpcoming();
+    schedulePrefetch();
+    renderQueuePanel();
+    if (state.fullscreen) renderUpNext();
+  }
+
+  function clearAddedToQueue() {
+    const q = state.queue;
+    const head = q.items.slice(0, q.index + 1);
+    const rest = q.items.slice(q.index + 1).filter((entry) => !entry.queued && !entry.autoplay);
+    const removed = q.items.length - head.length - rest.length;
+    q.items = head.concat(rest);
+    planUpcoming();
+    schedulePrefetch();
+    renderQueuePanel();
+    if (state.fullscreen) renderUpNext();
+    toast(removed ? `${removed} Titel entfernt` : 'Nichts zum Entfernen');
+  }
+
+  function queueGroup(entry) {
+    if (entry.queued) return 'queued';
+    if (entry.autoplay) return 'autoplay';
+    return 'context';
+  }
+
+  function queueRow(entry, position, options = {}) {
+    return `
+      <div class="queue-row ${options.current ? 'current' : ''}" data-qi="${position}" ${options.current ? '' : 'draggable="true"'}>
+        <span class="queue-art">${entry.artwork ? `<img src="${esc(entry.artwork)}" alt="" loading="lazy" />` : '♪'}</span>
+        <span class="queue-meta">
+          <span class="queue-title">${esc(entry.title)}</span>
+          <span class="queue-sub">${esc(entry.artist || entry.sourceLabel || '')}</span>
+        </span>
+        ${options.current ? `<span class="queue-now">${EQ}</span>` : `<button class="icon-btn queue-remove" data-q-remove="${position}" title="Aus der Warteschlange entfernen">${ICONS.close}</button>`}
+      </div>`;
+  }
+
+  function renderQueuePanel() {
+    const panel = $('#queue-panel');
+    const button = $('#btn-queue');
+    if (button) button.classList.toggle('active', queuePanelOpen);
+    if (!panel) return;
+    panel.hidden = !queuePanelOpen;
+    if (!queuePanelOpen) return;
+
+    const { items, index } = state.queue;
+    const current = items[index];
+    const seed = current && current.autoplay ? null : current;
+    const labels = {
+      queued: 'Von dir eingereiht',
+      context: 'Weiter aus der Liste',
+      autoplay: `Autoplay${seed && seed.artist ? ` · passend zu ${esc(primaryArtist(seed.artist))}` : ''}`,
+    };
+
+    let body = '';
+    if (!current) {
+      body = '<p class="queue-empty">Noch nichts in der Warteschlange. Spiel einen Titel ab oder wähle bei einem Titel „Als Nächstes abspielen“.</p>';
+    } else {
+      body += '<div class="queue-label">Läuft gerade</div>' + queueRow(current, index, { current: true });
+      const upcoming = items.slice(index + 1, index + 1 + 60);
+      let group = null;
+      upcoming.forEach((entry, offset) => {
+        const next = queueGroup(entry);
+        if (next !== group) {
+          group = next;
+          body += `<div class="queue-label">${labels[group]}</div>`;
+        }
+        body += queueRow(entry, index + 1 + offset);
+      });
+      if (items.length - index - 1 > 60) {
+        body += `<p class="queue-more">… und ${items.length - index - 61} weitere</p>`;
+      }
+      if (!upcoming.length) {
+        body += `<p class="queue-empty">${
+          autoplayTask
+            ? 'Autoplay sucht passende Titel …'
+            : autoplayOn() && AUTOPLAY_KINDS.includes(current.kind)
+              ? 'Danach geht es mit Vorschlägen weiter.'
+              : 'Danach ist Schluss.'
+        }</p>`;
+      }
+      if (state.playback.shuffle) {
+        body += '<p class="queue-hint">Zufall ist an: Von dir eingereihte Titel kommen trotzdem zuerst.</p>';
+      }
+    }
+
+    panel.innerHTML = `
+      <div class="queue-head">
+        <h3>Warteschlange</h3>
+        <button class="icon-btn" data-q-action="close" title="Schließen">${ICONS.close}</button>
+      </div>
+      <div class="queue-tools">
+        <label class="queue-autoplay"><input type="checkbox" data-q-action="autoplay" ${autoplayOn() ? 'checked' : ''} /> Autoplay</label>
+        <button class="btn ghost small" data-q-action="clear">Eingereihte entfernen</button>
+      </div>
+      <div class="queue-list">${body}</div>`;
+  }
+
+  function toggleQueuePanel(open = !queuePanelOpen) {
+    queuePanelOpen = Boolean(open);
+    renderQueuePanel();
+  }
+
+  function setAutoplay(on) {
+    state.settings.autoplay = Boolean(on);
+    saveSettings();
+    if (on) maybeAutoplay();
+    renderQueuePanel();
+    renderSettings();
+    toast(on ? 'Autoplay an – nach einzelnen Titeln laufen Vorschläge weiter' : 'Autoplay aus');
+  }
+
+  function wireQueuePanel() {
+    const panel = $('#queue-panel');
+    $('#btn-queue').addEventListener('click', () => toggleQueuePanel());
+
+    panel.addEventListener('click', (event) => {
+      const remove = event.target.closest('[data-q-remove]');
+      if (remove) {
+        removeFromQueue(Number(remove.dataset.qRemove));
+        return;
+      }
+      const action = event.target.closest('[data-q-action]');
+      if (action && action.dataset.qAction === 'close') {
+        toggleQueuePanel(false);
+        return;
+      }
+      if (action && action.dataset.qAction === 'clear') {
+        clearAddedToQueue();
+        return;
+      }
+      const row = event.target.closest('.queue-row[data-qi]');
+      if (row && !row.classList.contains('current')) playFromQueue(Number(row.dataset.qi));
+    });
+    panel.addEventListener('change', (event) => {
+      if (event.target.matches('[data-q-action="autoplay"]')) setAutoplay(event.target.checked);
+    });
+
+    let dragFrom = -1;
+    panel.addEventListener('dragstart', (event) => {
+      const row = event.target.closest('.queue-row[data-qi]');
+      if (!row) return;
+      event.stopPropagation();
+      dragFrom = Number(row.dataset.qi);
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(dragFrom));
+      row.classList.add('dragging');
+    });
+    panel.addEventListener('dragover', (event) => {
+      if (dragFrom < 0) return;
+      const row = event.target.closest('.queue-row[data-qi]');
+      if (!row || row.classList.contains('current')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      $$('#queue-panel .queue-row.drop-target').forEach((el) => el.classList.remove('drop-target'));
+      row.classList.add('drop-target');
+    });
+    panel.addEventListener('drop', (event) => {
+      const row = event.target.closest('.queue-row[data-qi]');
+      if (dragFrom < 0 || !row) return;
+      event.preventDefault();
+      event.stopPropagation();
+      moveInQueue(dragFrom, Number(row.dataset.qi));
+      dragFrom = -1;
+    });
+    panel.addEventListener('dragend', () => {
+      dragFrom = -1;
+      $$('#queue-panel .dragging, #queue-panel .drop-target').forEach((el) => el.classList.remove('dragging', 'drop-target'));
+    });
+
+    // Right click on any title row or card: queue / playlist menu at the pointer.
+    document.addEventListener('contextmenu', (event) => {
+      const row = event.target.closest && event.target.closest('#content [data-list][data-index]');
+      if (!row) return;
+      const entry = entryAt(row.dataset.list, Number(row.dataset.index));
+      if (!entry) return;
+      event.preventDefault();
+      const point = { getBoundingClientRect: () => ({ left: event.clientX, right: event.clientX, top: event.clientY, bottom: event.clientY }) };
+      openAddMenu(point, [entry]);
     });
   }
 
@@ -5526,6 +5899,13 @@
           </label>
           <label class="toggle-row">
             <span>
+              <strong>Autoplay</strong>
+              <small>Nach einem einzelnen Titel aus der Suche laufen passende Vorschläge weiter. Von dir Eingereihtes kommt immer zuerst.</small>
+            </span>
+            <input type="checkbox" id="opt-autoplay" ${autoplayOn() ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
               <strong>Beim Schließen im Infobereich weiterlaufen</strong>
               <small>Das X versteckt CleanMusic nur, die Musik läuft weiter. Beenden über das Symbol im Infobereich.</small>
             </span>
@@ -6010,6 +6390,14 @@ ${updatePanel()}
         return;
       }
 
+      const queueItem = event.target.closest('[data-ctx-queue]');
+      if (queueItem) {
+        const entries = ctxEntries;
+        hideMenus();
+        enqueue(entries, queueItem.dataset.ctxQueue);
+        return;
+      }
+
       const playlistItem = event.target.closest('[data-ctx-playlist]');
       if (playlistItem) {
         const entries = ctxEntries;
@@ -6371,6 +6759,11 @@ ${updatePanel()}
         return;
       }
 
+      if (event.target.id === 'opt-autoplay') {
+        setAutoplay(event.target.checked);
+        return;
+      }
+
       if (event.target.id === 'opt-update') {
         if (bridge.updateSet) {
           bridge
@@ -6691,6 +7084,7 @@ ${updatePanel()}
     renderFavorites();
     renderSettings();
     wirePlayer();
+    wireQueuePanel();
     wireGlobal();
 
     // Visualizer: analyses the <audio> element, draws in the player bar
@@ -6832,6 +7226,18 @@ ${updatePanel()}
           }
         : null,
     importBackup: (data) => importBackup(data),
+    queue: () => ({
+      index: state.queue.index,
+      kind: state.queue.kind,
+      upcoming: state.queue.upcoming,
+      length: state.queue.items.length,
+      current: currentItem() ? currentItem().title : null,
+      items: state.queue.items.map((entry) => ({ id: entry.id, title: entry.title, queued: Boolean(entry.queued), autoplay: Boolean(entry.autoplay) })),
+      autoplayPending: Boolean(autoplayTask),
+    }),
+    enqueueAt: (key, index, mode) => enqueue(entryAt(key, index), mode),
+    toggleQueue: (open) => toggleQueuePanel(open),
+    next: () => stepQueue(1),
     update: () => ({
       info: updateInfo,
       card: !$('#update-card').hidden,

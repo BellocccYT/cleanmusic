@@ -7,7 +7,7 @@ Stufe wird einzeln getestet, released und über die Update-Suche verteilt.
 
 | Stufe | Inhalt |
 | --- | --- |
-| **0.10** | Warteschlange + Autoplay |
+| **0.10** | Warteschlange + Autoplay – **erledigt** |
 | **0.11** | Epidemic Sound und Artlist.io im Cutter-Modus |
 | **0.12** | Erste-Schritte-Assistent |
 | **0.13** | Englische Oberfläche (Deutsch/Englisch umschaltbar) |

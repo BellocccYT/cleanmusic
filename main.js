@@ -1009,6 +1009,55 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_UPDATE:', JSON.stringify(updateResult));
+
+          // Queue + autoplay: a search hit plays alone, suggestions follow,
+          // queued titles come first.
+          const queueResult = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              cm.showView('search');
+              await wait(300);
+              const row = document.querySelector('#view-search .song-row[data-list="search"]');
+              if (!row) return { found: false };
+              row.click();
+              await wait(600);
+              const single = cm.queue();
+              for (let i = 0; i < 60 && cm.queue().length < 2; i += 1) await wait(300);
+              const auto = cm.queue();
+              cm.enqueueAt('charts', 0, 'next');
+              cm.enqueueAt('charts', 1, 'end');
+              cm.enqueueAt('charts', 2, 'next');
+              const queued = cm.queue();
+              const order = queued.items.slice(queued.index + 1, queued.index + 4).map((item) => item.title);
+              cm.toggleQueue(true);
+              await wait(200);
+              const panel = {
+                rows: document.querySelectorAll('#queue-panel .queue-row').length,
+                labels: Array.from(document.querySelectorAll('#queue-panel .queue-label')).map((el) => el.textContent.trim().split(' ·')[0]),
+              };
+              const chartsTitles = Array.from(document.querySelectorAll('#home-charts [data-list="charts"]')).slice(0, 3).map((el) => el.getAttribute('title'));
+              cm.next();
+              await wait(1500);
+              const afterNext = cm.queue();
+              row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 300 }));
+              const menu = Array.from(document.querySelectorAll('#ctx-menu [data-ctx-queue]')).map((el) => el.dataset.ctxQueue);
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+              document.body.click();
+              cm.toggleQueue(false);
+              return {
+                found: true,
+                single: { length: single.length, kind: single.kind },
+                autoplay: { length: auto.length, added: auto.items.filter((item) => item.autoplay).length },
+                queued: { upcoming: queued.upcoming, index: queued.index, order, flags: queued.items.slice(queued.index + 1, queued.index + 4).map((item) => item.queued) },
+                chartsTitles,
+                panel,
+                afterNext: { current: afterNext.current, queuedLeft: afterNext.items.slice(afterNext.index + 1).filter((item) => item.queued).length },
+                menu,
+              };
+            })()
+          `);
+          console.log('SMOKE_QUEUE:', JSON.stringify(queueResult));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
