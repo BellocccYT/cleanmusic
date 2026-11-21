@@ -13,6 +13,12 @@
  *   GET /skip?token=…         → next title
  *   GET /pause?token=…        → pause / resume
  *
+ * Optional song requests (off by default, CleanMusic 1.0.1 or newer):
+ *
+ *   GET /request?token=…&user=…&q=…   → !sr: search + queue, one line for the chat
+ *   GET /wrongsong?token=…&user=…     → !wrongsong: remove the viewer's last request
+ *   GET /requests                     → open requests as one chat line
+ *
  * Listens on 127.0.0.1 only and answers only requests whose Host is
  * 127.0.0.1/localhost. Commands that change playback need the token, so a
  * web page cannot trigger them (e.g. via an <img> tag).
@@ -28,6 +34,9 @@ let serverError = null;
 let player = null;
 let lastCommand = 0;
 let requests = 0;
+let songRequests = 0;
+const lastRequestBy = new Map(); // viewer (lower case) → time of the last accepted request
+let requestChain = Promise.resolve();
 
 const COMMAND_GAP = 2500; // ms between two playback commands (chat spam)
 
@@ -37,6 +46,13 @@ function settings() {
     template: 'Gerade läuft: {artist} – {title}',
     idleText: 'Gerade läuft nichts.',
     control: true,
+    requests: false,
+    requestSource: 'auto',
+    requestPerUser: 2,
+    requestCooldown: 60,
+    requestMax: 15,
+    requestMaxMinutes: 10,
+    requestBlock: '',
   };
   return Object.assign(defaults, ctx ? ctx.settings.get() : {});
 }
@@ -120,6 +136,130 @@ function command(res, url, run) {
   return text(res, 200, run());
 }
 
+/* ------------------------------------------------------------------ *
+ * Song requests
+ * ------------------------------------------------------------------ */
+
+function viewer(url) {
+  return String(url.searchParams.get('user') || '')
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/^@+/, '')
+    .trim()
+    .slice(0, 40);
+}
+
+function trackName(track) {
+  if (!track || !track.title) return 'Der Titel';
+  return track.artist ? `„${track.title}“ von ${track.artist}` : `„${track.title}“`;
+}
+
+// One request at a time, so limits per viewer cannot be raced.
+function serial(task) {
+  const run = requestChain.then(task, task);
+  requestChain = run.catch(() => {});
+  return run;
+}
+
+function requestGate(url) {
+  if (!settings().requests) return [403, 'Songwünsche sind gerade aus.'];
+  if (!tokenOk(url)) return [403, 'Falscher oder fehlender Token.'];
+  if (typeof ctx.player.request !== 'function') return [501, 'Songwünsche brauchen CleanMusic 1.0.1 oder neuer.'];
+  return null;
+}
+
+async function pendingList() {
+  const list = await ctx.player.requests();
+  return Array.isArray(list) ? list : [];
+}
+
+async function songRequest(url) {
+  const gate = requestGate(url);
+  if (gate) return gate;
+  const s = settings();
+  const user = viewer(url) || 'Chat';
+  const at = `@${user}`;
+  const key = user.toLowerCase();
+  const query = String(url.searchParams.get('q') || '')
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  if (!query) return [400, `${at} So geht’s: !sr Titel oder Artist`];
+
+  const blocked = String(s.requestBlock || '')
+    .split(',')
+    .map((word) => word.trim().toLowerCase())
+    .filter(Boolean);
+  if (blocked.some((word) => query.toLowerCase().includes(word))) return [200, `${at} Dieser Wunsch geht leider nicht.`];
+
+  const cooldown = Math.max(0, Number(s.requestCooldown) || 0) * 1000;
+  const since = Date.now() - (lastRequestBy.get(key) || 0);
+  if (cooldown && since < cooldown) {
+    return [429, `${at} Kurz warten – dein nächster Wunsch geht in ${Math.ceil((cooldown - since) / 1000)} s.`];
+  }
+
+  const pending = await pendingList();
+  const perUser = Math.max(1, Math.round(Number(s.requestPerUser) || 2));
+  if (pending.filter((entry) => String(entry.by || '').toLowerCase() === key).length >= perUser) {
+    return [200, `${at} Du hast schon ${perUser === 1 ? 'einen Wunsch' : `${perUser} Wünsche`} in der Warteschlange.`];
+  }
+  const max = Math.max(1, Math.round(Number(s.requestMax) || 15));
+  if (pending.length >= max) return [200, `${at} Die Wunschliste ist gerade voll – versuch es später noch mal.`];
+
+  const minutes = Math.max(0, Number(s.requestMaxMinutes) || 0);
+  const result = await ctx.player.request(query, { by: user, source: s.requestSource, maxSeconds: minutes * 60 });
+  if (!result || !result.ok) {
+    switch (result && result.reason) {
+      case 'not-found':
+        return [200, `${at} Dazu habe ich nichts gefunden.`];
+      case 'duplicate':
+        return [200, `${at} ${trackName(result.track)} ist schon in der Warteschlange.`];
+      case 'too-long':
+        return [200, `${at} Das ist zu lang (höchstens ${minutes} Minuten).`];
+      case 'no-source':
+        return [200, `${at} Gerade gibt es keine vollen Titel – Songwünsche gehen später wieder.`];
+      default:
+        return [200, `${at} Das hat nicht geklappt – versuch es gleich noch mal.`];
+    }
+  }
+
+  lastRequestBy.set(key, Date.now());
+  songRequests += 1;
+  const preview = result.track && result.track.preview ? ' (30-s-Vorschau)' : '';
+  if (result.playingNow) return [200, `${at} ${trackName(result.track)} läuft jetzt${preview}.`];
+  return [200, `${at} ${trackName(result.track)} ist auf Platz ${result.position}${preview}.`];
+}
+
+async function wrongSong(url) {
+  const gate = requestGate(url);
+  if (gate) return gate;
+  const user = viewer(url);
+  if (!user) return [400, 'Name fehlt (user=…).'];
+  const result = await ctx.player.removeRequest(user);
+  if (result && result.ok) {
+    lastRequestBy.delete(user.toLowerCase());
+    return [200, `@${user} ${trackName(result.track)} ist wieder raus.`];
+  }
+  return [200, `@${user} Du hast gerade keinen Wunsch in der Warteschlange.`];
+}
+
+async function requestLine() {
+  if (!settings().requests) return [200, 'Songwünsche sind gerade aus.'];
+  if (typeof ctx.player.requests !== 'function') return [501, 'Songwünsche brauchen CleanMusic 1.0.1 oder neuer.'];
+  const list = await pendingList();
+  if (!list.length) return [200, 'Keine offenen Songwünsche – wünsch dir was mit !sr'];
+  const shown = list
+    .slice(0, 5)
+    .map((entry, index) => `${index + 1}. ${entry.artist ? `${entry.artist} – ` : ''}${entry.title} (${entry.by})`);
+  const more = list.length > 5 ? ` · +${list.length - 5} weitere` : '';
+  return [200, `Wünsche: ${shown.join(' · ')}${more}`.slice(0, 450)];
+}
+
+function reply(res, task) {
+  serial(task)
+    .then(([status, body]) => text(res, status, body))
+    .catch((error) => text(res, 500, `Fehler: ${error.message}`));
+}
+
 function handle(req, res) {
   requests += 1;
   const host = String(req.headers.host || '');
@@ -144,6 +284,13 @@ function handle(req, res) {
         ctx.player.toggle();
         return wasPlaying ? '⏸ Pausiert' : '▶ Weiter geht’s';
       });
+    case '/request':
+    case '/sr':
+      return reply(res, () => songRequest(url));
+    case '/wrongsong':
+      return reply(res, () => wrongSong(url));
+    case '/requests':
+      return reply(res, () => requestLine());
     default:
       return text(res, 404, 'Nicht gefunden.');
   }
@@ -193,6 +340,11 @@ function setupText() {
     `!skip   ${baseUrl()}/skip?token=${t}`,
     `!pause  ${baseUrl()}/pause?token=${t}`,
     '',
+    'Songwünsche (nur wenn im Plugin eingeschaltet):',
+    `!sr         ${baseUrl()}/request?token=${t}&user=%user%&q=%rawInputUrlEncoded%`,
+    `!wrongsong  ${baseUrl()}/wrongsong?token=${t}&user=%user%`,
+    `!wishes     ${baseUrl()}/requests`,
+    '',
     'Den Token nicht im Stream zeigen. Neu erzeugen: Plugin-Karte → „Token neu erzeugen“.',
   ].join('\n');
 }
@@ -205,13 +357,16 @@ module.exports = {
   apiVersion: 2,
   id: 'streamerbot',
   name: 'Streamer.bot',
-  version: '1.0.0',
+  version: '1.1.0',
   description:
-    'Chat-Befehle für Twitch über Streamer.bot: !song postet den aktuellen Titel, !skip und !pause steuern CleanMusic.',
+    'Chat-Befehle für Twitch über Streamer.bot: !song postet den aktuellen Titel, !skip und !pause steuern CleanMusic, ' +
+    'optional Songwünsche mit !sr.',
   help:
     'In Streamer.bot je Befehl eine Action anlegen und darin die Sub-Action „Fetch URL“ mit der kopierten ' +
     'Adresse verwenden. Bei !song das Ergebnis in eine Variable speichern und mit „Send Message to Channel“ ' +
     'in den Twitch-Chat schreiben. !skip und !pause in Streamer.bot nur für Mods freigeben. ' +
+    'Songwünsche (!sr, !wrongsong, !wishes) erst unten einschalten; die Antwort ebenfalls in den Chat schreiben. ' +
+    'Achte darauf, dass du gewünschte Musik im Stream spielen darfst. ' +
     'Schritt für Schritt: extras/plugins/README.md im CleanMusic-Repository.',
   settings: [
     { id: 'port', type: 'number', label: 'Port', default: 4788, min: 1024, max: 65535, help: 'Nur ändern, wenn 4788 belegt ist.' },
@@ -224,6 +379,43 @@ module.exports = {
     },
     { id: 'idleText', type: 'text', label: 'Text, wenn nichts läuft', default: 'Gerade läuft nichts.' },
     { id: 'control', type: 'toggle', label: '!skip und !pause erlauben', default: true },
+    {
+      id: 'requests',
+      type: 'toggle',
+      label: 'Songwünsche (!sr) erlauben',
+      default: false,
+      help: 'Zuschauer wünschen sich Titel; CleanMusic reiht sie in die Warteschlange ein („Wunsch von …“).',
+    },
+    {
+      id: 'requestSource',
+      type: 'select',
+      label: 'Wünsche spielen als',
+      default: 'auto',
+      options: [
+        { value: 'auto', label: 'Volle Titel (Quellen-Plugin), sonst 30-s-Vorschau' },
+        { value: 'full', label: 'Nur volle Titel (Quellen-Plugin nötig)' },
+        { value: 'preview', label: 'Nur 30-s-Vorschauen' },
+      ],
+    },
+    { id: 'requestPerUser', type: 'number', label: 'Wünsche pro Zuschauer gleichzeitig', default: 2, min: 1, max: 10 },
+    { id: 'requestCooldown', type: 'number', label: 'Wartezeit pro Zuschauer (Sekunden)', default: 60, min: 0, max: 3600 },
+    { id: 'requestMax', type: 'number', label: 'Höchstens offene Wünsche', default: 15, min: 1, max: 100 },
+    {
+      id: 'requestMaxMinutes',
+      type: 'number',
+      label: 'Höchstlänge in Minuten (0 = egal)',
+      default: 10,
+      min: 0,
+      max: 180,
+      help: 'Gilt für volle Titel aus dem Quellen-Plugin.',
+    },
+    {
+      id: 'requestBlock',
+      type: 'text',
+      label: 'Gesperrte Wörter',
+      default: '',
+      help: 'Durch Komma getrennt – Wünsche, die eines davon enthalten, werden abgelehnt.',
+    },
   ],
   actions: [
     { id: 'copy', label: 'Adressen kopieren', when: 'running' },
@@ -258,7 +450,9 @@ module.exports = {
     return {
       ready: true,
       text: `Läuft · Port ${serverPort}`,
-      detail: `${baseUrl()}/song · ${requests} Anfragen seit dem Start`,
+      detail: `${baseUrl()}/song · ${requests} Anfragen seit dem Start${
+        settings().requests ? ` · Songwünsche an (${songRequests} angenommen)` : ''
+      }`,
       flags,
     };
   },

@@ -3472,6 +3472,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.0.1': [
+      'Songwünsche für Plugins: Mit dem Streamer.bot-Plugin (ab 1.1.0) wünscht sich dein Twitch-Chat per !sr Titel – optional, mit Limits.',
+      'Wünsche stehen in der Warteschlange unter „Songwünsche aus dem Chat“ mit Namen.',
+    ],
     '1.0.0': [
       'CleanMusic 1.0 – jetzt auch als Installer (Startmenü, Deinstallation, Updates mit einem Klick).',
       'Tastenkürzel-Übersicht: einfach ? drücken (oder Einstellungen → System → „Tastenkürzel“).',
@@ -3755,19 +3759,20 @@
   }
 
   function queueCopy(entry, flags) {
-    return Object.assign({}, entry, { queued: false, autoplay: false }, flags);
+    return Object.assign({}, entry, { queued: false, autoplay: false, requestedBy: null }, flags);
   }
 
-  function enqueue(entries, mode = 'end') {
+  function enqueue(entries, mode = 'end', flags = {}) {
     const list = (Array.isArray(entries) ? entries : [entries]).filter(Boolean);
     if (!list.length) return;
-    const copies = list.map((entry) => queueCopy(entry, { queued: true }));
+    const copies = list.map((entry) => queueCopy(entry, Object.assign({ queued: true }, flags)));
+    const by = flags.requestedBy ? `Songwunsch von ${flags.requestedBy}: ` : '';
     const q = state.queue;
 
     if (q.index < 0 || !q.items[q.index]) {
       state.queue = { items: copies, index: 0, kind: 'queue', upcoming: -1 };
       playFromQueue(0);
-      toast(copies.length === 1 ? `„${copies[0].title}“ wird abgespielt` : `${copies.length} Titel werden abgespielt`);
+      toast(by + (copies.length === 1 ? `„${copies[0].title}“ wird abgespielt` : `${copies.length} Titel werden abgespielt`));
       return;
     }
 
@@ -3780,7 +3785,7 @@
     schedulePrefetch();
     renderQueuePanel();
     const name = copies.length === 1 ? `„${copies[0].title}“` : `${copies.length} Titel`;
-    toast(mode === 'next' ? `${name} kommt als Nächstes` : `${name} in der Warteschlange`);
+    toast(by + (mode === 'next' ? `${name} kommt als Nächstes` : `${name} in der Warteschlange`));
   }
 
   function autoplayEligible() {
@@ -3891,6 +3896,7 @@
   }
 
   function queueGroup(entry) {
+    if (entry.requestedBy) return 'request';
     if (entry.queued) return 'queued';
     if (entry.autoplay) return 'autoplay';
     return 'context';
@@ -3902,7 +3908,9 @@
         <span class="queue-art">${entry.artwork ? `<img src="${esc(entry.artwork)}" alt="" loading="lazy" />` : '♪'}</span>
         <span class="queue-meta">
           <span class="queue-title">${esc(entry.title)}</span>
-          <span class="queue-sub">${esc(entry.artist || entry.sourceLabel || '')}</span>
+          <span class="queue-sub">${esc(entry.artist || entry.sourceLabel || '')}${
+            entry.requestedBy ? ` · <em class="queue-by">Wunsch von ${esc(entry.requestedBy)}</em>` : ''
+          }</span>
         </span>
         ${options.current ? `<span class="queue-now">${EQ}</span>` : `<button class="icon-btn queue-remove" data-q-remove="${position}" title="Aus der Warteschlange entfernen">${ICONS.close}</button>`}
       </div>`;
@@ -3921,6 +3929,7 @@
     const seed = current && current.autoplay ? null : current;
     const labels = {
       queued: 'Von dir eingereiht',
+      request: 'Songwünsche aus dem Chat',
       context: 'Weiter aus der Liste',
       autoplay: `Autoplay${seed && seed.artist ? ` · passend zu ${esc(primaryArtist(seed.artist))}` : ''}`,
     };
@@ -5896,9 +5905,162 @@
     }, immediate ? 0 : 120);
   }
 
+  /* ---------------------------------------------------------------- *
+   * Song requests (plugins, e.g. Streamer.bot !sr)
+   *
+   * A plugin hands over a search text and a name; CleanMusic picks the
+   * first fitting hit (full title from the active source plugin, else a
+   * 30-second preview) and queues it like "Zur Warteschlange hinzufügen",
+   * marked "Wunsch von …". Limits per viewer live in the plugin.
+   * ---------------------------------------------------------------- */
+
+  const REQUEST_SOURCES = ['auto', 'full', 'preview'];
+
+  function requestName(value) {
+    return String(value || '')
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/^@+/, '')
+      .trim()
+      .slice(0, 40);
+  }
+
+  function pendingRequests() {
+    const { items, index } = state.queue;
+    const list = [];
+    items.forEach((entry, position) => {
+      if (position <= index || !entry.requestedBy) return;
+      list.push({
+        by: entry.requestedBy,
+        title: entry.title || '',
+        artist: entry.artist || '',
+        source: entry.sourceLabel || '',
+        preview: entry.kind === 'preview',
+        position: position - index,
+      });
+    });
+    return list;
+  }
+
+  const REQUEST_UNWANTED = ['karaoke', 'instrumental', 'cover', 'tribute', 'nightcore', 'sped', 'slowed', '8d'];
+
+  function requestWords(value) {
+    return normKey(value).split(' ').filter((word) => word.length > 1);
+  }
+
+  // Score = how many words of the wish appear in artist + title; versions the
+  // viewer did not ask for (karaoke, cover, …) count against a hit.
+  function bestRequestHit(hits, query) {
+    const wanted = requestWords(query);
+    let best = null;
+    let bestScore = -Infinity;
+    hits.forEach((entry, order) => {
+      const words = new Set([...requestWords(entry.artist), ...requestWords(entry.title)]);
+      let score = wanted.filter((word) => words.has(word)).length * 10;
+      REQUEST_UNWANTED.forEach((word) => {
+        if (words.has(word) && !wanted.includes(word)) score -= 15;
+      });
+      score -= order * 0.1; // keep the source's order on ties
+      if (score > bestScore) {
+        bestScore = score;
+        best = entry;
+      }
+    });
+    return best;
+  }
+
+  function fitsLength(entry, maxSeconds) {
+    if (!maxSeconds || entry.kind !== 'plugin') return true;
+    return !entry.duration || entry.duration <= maxSeconds;
+  }
+
+  async function findRequestTrack(query, source, maxSeconds) {
+    const plugin = searchPlugin();
+    if (source !== 'preview' && plugin) {
+      try {
+        const result = await bridge.pluginSearch(plugin.id, query);
+        const hits = (Array.isArray(result.results) ? result.results : []).map((item) => pluginEntry(plugin, item));
+        const hit = bestRequestHit(hits.filter((entry) => fitsLength(entry, maxSeconds)), query);
+        if (hit) return hit;
+        if (hits.length && source === 'full') return { tooLong: true };
+      } catch {
+        /* fall back to previews */
+      }
+    }
+    if (source === 'full') return null;
+    const result = await bridge.searchCatalog(query);
+    const tracks = (Array.isArray(result.tracks) ? result.tracks : []).slice(0, 25).map(previewEntry);
+    return bestRequestHit(tracks, query);
+  }
+
+  async function songRequest(value) {
+    const query = String((value && value.query) || '')
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .slice(0, 200);
+    const by = requestName(value && value.by) || 'Chat';
+    const source = REQUEST_SOURCES.includes(value && value.source) ? value.source : 'auto';
+    const maxSeconds = Math.max(0, Math.round(Number(value && value.maxSeconds) || 0));
+    if (!query) return { ok: false, reason: 'empty' };
+    if (source === 'full' && !searchPlugin()) return { ok: false, reason: 'no-source' };
+
+    const found = await findRequestTrack(query, source, maxSeconds);
+    if (!found) return { ok: false, reason: 'not-found' };
+    if (found.tooLong) return { ok: false, reason: 'too-long' };
+
+    const key = matchKey(found);
+    const { items, index } = state.queue;
+    const current = items[index];
+    if ((current && matchKey(current) === key) || items.slice(index + 1).some((entry) => matchKey(entry) === key)) {
+      return { ok: false, reason: 'duplicate', track: { title: found.title, artist: found.artist } };
+    }
+
+    enqueue([found], 'end', { requestedBy: by });
+    const mine = pendingRequests().filter((entry) => entry.by === by);
+    const placed = mine[mine.length - 1];
+    return {
+      ok: true,
+      track: { title: found.title, artist: found.artist, source: found.sourceLabel || '', preview: found.kind === 'preview' },
+      position: placed ? placed.position : 0,
+      playingNow: !placed,
+    };
+  }
+
+  function removeSongRequest(value) {
+    const by = requestName(value && value.by).toLowerCase();
+    if (!by) return { ok: false, reason: 'empty' };
+    const { items, index } = state.queue;
+    for (let position = items.length - 1; position > index; position -= 1) {
+      const entry = items[position];
+      if (entry.requestedBy && entry.requestedBy.toLowerCase() === by) {
+        removeFromQueue(position);
+        return { ok: true, track: { title: entry.title, artist: entry.artist } };
+      }
+    }
+    return { ok: false, reason: 'none' };
+  }
+
+  async function answerPlayerCall(callId, task) {
+    let result;
+    try {
+      result = await task();
+    } catch (error) {
+      result = { ok: false, reason: 'error', error: String((error && error.message) || error) };
+    }
+    if (callId && bridge.playerCommandResult) bridge.playerCommandResult(callId, result);
+  }
+
   function onPlayerCommand(message) {
-    const { command, value } = message || {};
+    const { command, value, callId } = message || {};
     switch (command) {
+      case 'request':
+        answerPlayerCall(callId, () => songRequest(value));
+        break;
+      case 'requests':
+        answerPlayerCall(callId, () => pendingRequests());
+        break;
+      case 'removeRequest':
+        answerPlayerCall(callId, () => removeSongRequest(value));
+        break;
       case 'play':
         if (audio.paused) $('#btn-play').click();
         break;
@@ -7821,6 +7983,8 @@ ${updatePanel()}
       refreshDownloadButtons();
     },
     playerSnapshot: () => playerSnapshot(),
+    requests: () => pendingRequests(),
+    songRequest: (value) => songRequest(value),
     theme: () => ({
       id: currentTheme() ? currentTheme().id : null,
       themes: THEMES.map((theme) => theme.id),

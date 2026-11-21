@@ -2391,6 +2391,39 @@ async function smokeStreamerbotPlugin() {
   await wait(900);
   const resumed = await js("!document.querySelector('#audio').paused");
 
+  // Song requests (plugin 1.1.0, CleanMusic 1.0.1).
+  const q = (text) => encodeURIComponent(text);
+  const sr = (user, text) => get('/request?token=' + token + '&user=' + q(user) + '&q=' + q(text));
+  const srOff = await sr('smoke', 'Daft Punk One More Time');
+  await js("window.cm.pluginSettingsSet('streamerbot', { requests: true, requestSource: 'preview', requestPerUser: 2, requestCooldown: 0, requestBlock: 'verboten' })");
+  await wait(500);
+  const srNoToken = await get('/request?user=smoke&q=' + q('Daft Punk'));
+  const srEmpty = await sr('smoke', '');
+  const srBlocked = await sr('smoke', 'Das ist verboten');
+  const sr1 = await sr('smoke', 'Daft Punk One More Time');
+  const srDup = await sr('smoke', 'Daft Punk One More Time');
+  const sr2 = await sr('@Smoke', 'Tame Impala The Less I Know The Better');
+  const srLimit = await sr('smoke', 'Queen Bohemian Rhapsody');
+  await js("window.cm.pluginSettingsSet('streamerbot', { requestCooldown: 60 })");
+  await wait(500);
+  const other1 = await sr('viewer2', 'Queen Bohemian Rhapsody');
+  const other2 = await sr('viewer2', 'ABBA Dancing Queen');
+  const wishList = await get('/requests');
+  const pending = await js('window.CleanMusic.requests()');
+  const panel = await js(`(async () => {
+    window.CleanMusic.toggleQueue(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const text = document.querySelector('#queue-panel').textContent;
+    window.CleanMusic.toggleQueue(false);
+    return { label: text.includes('Songwünsche aus dem Chat'), by: text.includes('Wunsch von smoke') };
+  })()`);
+  const wrong = await get('/wrongsong?token=' + token + '&user=smoke');
+  const wrongNone = await get('/wrongsong?token=' + token + '&user=nobody');
+  const afterWrong = await js('window.CleanMusic.requests().length');
+  await js("window.cm.pluginSettingsSet('streamerbot', { requests: false })");
+  await wait(300);
+  const srOffAgain = await sr('viewer3', 'ABBA');
+
   await js("window.cm.pluginSettingsSet('streamerbot', { control: false })");
   await wait(2600);
   const blocked = await get('/skip?token=' + token);
@@ -2423,6 +2456,25 @@ async function smokeStreamerbotPlugin() {
     resume: [resume.status, resume.body],
     resumed,
     blockedWhenOff: blocked.status,
+    requests: {
+      off: srOff.status,
+      noToken: srNoToken.status,
+      empty: srEmpty.status,
+      blocked: srBlocked.body,
+      first: [sr1.status, sr1.body],
+      duplicate: srDup.body,
+      second: sr2.body,
+      perUserLimit: srLimit.body,
+      other: other1.body,
+      cooldown: [other2.status, other2.body],
+      list: wishList.body,
+      pending: pending.map((entry) => `${entry.position}:${entry.by}`),
+      panel,
+      wrongsong: wrong.body,
+      wrongNone: wrongNone.body,
+      afterWrong,
+      offAgain: srOffAgain.status,
+    },
     status: info && info.status ? info.status.text : null,
     fields: info && info.settings ? info.settings.fields.length : 0,
     closedAfterUnload: closed.status === 0,
@@ -2665,6 +2717,16 @@ function pluginContext(id) {
       previous: () => sendPlayerCommand('previous'),
       setVolume: (level) => sendPlayerCommand('volume', Number(level)),
       setMuted: (muted) => sendPlayerCommand('mute', Boolean(muted)),
+      // Song requests (CleanMusic 1.0.1): resolve with a plain result object.
+      request: (query, options = {}) =>
+        callRenderer('request', {
+          query: oneLine(query, 200),
+          by: oneLine(options.by, 40),
+          source: ['auto', 'full', 'preview'].includes(options.source) ? options.source : 'auto',
+          maxSeconds: Math.max(0, Math.min(6 * 3600, Math.round(Number(options.maxSeconds) || 0))),
+        }),
+      requests: () => callRenderer('requests'),
+      removeRequest: (by) => callRenderer('removeRequest', { by: oneLine(by, 40) }),
     },
     copyText: (text) => clipboard.writeText(String(text == null ? '' : text).slice(0, 10000)),
     openExternal: (url) => {
@@ -2712,6 +2774,48 @@ function sendPlayerCommand(command, value) {
   sendToRenderer('player-command', { command, value });
   return true;
 }
+
+function oneLine(value, max) {
+  return cleanText(value, max * 2)
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+// Player commands that answer (song requests): the renderer replies with the callId.
+const rendererCalls = new Map();
+let rendererCallId = 0;
+
+function callRenderer(command, value, timeout = 25000) {
+  if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve({ ok: false, reason: 'error', error: 'CleanMusic ist nicht bereit.' });
+  rendererCallId += 1;
+  const callId = rendererCallId;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      rendererCalls.delete(callId);
+      resolve({ ok: false, reason: 'timeout' });
+    }, timeout);
+    rendererCalls.set(callId, (result) => {
+      clearTimeout(timer);
+      rendererCalls.delete(callId);
+      resolve(result);
+    });
+    sendToRenderer('player-command', { command, value, callId });
+  });
+}
+
+ipcMain.on('player-command-result', (event, payload) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  const done = rendererCalls.get(Number(payload && payload.callId));
+  if (!done) return;
+  let result = null;
+  try {
+    result = JSON.parse(JSON.stringify(payload.result === undefined ? null : payload.result));
+  } catch {
+    result = { ok: false, reason: 'error' };
+  }
+  done(result);
+});
 
 function emitPluginEvent(type) {
   const snapshot = JSON.parse(JSON.stringify(playerState));

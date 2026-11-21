@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('cm', {
   onPlayerCommand: (listener) => {
     ipcRenderer.on('player-command', (_event, command) => listener(command));
   },
+  playerCommandResult: (callId, result) => ipcRenderer.send('player-command-result', { callId, result }),
   pluginSettingsSet: (id, patch) => ipcRenderer.invoke('plugin-settings-set', id, patch),
   pluginPickFolder: () => ipcRenderer.invoke('plugin-pick-folder'),
   newReleases: () => ipcRenderer.invoke('new-releases'),

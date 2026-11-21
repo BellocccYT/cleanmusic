@@ -106,6 +106,9 @@ hochrechnen.
 | `player.state()` | aktueller Player-Zustand (siehe oben) |
 | `player.play()`, `pause()`, `toggle()`, `next()`, `previous()` | Wiedergabe steuern |
 | `player.setVolume(level)`, `player.setMuted(bool)` | Lautstärke (0–1, mit Boost bis 1,5) |
+| `await player.request(query, { by, source, maxSeconds })` | **ab CleanMusic 1.0.1:** Songwunsch suchen und einreihen. `source`: `'auto'` (volle Titel vom Quellen-Plugin, sonst Vorschau), `'full'`, `'preview'`. Antwort `{ ok, track, position, playingNow }` oder `{ ok: false, reason }` mit `not-found`, `duplicate`, `too-long`, `no-source`, `timeout` |
+| `await player.requests()` | offene Songwünsche: `[{ by, title, artist, source, preview, position }]` |
+| `await player.removeRequest(by)` | letzten offenen Wunsch dieser Person entfernen: `{ ok, track }` |
 | `copyText(text)` | in die Zwischenablage |
 | `openExternal(url)` | `http(s)`-Link im Standardbrowser öffnen |
 | `openPath(dir)` | Ordner im Explorer öffnen (nur Ordner) |

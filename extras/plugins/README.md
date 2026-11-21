@@ -31,6 +31,7 @@ Der Server lauscht nur auf `127.0.0.1` und beantwortet nur Anfragen an
 
 Chat-Befehle für **Twitch** über [Streamer.bot](https://streamer.bot): `!song` schreibt
 den aktuellen Titel in den Chat, `!skip` springt weiter, `!pause` pausiert bzw. setzt fort.
+Optional: Songwünsche mit `!sr` (siehe unten).
 
 **In CleanMusic**
 
@@ -63,3 +64,34 @@ Steuerbefehlen liegen mindestens 2,5 Sekunden (Schutz vor Chat-Spam).
 Sicherheit: Der Server lauscht nur auf `127.0.0.1`, beantwortet nur Anfragen an
 `127.0.0.1`/`localhost`, und Steuerbefehle brauchen den Token – eine Webseite
 kann CleanMusic also nicht fernsteuern.
+
+### Songwünsche (optional, ab Plugin 1.1.0 und CleanMusic 1.0.1)
+
+Zuschauer wünschen sich mit `!sr Titel oder Artist` einen Song. CleanMusic sucht
+ihn, nimmt den passendsten Treffer und reiht ihn in die Warteschlange ein – dort
+steht er unter **„Songwünsche aus dem Chat“** mit „Wunsch von …“. Von dir selbst
+eingereihte Titel und Wünsche spielen vor dem Rest der Liste.
+
+1. In der Plugin-Karte **Songwünsche (!sr) erlauben** einschalten (Standard: aus).
+2. **Adressen kopieren** – jetzt mit drei zusätzlichen Zeilen:
+   ```
+   !sr         http://127.0.0.1:4788/request?token=…&user=%user%&q=%rawInputUrlEncoded%
+   !wrongsong  http://127.0.0.1:4788/wrongsong?token=…&user=%user%
+   !wishes     http://127.0.0.1:4788/requests
+   ```
+   `%user%` und `%rawInputUrlEncoded%` sind Variablen von Streamer.bot – genau so
+   stehen lassen.
+3. In Streamer.bot je eine Action mit **Fetch URL** (Ergebnis in eine Variable) und
+   **Send Message to Channel**, dazu die Commands `!sr`, `!wrongsong` (eigenen
+   letzten Wunsch zurückziehen) und `!wishes` (offene Wünsche anzeigen). Diese
+   drei dürfen alle Zuschauer nutzen.
+
+Einstellungen: woher die Wünsche kommen (**volle Titel** über ein aktives
+Quellen-Plugin, sonst 30-Sekunden-Vorschau – oder nur eines von beidem), Wünsche
+pro Zuschauer gleichzeitig (Standard 2), Wartezeit pro Zuschauer (60 s), höchstens
+offene Wünsche (15), Höchstlänge (10 Minuten) und gesperrte Wörter. Doppelte Titel
+werden abgelehnt. Läuft ein unpassender Wunsch, springen Mods mit `!skip` weiter;
+in CleanMusic entfernst du Wünsche in der Warteschlange mit ×.
+
+Achte darauf, dass du gewünschte Musik in deinem Stream spielen darfst
+(Musikrichtlinien von Twitch) – die Verantwortung liegt bei dir.

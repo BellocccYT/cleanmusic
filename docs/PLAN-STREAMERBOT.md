@@ -3,6 +3,9 @@
 Status: **Phase 1 gebaut** (`extras/plugins/streamerbot.js`, Weg A „Fetch URL“).
 Entscheidungen (21.11.2026): erst Fetch URL, WebSocket später; Befehle `!song`,
 `!skip`, `!pause`; **keine Songwünsche**; Plattform Twitch.
+Nachtrag 21.11.2026: **Songwünsche optional** auf Wunsch des Users – Plugin 1.1.0
+(`!sr`, `!wrongsong`, `!wishes`, Standard aus, Limits pro Zuschauer), braucht
+CleanMusic 1.0.1 (`player.request`/`requests`/`removeRequest`).
 
 ## Ziel
 

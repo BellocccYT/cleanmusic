@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.0.0**
+**Version 1.0.1**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -51,7 +51,15 @@ Unter [Releases](https://github.com/BellocccYT/cleanmusic/releases/latest):
 
 Installer und portable EXE teilen sich dasselbe Profil (`%APPDATA%\CleanMusic`):
 Favoriten, Playlists und Einstellungen sind in beiden da. Beim Deinstallieren
-bleibt das Profil erhalten. Die Dateien sind nicht code-signiert – Windows
+bleibt das Profil erhalten.
+
+**Tipp für Streamer (Elgato Wave Link, Windows-App-Lautstärke):** Nimm den
+Installer. Die portable EXE entpackt sich bei jedem Start in einen neuen
+Temp-Ordner – für Wave Link und Windows ist sie dann jedes Mal ein „neues“
+Programm, und die Zuordnung zu einem Kanal oder Ausgabegerät geht verloren.
+Die installierte Version liegt immer am selben Ort.
+
+Die Dateien sind nicht code-signiert – Windows
 SmartScreen fragt beim ersten Start einmal nach (*Weitere Informationen →
 Trotzdem ausführen*).
 
@@ -317,7 +325,9 @@ unverändert. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
 
 [`extras/plugins/streamerbot.js`](extras/plugins/) bringt Twitch-Chat-Befehle über
 Streamer.bot: `!song` postet den aktuellen Titel, `!skip` und `!pause` steuern
-CleanMusic (Token-geschützt, nur lokal). Anleitung:
+CleanMusic (Token-geschützt, nur lokal). Optional **Songwünsche** mit `!sr`,
+`!wrongsong` und `!wishes` – mit Limits pro Zuschauer, in der Warteschlange als
+„Wunsch von …“ markiert. Anleitung:
 [extras/plugins/README.md](extras/plugins/README.md#streamerbot-streamerbotjs).
 
 ### OBS Now-Playing (optionales Plugin)
@@ -398,9 +408,9 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-1.0.0-setup.exe` – **Installer** (ein Klick, pro Benutzer,
+- `release\CleanMusic-1.0.1-setup.exe` – **Installer** (ein Klick, pro Benutzer,
   ohne Admin-Rechte; installiert nach `%LOCALAPPDATA%\Programs\cleanmusic`)
-- `release\CleanMusic-1.0.0-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-1.0.1-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
@@ -423,7 +433,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-1.0.0.AppImage`.
+Ergebnis: `release/CleanMusic-1.0.1.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die

@@ -4710,3 +4710,9 @@ body.fs-open .toast {
 .kbd-row span {
   color: var(--muted);
 }
+
+/* Song requests in the queue panel */
+.queue-by {
+  font-style: normal;
+  color: var(--accent);
+}
