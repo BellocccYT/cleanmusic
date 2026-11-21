@@ -17,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows portable
+          - name: Windows portable + setup
             os: windows-latest
-            args: "--win portable"
+            args: "--win portable nsis"
             artifact: cleanmusic-windows
             files: "release/*.exe"
           - name: Linux AppImage

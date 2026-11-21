@@ -10,8 +10,8 @@ Stufe wird einzeln getestet, released und über die Update-Suche verteilt.
 | **0.10** | Warteschlange + Autoplay – **erledigt** |
 | **0.11** | Epidemic Sound und Artlist.io im Cutter-Modus – **erledigt** |
 | **0.12** | Erste-Schritte-Assistent – **erledigt** |
-| **0.13** | Englische Oberfläche (Deutsch/Englisch umschaltbar) |
-| **1.0** | Installer zusätzlich zur portablen EXE, Feinschliff, Release |
+| ~~0.13~~ | Englische Oberfläche – **auf 1.1 verschoben** (Entscheidung 21.11.2026: erst 1.0 fertig machen) |
+| **1.0** | Installer zusätzlich zur portablen EXE, Feinschliff, Release – **gebaut** |
 
 **Nicht in 1.0** (bewusst später): lokale Bibliothek mit Tags/Covern, Crossfade,
 Mini-Player, Playlist-Import/Export, Streamer.bot Teil 2 (WebSocket),
@@ -67,7 +67,7 @@ Beim ersten Start (und später über Einstellungen erneut aufrufbar), 4–5 Schr
 
 Bestehende Nutzer sehen ihn nicht automatisch (nur „Neu in dieser Version“-Hinweis).
 
-## 0.13 – Englische Oberfläche
+## 1.1 – Englische Oberfläche (verschoben von 0.13)
 
 - Alle Texte aus `app.js`/`index.html` in Sprachdateien (`renderer/i18n/de.js`,
   `en.js`), Funktion `t('key')`. Sprache: Systemsprache als Standard, umschaltbar
@@ -80,10 +80,12 @@ Bestehende Nutzer sehen ihn nicht automatisch (nur „Neu in dieser Version“-H
 ## 1.0 – Installer, Feinschliff, Release
 
 - **Installer (NSIS)** zusätzlich zur portablen EXE: Startmenü, Deinstallation,
-  Daten bleiben in `%APPDATA%\CleanMusic`. Updates beim Installer über
-  `electron-updater` (liest `latest.yml` aus dem Release), die portable EXE behält
-  ihren eigenen Updater. Asset-Namen bleiben kompatibel.
-- Feinschliff: Leistung bei großen Listen, Fehlermeldungen, Tastenkürzel-Übersicht.
+  Daten bleiben in `%APPDATA%\CleanMusic`. **Umgesetzt ohne electron-updater:**
+  der eigene Updater lädt `CleanMusic-<version>-setup.exe` (gleiche SHA-256-Prüfung
+  wie bei der portablen EXE) und startet ihn still (`--updated /S --force-run`).
+  Ein Code-Weg, keine zusätzliche Abhängigkeit, kein `latest.yml` nötig.
+- Feinschliff: Tastenkürzel-Übersicht (`?`/F1). Leistung bei großen Listen und
+  Fehlermeldungen nach Rückmeldungen aus dem Alltag.
 - README/Screenshots, LEGAL, Release-Notizen; Release v1.0.0.
 
 ## Arbeitsweise

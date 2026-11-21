@@ -5,7 +5,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 0.12.0**
+**Version 1.0.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -38,6 +38,22 @@ Kein DRM-Bypass. Kein Herunterladen oder Speichern von Streams.
 </table>
 
 ---
+
+## Download
+
+Unter [Releases](https://github.com/BellocccYT/cleanmusic/releases/latest):
+
+| Datei | Für wen |
+| --- | --- |
+| `CleanMusic-<version>-setup.exe` | **Installer** – Startmenü- und Desktop-Verknüpfung, Deinstallation über die Windows-Einstellungen, Updates mit einem Klick |
+| `CleanMusic-<version>-portable.exe` | **Portable** – keine Installation, einfach doppelklicken (z. B. vom USB-Stick) |
+| `CleanMusic-<version>.AppImage` | Linux |
+
+Installer und portable EXE teilen sich dasselbe Profil (`%APPDATA%\CleanMusic`):
+Favoriten, Playlists und Einstellungen sind in beiden da. Beim Deinstallieren
+bleibt das Profil erhalten. Die Dateien sind nicht code-signiert – Windows
+SmartScreen fragt beim ersten Start einmal nach (*Weitere Informationen →
+Trotzdem ausführen*).
 
 ## Erste Schritte
 
@@ -250,10 +266,13 @@ CleanMusic sucht **bei jedem Start** nach einer neuen Version (abschaltbar unter
 *Einstellungen → Updates*, dort gibt es auch **Jetzt suchen**). Ist eine da,
 erscheint unten rechts ein Hinweis:
 
-- **Portable EXE und AppImage** aktualisieren sich selbst: *Aktualisieren* lädt
+- **Installiert (Setup):** *Updaten* lädt den neuen Installer, prüft Größe und
+  SHA-256-Prüfsumme; nach *Jetzt installieren* schließt sich CleanMusic kurz,
+  installiert das Update ohne Rückfragen und startet von selbst neu.
+- **Portable EXE und AppImage** aktualisieren sich selbst: *Updaten* lädt
   die neue Datei neben deine jetzige, prüft Größe und SHA-256-Prüfsumme und
-  startet sie nach *Jetzt neu starten*. Deine Daten bleiben, weil sie im
-  App-Profil liegen. Die alte EXE kannst du danach löschen.
+  startet sie nach *Jetzt neu starten*. Die alte EXE kannst du danach löschen.
+- Deine Daten bleiben in jedem Fall, weil sie im App-Profil liegen.
 - Aus dem Quellcode gestartet gibt es einen Link zur Download-Seite.
 
 Gefragt wird nur die öffentliche Release-Liste dieses Repositorys auf GitHub,
@@ -379,13 +398,16 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-0.12.0-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-1.0.0-setup.exe` – **Installer** (ein Klick, pro Benutzer,
+  ohne Admin-Rechte; installiert nach `%LOCALAPPDATA%\Programs\cleanmusic`)
+- `release\CleanMusic-1.0.0-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
 
 `release/` bleibt aus Git ausgeschlossen. Für eine Weitergabe hängst du die
-portable EXE als Asset an ein GitHub Release, statt sie ins Repository zu committen.
+EXE-Dateien als Assets an ein GitHub Release (macht der Workflow bei einem
+`v*`-Tag), statt sie ins Repository zu committen.
 
 Die EXE ist nicht code-signiert. Windows SmartScreen zeigt beim ersten Start
 „Windows hat den PC geschützt" → **Weitere Informationen** →
@@ -401,7 +423,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-0.12.0.AppImage`.
+Ergebnis: `release/CleanMusic-1.0.0.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die
@@ -441,6 +463,7 @@ da ist, bleibt der „Im Browser öffnen"-Fallback. Details:
   ergänzen (es wird nichts gelöscht).
 - **Einstellungen → Aussehen** → Theme wählen, Akzentfarbe aus dem Cover.
 - **Strg + K** fokussiert die Suche.
+- **?** (oder **F1**) zeigt alle Tastenkürzel – auch unter *Einstellungen → System*.
 
 Jeder Dienst bekommt eine eigene persistente Session (`persist:cm-<dienst>`),
 Logins bleiben also nach einem Neustart erhalten. Über *Einstellungen →
@@ -569,9 +592,10 @@ THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 
 ## Nächste sinnvolle Schritte
 
-Der Fahrplan zu **1.0** steht in [docs/PLAN-1.0.md](docs/PLAN-1.0.md): Warteschlange + Autoplay,
-Epidemic Sound und Artlist im Cutter-Modus, Erste-Schritte-Assistent, englische Oberfläche,
-Installer. Danach:
+Der Fahrplan zu **1.0** steht in [docs/PLAN-1.0.md](docs/PLAN-1.0.md) (Warteschlange + Autoplay,
+Epidemic Sound und Artlist, Erste-Schritte-Assistent, Installer – fertig). Als Nächstes:
+
+- **1.1: Englische Oberfläche** (Deutsch/Englisch umschaltbar, README auf Englisch).
 
 0. **Streamer.bot Phase 2:** Titelwechsel als WebSocket-Ereignis direkt in Streamer.bot
    (Phase 1 mit !song/!skip/!pause ist fertig). Plan: [docs/PLAN-STREAMERBOT.md](docs/PLAN-STREAMERBOT.md).

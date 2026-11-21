@@ -4679,3 +4679,34 @@ body.fs-open .toast {
   flex-direction: column;
   gap: 3px;
 }
+
+/* Shortcut overview (dialog with rich text) */
+#dialog-text.dialog-rich {
+  color: var(--text);
+}
+.kbd-grid {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.kbd-row {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.kbd-row kbd {
+  justify-self: start;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  white-space: nowrap;
+}
+.kbd-row span {
+  color: var(--muted);
+}

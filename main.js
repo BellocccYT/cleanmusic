@@ -23,6 +23,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const crypto = require('node:crypto');
+const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { DiscordPresence } = require('./discord-rpc');
 
@@ -35,10 +36,15 @@ const isSmokeStreamerbot = process.argv.includes('--smoke-streamerbot');
 // Updater test: pretend to be 0.0.1 and download the latest release into a
 // throwaway folder (never replaces anything, never restarts).
 const UPDATE_TEST = isSmoke && process.argv.includes('--smoke-update');
-if (UPDATE_TEST && process.platform === 'win32') {
-  process.env.PORTABLE_EXECUTABLE_DIR = path.join(app.getPath('temp'), 'cleanmusic-update-test');
-  process.env.PORTABLE_EXECUTABLE_FILE = path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'CleanMusic-0.0.1-portable.exe');
-  fs.mkdirSync(process.env.PORTABLE_EXECUTABLE_DIR, { recursive: true });
+// --smoke-update-setup: the same as an installed copy (loads the setup EXE).
+const UPDATE_TEST_SETUP = UPDATE_TEST && process.argv.includes('--smoke-update-setup');
+const UPDATE_TEST_DIR = path.join(app.getPath('temp'), 'cleanmusic-update-test');
+if (UPDATE_TEST) {
+  fs.mkdirSync(UPDATE_TEST_DIR, { recursive: true });
+  if (process.platform === 'win32' && !UPDATE_TEST_SETUP) {
+    process.env.PORTABLE_EXECUTABLE_DIR = UPDATE_TEST_DIR;
+    process.env.PORTABLE_EXECUTABLE_FILE = path.join(UPDATE_TEST_DIR, 'CleanMusic-0.0.1-portable.exe');
+  }
 }
 
 // The smoke test favourites, creates playlists etc. – never in the real profile.
@@ -1138,6 +1144,23 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_ONBOARDING:', JSON.stringify(onboardingResult));
+
+          // Shortcut overview (1.0): "?" opens it, Escape closes it.
+          const shortcutsResult = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+              await wait(80);
+              const open = !document.querySelector('#dialog').hidden;
+              const title = document.querySelector('#dialog-title').textContent;
+              const rows = document.querySelectorAll('#dialog-text kbd').length;
+              const cancelHidden = document.querySelector('#dialog-cancel').hidden;
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+              await wait(80);
+              return { open, title, rows, cancelHidden, closed: document.querySelector('#dialog').hidden, cancelBack: !document.querySelector('#dialog-cancel').hidden };
+            })()
+          `);
+          console.log('SMOKE_SHORTCUTS:', JSON.stringify(shortcutsResult));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -2268,11 +2291,23 @@ async function smokeUpdate() {
     fakeTarget
   );
   const assetOk = Boolean(picked && picked.url === 'https://github.com/a/b/x.exe' && picked.sha256 === 'a'.repeat(64));
+  const setupPicked = pickUpdateAsset(
+    {
+      assets: [
+        { name: 'CleanMusic-9.9.9-portable.exe', size: 5, browser_download_url: 'https://github.com/a/b/p.exe' },
+        { name: 'CleanMusic-9.9.9-setup.exe', size: 6, digest: 'sha256:' + 'b'.repeat(64), browser_download_url: 'https://github.com/a/b/s.exe' },
+      ],
+    },
+    { kind: 'setup', file: 'x', dir: 'y', pattern: /^CleanMusic-[0-9.]+-setup\.exe$/i }
+  );
+  const setupOk = Boolean(setupPicked && setupPicked.url === 'https://github.com/a/b/s.exe');
 
   const checked = await checkForUpdates();
   const result = {
     versions,
     assetOk,
+    setupOk,
+    kind: checked.kind,
     status: checked.status,
     latest: checked.latest,
     current: checked.current,
@@ -2294,8 +2329,8 @@ async function smokeUpdate() {
         size: done.file && fs.existsSync(done.file) ? fs.statSync(done.file).size : 0,
         verified: Boolean(updateState.asset && updateState.asset.sha256),
       };
-      fs.rmSync(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE), { recursive: true, force: true });
     }
+    fs.rmSync(UPDATE_TEST_DIR, { recursive: true, force: true });
   }
   return result;
 }
@@ -3207,11 +3242,14 @@ app.on('web-contents-created', (_event, contents) => {
  * Updates
  *
  * On every start (setting, default on) CleanMusic asks the GitHub
- * releases of this project for the latest version. The portable EXE and
- * the AppImage can update themselves: the new file is downloaded next to
- * the current one, checked against size and the SHA-256 digest GitHub
- * publishes, and started after CleanMusic closed. Other installs (e.g.
- * started from the source) only get a link to the release page.
+ * releases of this project for the latest version. Every download is
+ * checked against size and the SHA-256 digest GitHub publishes.
+ *  - portable EXE / AppImage: the new file lands next to the current one
+ *    and is started after CleanMusic closed.
+ *  - installed (NSIS setup): the new setup EXE lands in the temp folder
+ *    and runs silently (--updated /S --force-run): it closes CleanMusic,
+ *    installs over it and starts the new version. Data stays in the profile.
+ * Other copies (e.g. started from the source) only get a link.
  * ------------------------------------------------------------------ */
 
 const UPDATE_REPO = 'BellocccYT/cleanmusic';
@@ -3249,6 +3287,23 @@ function isNewerVersion(latest, current) {
   return false;
 }
 
+// Installed with the setup EXE: the NSIS uninstaller sits next to CleanMusic.exe.
+let installedCache = null;
+function isInstalledCopy() {
+  if (installedCache !== null) return installedCache;
+  installedCache = false;
+  if (process.platform === 'win32' && app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE) {
+    try {
+      installedCache = fs.readdirSync(path.dirname(process.execPath)).some((name) => /^Uninstall .+\.exe$/i.test(name));
+    } catch {
+      installedCache = false;
+    }
+  }
+  return installedCache;
+}
+
+const SETUP_UPDATE_DIR = path.join(app.getPath('temp'), 'cleanmusic-update');
+
 // What this copy of CleanMusic can replace by itself.
 function updateTarget() {
   if (process.platform === 'win32' && process.env.PORTABLE_EXECUTABLE_FILE) {
@@ -3257,6 +3312,14 @@ function updateTarget() {
       file: process.env.PORTABLE_EXECUTABLE_FILE,
       dir: process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.env.PORTABLE_EXECUTABLE_FILE),
       pattern: /^CleanMusic-[0-9.]+-portable\.exe$/i,
+    };
+  }
+  if (UPDATE_TEST_SETUP || isInstalledCopy()) {
+    return {
+      kind: 'setup',
+      file: process.execPath,
+      dir: UPDATE_TEST_SETUP ? UPDATE_TEST_DIR : SETUP_UPDATE_DIR,
+      pattern: /^CleanMusic-[0-9.]+-setup\.exe$/i,
     };
   }
   if (process.platform === 'linux' && process.env.APPIMAGE) {
@@ -3299,8 +3362,10 @@ function updateConfig() {
 }
 
 function publicUpdate() {
+  const target = updateTarget();
   return Object.assign({}, updateState, {
-    installable: Boolean(updateTarget()),
+    installable: Boolean(target),
+    kind: target ? target.kind : null,
     auto: updateConfig().auto,
     asset: updateState.asset ? { name: updateState.asset.name, size: updateState.asset.size } : null,
   });
@@ -3375,6 +3440,7 @@ async function downloadUpdate() {
   setUpdate({ status: 'downloading', progress: 0, error: null });
   const partial = `${dest}.download`;
   try {
+    fs.mkdirSync(target.dir, { recursive: true });
     const response = await net.fetch(asset.url, { headers: { 'user-agent': `CleanMusic/${app.getVersion()}` } });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     if (response.url && !updateHostAllowed(response.url)) throw new Error('Unerwartete Download-Adresse');
@@ -3417,11 +3483,37 @@ async function downloadUpdate() {
 function installUpdate() {
   const file = updateState.file;
   if (updateState.status !== 'ready' || !file || !fs.existsSync(file)) return false;
+  const target = updateTarget();
+  if (target && target.kind === 'setup') {
+    // Silent NSIS update: waits for CleanMusic to close, installs over it,
+    // keeps the profile (--updated) and starts the new version (--force-run).
+    try {
+      spawn(file, ['--updated', '/S', '--force-run'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    } catch (error) {
+      setUpdate({ status: 'error', error: `Installer startet nicht: ${error.message}` });
+      return false;
+    }
+    quitting = true;
+    app.quit();
+    return true;
+  }
   // The new version starts once this one has fully closed (single-instance lock).
   quitting = true;
   app.relaunch({ execPath: file, args: [] });
   app.quit();
   return true;
+}
+
+// Leftover setup EXE from the last update (it ran from the temp folder).
+function cleanupSetupUpdate() {
+  if (!isInstalledCopy()) return;
+  setTimeout(() => {
+    try {
+      fs.rmSync(SETUP_UPDATE_DIR, { recursive: true, force: true });
+    } catch {
+      // still in use – next start
+    }
+  }, 15000);
 }
 
 ipcMain.handle('update-get', () => publicUpdate());
@@ -3520,6 +3612,7 @@ app.whenReady().then(() => {
   createTray();
   wireCreatorDownloads();
   // Update check on every start (setting "Beim Start nach Updates suchen").
+  if (!isSmoke) cleanupSetupUpdate();
   if (!isSmoke && updateConfig().auto) {
     setTimeout(() => checkForUpdates().catch(() => {}), 4000);
   }

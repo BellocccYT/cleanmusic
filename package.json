@@ -1,7 +1,7 @@
 {
   "name": "cleanmusic",
   "productName": "CleanMusic",
-  "version": "0.12.0",
+  "version": "1.0.0",
   "private": true,
   "description": "CleanMusic – The Music Launcher. Alle Streaming-Dienste an einem Ort, lokale Wiedergabe, Favoriten, Playlists, Cutter-Modus, Vollbild-Player mit Visualizer, Discord Rich Presence und optionale Quellen-Plugins.",
   "author": "CleanMusic",
@@ -15,10 +15,11 @@
     "smoke:obs": "electron . --smoke --smoke-obs",
     "smoke:streamerbot": "electron . --smoke --smoke-streamerbot",
     "smoke:update": "electron . --smoke --smoke-update",
-    "build:win": "electron-builder --win portable",
+    "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux AppImage",
     "build:dir": "electron-builder --win dir",
-    "icons": "electron tools/make-icons.js"
+    "icons": "electron tools/make-icons.js",
+    "smoke:update-setup": "electron . --smoke --smoke-update --smoke-update-setup"
   },
   "build": {
     "appId": "de.cleanmusic.launcher",
@@ -46,13 +47,19 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "artifactName": "CleanMusic-${version}-portable.${ext}",
       "icon": "build/icon.ico"
     },
     "portable": {
-      "requestExecutionLevel": "user"
+      "requestExecutionLevel": "user",
+      "artifactName": "CleanMusic-${version}-portable.${ext}"
     },
     "linux": {
       "target": [
@@ -67,6 +74,19 @@
       "category": "AudioVideo",
       "synopsis": "The Music Launcher",
       "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "CleanMusic-${version}-setup.${ext}",
+      "shortcutName": "CleanMusic",
+      "uninstallDisplayName": "CleanMusic",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     }
   },
   "devDependencies": {

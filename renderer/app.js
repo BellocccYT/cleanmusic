@@ -966,7 +966,7 @@
    * Dialog + popover menus
    * ---------------------------------------------------------------- */
 
-  function openDialog({ title, text = '', value = '', input = true, confirm = 'OK', danger = false }) {
+  function openDialog({ title, text = '', html = '', value = '', input = true, confirm = 'OK', danger = false, info = false }) {
     return new Promise((resolve) => {
       const root = $('#dialog');
       const form = $('#dialog-form');
@@ -977,8 +977,11 @@
 
       hideMenus();
       $('#dialog-title').textContent = title;
-      textEl.textContent = text;
-      textEl.hidden = !text;
+      if (html) textEl.innerHTML = html;
+      else textEl.textContent = text;
+      textEl.hidden = !text && !html;
+      textEl.classList.toggle('dialog-rich', Boolean(html));
+      cancel.hidden = info;
       field.hidden = !input;
       field.value = value;
       ok.textContent = confirm;
@@ -996,6 +999,7 @@
 
       const finish = (result) => {
         root.hidden = true;
+        cancel.hidden = false;
         form.removeEventListener('submit', onSubmit);
         cancel.removeEventListener('click', onCancel);
         root.removeEventListener('mousedown', onBackdrop);
@@ -1029,6 +1033,26 @@
       root.addEventListener('mousedown', onBackdrop);
       document.addEventListener('keydown', onKey, true);
     });
+  }
+
+  const SHORTCUTS = [
+    ['Strg + K', 'Suche'],
+    ['F', 'Vollbild-Player an/aus'],
+    ['M', 'Ton aus/an'],
+    ['+ / −', 'Lautstärke'],
+    ['Leertaste / K', 'Play/Pause (im Vollbild)'],
+    ['← / →', '5 Sekunden zurück/vor (im Vollbild)'],
+    ['↑ / ↓', 'Lautstärke (im Vollbild)'],
+    ['N / P', 'Nächster/vorheriger Titel (im Vollbild)'],
+    ['Esc', 'Vollbild, Menü oder Dialog schließen'],
+    ['Medientasten', 'Play/Pause, Weiter, Zurück – auch im Hintergrund'],
+    ['?', 'Diese Übersicht'],
+  ];
+
+  function showShortcuts() {
+    if (!$('#dialog').hidden) return;
+    const rows = SHORTCUTS.map(([keys, what]) => `<span class="kbd-row"><kbd>${esc(keys)}</kbd><span>${esc(what)}</span></span>`).join('');
+    openDialog({ title: 'Tastenkürzel', html: `<span class="kbd-grid">${rows}</span>`, input: false, confirm: 'Schließen', info: true });
   }
 
   function askText(options) {
@@ -3448,6 +3472,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.0.0': [
+      'CleanMusic 1.0 – jetzt auch als Installer (Startmenü, Deinstallation, Updates mit einem Klick).',
+      'Tastenkürzel-Übersicht: einfach ? drücken (oder Einstellungen → System → „Tastenkürzel“).',
+      'Seit 0.10–0.12: Warteschlange + Autoplay, Epidemic Sound und Artlist, Erste-Schritte-Assistent.',
+    ],
     '0.12.0': [
       'Erste-Schritte-Assistent – jederzeit unter Einstellungen → System → „Erste Schritte“.',
       'Seit 0.11: Epidemic Sound und Artlist im Cutter-Modus, Abo-Downloads im Cutting-Ordner.',
@@ -5458,10 +5487,14 @@
       body = `
         <div class="update-text">
           <strong>Update ${esc(info.latest)} ist bereit</strong>
-          <small>Geprüft und neben deiner jetzigen Version gespeichert. Die alte EXE kannst du danach löschen.</small>
+          <small>${
+            info.kind === 'setup'
+              ? 'Geprüft. CleanMusic schließt sich kurz, installiert das Update und startet von selbst neu.'
+              : 'Geprüft und neben deiner jetzigen Version gespeichert. Die alte EXE kannst du danach löschen.'
+          }</small>
         </div>
         <div class="update-actions">
-          <button class="btn primary small" data-update="install">Jetzt neu starten</button>
+          <button class="btn primary small" data-update="install">${info.kind === 'setup' ? 'Jetzt installieren' : 'Jetzt neu starten'}</button>
           <button class="btn ghost small" data-update="later">Beim nächsten Mal</button>
         </div>`;
     } else {
@@ -6420,6 +6453,7 @@
           </dl>
           <div class="row" style="margin-top:12px">
             <button class="btn ghost small" data-onboarding="open">Erste Schritte erneut zeigen</button>
+            <button class="btn ghost small" data-shortcuts="open">Tastenkürzel</button>
           </div>
         </div>
 
@@ -7059,6 +7093,10 @@ ${updatePanel()}
         openOnboarding();
         return;
       }
+      if (event.target.closest('[data-shortcuts]')) {
+        showShortcuts();
+        return;
+      }
 
       const updateButton = event.target.closest('[data-update]');
       if (updateButton) {
@@ -7472,6 +7510,11 @@ ${updatePanel()}
       if (typing && event.target.type !== 'range') return;
 
       const key = event.key;
+      if (key === '?' || key === 'F1') {
+        event.preventDefault();
+        showShortcuts();
+        return;
+      }
       if (key === 'f' || key === 'F') {
         event.preventDefault();
         toggleFullscreen();
@@ -7715,6 +7758,7 @@ ${updatePanel()}
       },
     },
     whatsNew: (version) => showWhatsNew(version),
+    shortcuts: () => showShortcuts(),
     queue: () => ({
       index: state.queue.index,
       kind: state.queue.kind,
