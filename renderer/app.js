@@ -3871,6 +3871,9 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.11.1': [
+      'Playlist-Import: CSV-Dateien mit Spalte „Song“ statt „Track Name“ und Längen wie 3:45 werden jetzt erkannt (z. B. Exporte von Playlist-Analyse-Seiten).',
+    ],
     '1.11.0': [
       'Neue Songtext-Effekte: Neon (flackerndes Leuchten), Welle (Wörter wippen im Takt), Schreibmaschine (Buchstabe für Buchstabe) und Zoom.',
       'Neue Spektrum-Stile: Spiegel (wächst aus der Mitte nach oben und unten) und Partikel (leuchtende Punkte steigen mit der Musik auf).',

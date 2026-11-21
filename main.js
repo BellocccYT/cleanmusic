@@ -553,16 +553,25 @@ function parseCsvRows(text) {
   return rows;
 }
 
+// Duration as milliseconds (Exportify) or as mm:ss / h:mm:ss (other exporters).
+function csvDurationMs(value) {
+  const text = String(value || '').trim();
+  const clock = text.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (clock) return ((Number(clock[1] || 0) * 60 + Number(clock[2])) * 60 + Number(clock[3])) * 1000;
+  const number = Number(text);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
 function parseSpotifyCsv(text, filename) {
   const rows = parseCsvRows(text);
   if (rows.length < 2) throw new Error('Die CSV-Datei enthält keine Titel.');
   const headers = rows[0].map((header) => String(header || '').trim().toLowerCase());
   const column = (...names) => headers.findIndex((header) => names.includes(header));
-  const titleCol = column('track name', 'trackname', 'track title', 'title');
+  const titleCol = column('track name', 'trackname', 'track title', 'title', 'song', 'song name', 'songname', 'name', 'track');
   const artistCol = column('artist name(s)', 'artist name', 'artistname', 'artist', 'artists');
   if (titleCol < 0 || artistCol < 0) throw new Error('CSV-Kopfzeile nicht erkannt. Benötigt werden Titel- und Artist-Spalten.');
   const albumCol = column('album name', 'album');
-  const durationCol = column('duration (ms)', 'duration_ms', 'duration');
+  const durationCol = column('duration (ms)', 'duration_ms', 'duration', 'length', 'time');
   const isrcCol = column('isrc');
   const nameCol = column('playlist name', 'playlist');
   const tracks = rows.slice(1).map((row) => {
@@ -570,7 +579,7 @@ function parseSpotifyCsv(text, filename) {
       title: row[titleCol],
       artist: row[artistCol],
       albumName: albumCol >= 0 ? row[albumCol] : '',
-      durationMs: durationCol >= 0 ? row[durationCol] : 0,
+      durationMs: durationCol >= 0 ? csvDurationMs(row[durationCol]) : 0,
       isrc: isrcCol >= 0 ? row[isrcCol] : '',
     };
     return spotifyTrack(raw, 'export');
