@@ -369,6 +369,11 @@ da ist, bleibt der „Im Browser öffnen"-Fallback. Details:
 - **Cutter-Modus** → Kategorien durchklicken, Kopier-Knopf sammelt Credits.
 - **F** öffnet den Vollbild-Player (Leertaste, Pfeiltasten, N/P, Esc).
 - **M** stumm, **+ / −** lauter/leiser, **Mausrad** auf dem Lautstärkeregler.
+- **Medientasten** der Tastatur und das **Windows-Medien-Overlay** (mit Titel,
+  Artist und Cover) steuern CleanMusic.
+- **Einstellungen → Sichern & Wiederherstellen** → Favoriten, Playlists,
+  Video-Credits, Verlauf und Aussehen als JSON sichern oder auf einem anderen PC
+  ergänzen (es wird nichts gelöscht).
 - **Einstellungen → Aussehen** → Theme wählen, Akzentfarbe aus dem Cover.
 - **Strg + K** fokussiert die Suche.
 
@@ -502,8 +507,8 @@ THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 0. **Streamer.bot-Plugin** (für 1.0 geplant): Befehle wie !song / !skip und
    Titelwechsel als Ereignisse – als eigenes, optionales Plugin über die Plugin-API v2.
 
-1. **Export/Import** von Favoriten, Playlists und Video-Credits (JSON-Backup).
-2. **Medientasten & Windows-Media-Overlay** (`navigator.mediaSession`), Tray-Icon.
+1. **Tray-Icon** mit Mini-Steuerung.
+2. **Cloud-freier Sync** zwischen PCs über einen selbst gewählten Ordner.
 3. **Cutter-Extras:** BPM-Filter, Wellenform mit Schnittmarken, Sounds per Drag & Drop in den Editor.
 4. **Scrobbling** (Last.fm / ListenBrainz) für lokale Titel, Radio und volle Titel.
 5. **ISRC-Matching** für Playlist-Import/Export zwischen Diensten.

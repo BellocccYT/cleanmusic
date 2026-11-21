@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('cm', {
   pluginSettingsSet: (id, patch) => ipcRenderer.invoke('plugin-settings-set', id, patch),
   pluginPickFolder: () => ipcRenderer.invoke('plugin-pick-folder'),
   newReleases: () => ipcRenderer.invoke('new-releases'),
+  backupSave: (text) => ipcRenderer.invoke('backup-save', text),
+  backupOpen: () => ipcRenderer.invoke('backup-open'),
   pluginCharts: (id, limit) => ipcRenderer.invoke('plugin-charts', id, limit),
   cuttingDefaultFolder: () => ipcRenderer.invoke('cutting-default-folder'),
   cuttingDownload: (item) => ipcRenderer.invoke('cutting-download', item),

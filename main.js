@@ -897,6 +897,39 @@ function createMainWindow() {
           console.error('SMOKE_HOME_FAIL:', error.message);
         }
 
+        // Windows media overlay + backup import (merge, nothing deleted).
+        try {
+          const extrasResult = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const before = cm.state().favorites;
+              const counts = await cm.importBackup({
+                app: 'CleanMusic',
+                kind: 'backup',
+                format: 1,
+                collection: {
+                  favorites: [{ id: 'radio:smoke-backup', kind: 'radio', title: 'Backup-Sender', url: 'https://example.invalid/stream' }],
+                  playlists: [{ id: 'pl-smoke-backup', name: 'Aus dem Backup', items: [] }],
+                },
+                credits: [{ id: 'smoke-credit', title: 'T', credit: 'Credit-Text' }],
+                history: [],
+                settings: { theme: 'nacht' },
+              });
+              const rejected = await cm.importBackup({ app: 'Other' });
+              return {
+                media: cm.mediaSession(),
+                counts,
+                rejected,
+                favorites: { before, after: cm.state().favorites },
+                playlists: cm.state().playlists.length,
+              };
+            })()
+          `);
+          console.log('SMOKE_EXTRAS:', JSON.stringify(extrasResult));
+        } catch (error) {
+          console.error('SMOKE_EXTRAS_FAIL:', error.message);
+        }
+
         try {
           const plugins = await mainWindow.webContents.executeJavaScript(
             'window.CleanMusic.plugins()'
@@ -1753,6 +1786,41 @@ ipcMain.handle('cutting-open-folder', async (_event, folder) => {
     return 'Ordner konnte nicht angelegt werden.';
   }
   return shell.openPath(target);
+});
+
+/* Backup: favourites, playlists, credits, history, appearance as JSON. */
+ipcMain.handle('backup-save', async (_event, text) => {
+  if (typeof text !== 'string' || text.length > 30 * 1024 * 1024) return { error: 'Ungültige Daten' };
+  const stamp = new Date().toISOString().slice(0, 10);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'CleanMusic-Daten sichern',
+    defaultPath: path.join(app.getPath('documents'), `CleanMusic-Backup-${stamp}.json`),
+    filters: [{ name: 'CleanMusic-Backup', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  try {
+    fs.writeFileSync(result.filePath, text, 'utf8');
+    return { ok: true, path: result.filePath };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('backup-open', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'CleanMusic-Backup öffnen',
+    defaultPath: app.getPath('documents'),
+    properties: ['openFile'],
+    filters: [{ name: 'CleanMusic-Backup', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePaths.length) return { canceled: true };
+  try {
+    const file = result.filePaths[0];
+    if (fs.statSync(file).size > 30 * 1024 * 1024) return { error: 'Datei zu groß' };
+    return { ok: true, data: JSON.parse(fs.readFileSync(file, 'utf8')) };
+  } catch (error) {
+    return { error: `Backup nicht lesbar: ${error.message}` };
+  }
 });
 
 ipcMain.handle('copy-text', (_event, text) => {

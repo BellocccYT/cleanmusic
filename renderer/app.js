@@ -3138,6 +3138,7 @@
     syncFullscreen();
     pushPresence();
     pushPlayerState();
+    updateMediaSession();
   }
 
   function updateNowPlayingActions() {
@@ -4471,6 +4472,247 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Media keys + Windows media overlay (navigator.mediaSession)
+   * ---------------------------------------------------------------- */
+
+  let mediaPositionAt = 0;
+
+  function updateMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    const session = navigator.mediaSession;
+    const item = currentItem();
+    if (!item) {
+      session.metadata = null;
+      session.playbackState = 'none';
+      return;
+    }
+    try {
+      const fallback = new URL('assets/icon.png', location.href).href;
+      session.metadata = new MediaMetadata({
+        title: item.title || 'CleanMusic',
+        artist: item.artist || item.sourceLabel || '',
+        album: item.album || (item.kind === 'radio' ? 'Live Radio' : 'CleanMusic'),
+        artwork: item.artwork
+          ? [{ src: item.artwork, sizes: '512x512' }]
+          : [{ src: fallback, sizes: '256x256', type: 'image/png' }],
+      });
+    } catch {
+      /* ignore */
+    }
+    session.playbackState = audio.getAttribute('src') && !audio.paused ? 'playing' : 'paused';
+  }
+
+  function updateMediaPosition(force = false) {
+    if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+    if (!force && Date.now() - mediaPositionAt < 5000) return;
+    mediaPositionAt = Date.now();
+    try {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        navigator.mediaSession.setPositionState({
+          duration: audio.duration,
+          position: Math.min(audio.duration, audio.currentTime || 0),
+          playbackRate: audio.playbackRate || 1,
+        });
+      } else {
+        navigator.mediaSession.setPositionState();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function wireMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    const set = (action, handler) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        /* action not supported */
+      }
+    };
+    set('play', () => {
+      if (audio.paused) $('#btn-play').click();
+    });
+    set('pause', () => {
+      if (!audio.paused) $('#btn-play').click();
+    });
+    set('previoustrack', () => $('#btn-prev').click());
+    set('nexttrack', () => stepQueue(1));
+    set('seekbackward', (details) => {
+      if (Number.isFinite(audio.duration)) audio.currentTime = Math.max(0, audio.currentTime - ((details && details.seekOffset) || 10));
+    });
+    set('seekforward', (details) => {
+      if (Number.isFinite(audio.duration)) {
+        audio.currentTime = Math.min(audio.duration, audio.currentTime + ((details && details.seekOffset) || 10));
+      }
+    });
+    set('seekto', (details) => {
+      if (details && Number.isFinite(details.seekTime) && Number.isFinite(audio.duration)) {
+        audio.currentTime = Math.min(audio.duration, Math.max(0, details.seekTime));
+      }
+    });
+    ['play', 'pause', 'emptied'].forEach((name) =>
+      audio.addEventListener(name, () => {
+        updateMediaSession();
+        updateMediaPosition(true);
+      })
+    );
+    ['loadedmetadata', 'seeked', 'durationchange'].forEach((name) =>
+      audio.addEventListener(name, () => updateMediaPosition(true))
+    );
+    audio.addEventListener('timeupdate', () => updateMediaPosition());
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Backup: export / import (local JSON file)
+   *
+   * Favourites, playlists, video credits, listening history and the
+   * appearance/playback settings. Import merges – nothing is deleted.
+   * ---------------------------------------------------------------- */
+
+  const BACKUP_SETTINGS = [
+    'theme',
+    'coverAccent',
+    'visualizer',
+    'vizStyle',
+    'miniViz',
+    'normalize',
+    'volumeBoost',
+    'fullTracks',
+    'systemBrowser',
+  ];
+
+  async function exportBackup() {
+    if (!bridge.backupSave) return;
+    const settings = {};
+    BACKUP_SETTINGS.forEach((key) => {
+      settings[key] = state.settings[key];
+    });
+    const data = {
+      app: 'CleanMusic',
+      kind: 'backup',
+      format: 1,
+      version: (state.info && state.info.version) || '',
+      exportedAt: new Date().toISOString(),
+      collection: state.collection,
+      credits: state.credits,
+      history,
+      settings,
+    };
+    const result = await bridge.backupSave(JSON.stringify(data, null, 2));
+    if (result && result.ok) toast('Gesichert: ' + result.path);
+    else if (result && result.error) toast('Sichern fehlgeschlagen: ' + result.error);
+  }
+
+  function mergeBackup(data) {
+    const counts = { favorites: 0, playlists: 0, credits: 0, history: 0 };
+    const collection = data.collection && typeof data.collection === 'object' ? data.collection : {};
+
+    const favorites = Array.isArray(collection.favorites) ? collection.favorites.map(migrateEntry).filter(validEntry) : [];
+    const known = new Set(state.collection.favorites.map((entry) => entry.id));
+    favorites.forEach((entry) => {
+      if (known.has(entry.id)) return;
+      known.add(entry.id);
+      state.collection.favorites.push(storable(entry));
+      counts.favorites += 1;
+    });
+
+    (Array.isArray(collection.playlists) ? collection.playlists : [])
+      .filter((playlist) => playlist && typeof playlist.id === 'string')
+      .forEach((playlist) => {
+        const items = (Array.isArray(playlist.items) ? playlist.items : []).map(migrateEntry).filter(validEntry);
+        const existing = playlistById(playlist.id);
+        if (existing) {
+          const ids = new Set(existing.items.map((entry) => entry.id));
+          items.forEach((entry) => {
+            if (!ids.has(entry.id)) existing.items.push(storable(entry));
+          });
+          existing.updatedAt = Date.now();
+        } else {
+          state.collection.playlists.push({
+            id: playlist.id,
+            name: String(playlist.name || 'Playlist').slice(0, 80),
+            createdAt: Number(playlist.createdAt) || Date.now(),
+            updatedAt: Date.now(),
+            items: items.map(storable),
+          });
+          counts.playlists += 1;
+        }
+      });
+
+    (Array.isArray(data.credits) ? data.credits : []).forEach((credit) => {
+      if (!credit || typeof credit.id !== 'string' || typeof credit.credit !== 'string') return;
+      if (state.credits.some((item) => item.id === credit.id)) return;
+      state.credits.push({
+        id: credit.id,
+        title: String(credit.title || ''),
+        artist: String(credit.artist || ''),
+        license: String(credit.license || ''),
+        credit: credit.credit.slice(0, 2000),
+      });
+      counts.credits += 1;
+    });
+
+    (Array.isArray(data.history) ? data.history : []).forEach((row) => {
+      if (!row || !validEntry(row.entry)) return;
+      const entry = migrateEntry(row.entry);
+      const mine = history.find((item) => item.entry.id === entry.id);
+      if (mine) {
+        mine.plays = Math.max(mine.plays, Number(row.plays) || 1);
+        mine.last = Math.max(mine.last, Number(row.last) || 0);
+      } else {
+        history.push({
+          entry: storable(entry),
+          plays: Math.max(1, Number(row.plays) || 1),
+          first: Number(row.first) || Date.now(),
+          last: Number(row.last) || Date.now(),
+        });
+        counts.history += 1;
+      }
+    });
+    history.sort((a, b) => b.last - a.last);
+    history = history.slice(0, HISTORY_MAX);
+    writeJSON(STORAGE.history, history);
+
+    const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
+    BACKUP_SETTINGS.forEach((key) => {
+      if (key in settings && typeof settings[key] === typeof state.settings[key]) state.settings[key] = settings[key];
+    });
+    saveSettings();
+    persistCredits();
+    onCollectionChanged({ favorites: true });
+    applyTheme();
+    applyVolume();
+    renderCredits();
+    buildHome();
+    renderSettings();
+    return counts;
+  }
+
+  async function importBackup(preset) {
+    let data = preset;
+    if (!data) {
+      if (!bridge.backupOpen) return null;
+      const result = await bridge.backupOpen();
+      if (!result || result.canceled) return null;
+      if (result.error) {
+        toast(result.error);
+        return null;
+      }
+      data = result.data;
+    }
+    if (!data || data.app !== 'CleanMusic' || data.kind !== 'backup') {
+      toast('Das ist kein CleanMusic-Backup.');
+      return null;
+    }
+    const counts = mergeBackup(data);
+    toast(
+      `Wiederhergestellt: ${counts.favorites} Favoriten, ${counts.playlists} Playlists, ${counts.credits} Credits, ${counts.history} Verlaufstitel`
+    );
+    return counts;
+  }
+
+  /* ---------------------------------------------------------------- *
    * Player state for plugins (API v2)
    *
    * The main process forwards it to plugins as 'nowplaying' / 'state' /
@@ -5038,6 +5280,19 @@
           <dl class="facts">
             ${facts.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('')}
           </dl>
+        </div>
+
+        <div class="panel" id="backup-panel">
+          <h3>Sichern & Wiederherstellen</h3>
+          <p>
+            Favoriten, Playlists, Video-Credits, Hör-Verlauf und Aussehen als JSON-Datei – zum
+            Umziehen auf einen anderen PC oder als Sicherung. Wiederherstellen ergänzt nur, es wird
+            nichts gelöscht.
+          </p>
+          <div class="row">
+            <button class="btn primary small" data-backup="export">Daten sichern …</button>
+            <button class="btn ghost small" data-backup="import">Backup wiederherstellen …</button>
+          </div>
         </div>
 
         <div class="panel">
@@ -5642,6 +5897,13 @@
         return;
       }
 
+      const backup = event.target.closest('[data-backup]');
+      if (backup) {
+        if (backup.dataset.backup === 'export') exportBackup();
+        else importBackup();
+        return;
+      }
+
       const dlMode = event.target.closest('[data-dl-mode]');
       if (dlMode) {
         state.settings.downloads = dlMode.dataset.dlMode === 'cutting' ? 'cutting' : 'off';
@@ -6083,6 +6345,7 @@
       listen.last = 0;
     });
     if (bridge.onPlayerCommand) bridge.onPlayerCommand(onPlayerCommand);
+    wireMediaSession();
     if (bridge.onPluginNotify) {
       bridge.onPluginNotify((message) => {
         if (message && message.text) toast(`${message.name}: ${message.text}`);
@@ -6168,6 +6431,16 @@
     },
     collectCreditAt: (key, index) => collectCredit(entryAt(key, index)),
     downloadAt: (key, index) => downloadEntry(entryAt(key, index)),
+    mediaSession: () =>
+      'mediaSession' in navigator && navigator.mediaSession.metadata
+        ? {
+            title: navigator.mediaSession.metadata.title,
+            artist: navigator.mediaSession.metadata.artist,
+            artwork: navigator.mediaSession.metadata.artwork.length,
+            state: navigator.mediaSession.playbackState,
+          }
+        : null,
+    importBackup: (data) => importBackup(data),
     history: () => history.map((row) => ({ id: row.entry.id, title: row.entry.title, plays: row.plays, last: row.last })),
     recordPlay: (id, plays = 1, daysAgo = 0) => {
       const entry = [state.charts.tracks, state.collection.favorites, state.releases.tracks]
