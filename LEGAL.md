@@ -125,6 +125,23 @@ Quellen-Plugin – in CleanMusic.
   anlegst; es gelten die Discord-Developer-Bedingungen. Name und Bild der
   Application keine fremden Marken verwenden („Spotify“ o. Ä.).
 
+## OBS-Overlay-Plugin
+
+- Liegt nur als **optionales Plugin** im Ordner `extras/plugins/` und ist nicht
+  Teil der EXE. Es zeigt Titel, Artist und Cover dessen, was in CleanMusic läuft.
+- Der Server lauscht ausschließlich auf `127.0.0.1` und beantwortet nur
+  Anfragen an `127.0.0.1`/`localhost` – weder andere Geräte im Netzwerk noch
+  Webseiten können ihn abfragen.
+- Was du im Stream zeigst, verantwortest du selbst: Ein Overlay mit Titel und
+  Cover ist üblich; die Musik selbst im Stream zu spielen, braucht die
+  passenden Rechte (z. B. freie Musik aus dem Cutter-Modus).
+
+## Themes
+
+- Die Community-Themes übernehmen nur **Farbwerte** freier Paletten (MIT-Lizenz).
+  Lizenztexte und Rechteinhaber stehen in `THIRD-PARTY-NOTICES.md`, die auch in
+  der EXE enthalten ist.
+
 ## AppImage / Linux
 
 - AppImages **können nicht unter Windows gebaut werden**. Der Build muss auf

@@ -7,13 +7,14 @@
     content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' file: https: http:; connect-src 'self'; object-src 'none';"
   />
   <title>CleanMusic</title>
+  <link rel="icon" href="assets/logo-small.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
     <header id="topbar">
       <div class="brand">
-        <div class="logo">CM</div>
+        <img class="logo" src="assets/logo-small.svg" alt="" draggable="false" />
         <div class="brand-text">
           <span class="brand-name">CleanMusic</span>
           <span class="brand-sub">The Music Launcher</span>
@@ -193,7 +194,7 @@
     <canvas id="fs-viz" class="fs-viz" aria-hidden="true"></canvas>
 
     <header class="fs-top">
-      <div class="fs-brand"><span class="logo">CM</span> CleanMusic</div>
+      <div class="fs-brand"><img class="logo" src="assets/logo-small.svg" alt="" draggable="false" /> CleanMusic</div>
       <div class="fs-top-actions">
         <div class="fs-styles" id="fs-styles">
           <button data-fs-style="radial">Kreis</button>

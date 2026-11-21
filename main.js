@@ -444,6 +444,7 @@ function createMainWindow() {
     height: 880,
     minWidth: 1024,
     minHeight: 640,
+    icon: path.join(ROOT, 'renderer', 'assets', 'icon.png'),
     show: false,
     backgroundColor: '#080a0e',
     titleBarStyle: 'hidden',
@@ -527,6 +528,7 @@ function createMainWindow() {
           (() => ({
             navItems: document.querySelectorAll('#sidebar .nav-item').length,
             hasAudio: Boolean(document.querySelector('#audio')),
+            logo: (document.querySelector('.brand .logo') || {}).naturalWidth || 0,
             themes: (() => {
               const cm = window.CleanMusic;
               const start = cm.theme().id;

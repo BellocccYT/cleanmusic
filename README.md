@@ -1,9 +1,11 @@
+<p align="center"><img src="build/icon.png" width="128" alt="CleanMusic-Logo" /></p>
+
 # CleanMusic – The Music Launcher
 
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 0.7.2**
+**Version 0.8.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -122,11 +124,33 @@ Taste **F**, der Knopf ⤢ in der Player-Leiste oder Doppelklick aufs Cover:
 - Tasten: **Leertaste** Play/Pause · **← →** ±5 s · **↑ ↓** Lautstärke ·
   **N / P** weiter/zurück · **Esc** schließen
 
+### Themes
+
+Zehn Farbschemata unter *Einstellungen → Aussehen*: **CleanMusic Nacht** (Standard),
+**CleanMusic Tag** (hell), **Catppuccin Mocha / Latte**, **Dracula**, **Nord**,
+**Tokyo Night**, **Rosé Pine**, **Gruvbox Dark** und **Everforest**. Die Paletten
+der Community-Themes stehen unter MIT-Lizenz (siehe
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)). Optional übernimmt die
+**Akzentfarbe das Cover** des laufenden Titels – automatisch so angepasst, dass
+sie auf hellen und dunklen Themes lesbar bleibt.
+
+### Lautstärke
+
+- Der Regler arbeitet **gehörrichtig** (feine Schritte im leisen Bereich), mit
+  Prozentanzeige und Lautsprecher-Symbol in Stufen.
+- **Mausrad** auf Regler oder Lautsprecher (mit Umschalt in 1-%-Schritten),
+  **M** schaltet stumm, **+ / −** regeln überall, **↑ / ↓** im Vollbild-Player.
+- Optional unter *Einstellungen → Wiedergabe*: **Lautstärke angleichen** (sanfter
+  Kompressor gleicht laute und leise Titel an) und **Boost bis 150 %** mit
+  Limiter gegen Übersteuern. Beides ist standardmäßig aus.
+
 ### Visualizer (optional)
 
 Analysiert über die Web-Audio-API, was gerade läuft – lokale Dateien, Vorschauen,
 Radio, Plugin-Titel. Die Wiedergabe selbst wird dabei nicht umgeleitet (Analyse
-per `captureStream()`), es kann also nichts stumm werden. Ein- und ausschalten,
+per `captureStream()`), es kann also nichts stumm werden. Ist *Lautstärke
+angleichen* oder *Boost* an, läuft der Ton ohnehin über Web Audio; der
+Visualizer hört dann direkt dort mit. Ein- und ausschalten,
 Stil wählen und den **Mini-Visualizer** in der Player-Leiste gibt es unter
 *Einstellungen → Visualizer*. Bei Pause zeichnet er nur noch ~8× pro Sekunde.
 
@@ -192,8 +216,21 @@ Ein aktives Plugin kann:
 
 Was ein Plugin tut und ob das bei der jeweiligen Quelle erlaubt ist, liegt in
 der Verantwortung von dir bzw. der Person, die das Plugin geschrieben hat.
-Die Schnittstelle (Plugin-API v1) ist in [docs/PLUGIN-API.md](docs/PLUGIN-API.md)
-beschrieben. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
+Die Schnittstelle ist in [docs/PLUGIN-API.md](docs/PLUGIN-API.md) beschrieben.
+Seit **API v2** können Plugins auf Titelwechsel reagieren, den Player steuern
+und eigene Einstellungsfelder in ihrer Plugin-Karte anzeigen; v1-Plugins laufen
+unverändert. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
+
+### OBS Now-Playing (optionales Plugin)
+
+Im Repository liegt unter [`extras/plugins/obs-overlay.js`](extras/plugins/)
+ein fertiges Plugin für Streamer: Es zeigt den laufenden Titel als
+**transparentes Overlay in OBS** (Browserquelle, Stil *Karte mit Cover*,
+*Schmale Leiste* oder *Nur Text*, live aktualisiert) und schreibt auf Wunsch
+`nowplaying.txt`, `title.txt`, `artist.txt` und `cover.jpg`. Der kleine
+Server läuft nur auf `127.0.0.1`. Es ist **nicht** in der EXE enthalten –
+hinzufügen wie jedes andere Plugin, Anleitung in
+[extras/plugins/README.md](extras/plugins/README.md).
 
 ---
 
@@ -261,7 +298,7 @@ npm.cmd run build:win
 
 Ergebnis:
 
-- `release\CleanMusic-0.7.2-portable.exe` – **eine einzelne portable EXE**,
+- `release\CleanMusic-0.8.0-portable.exe` – **eine einzelne portable EXE**,
   kein Installer, einfach doppelklicken
 - `release\win-unpacked\CleanMusic.exe` – entpackte Variante, startet etwas
   schneller (Ordner muss zusammenbleiben)
@@ -283,7 +320,7 @@ unter Windows cross-kompilieren.
 npm run build:linux
 ```
 
-Ergebnis: `release/CleanMusic-0.7.2.AppImage`.
+Ergebnis: `release/CleanMusic-0.8.0.AppImage`.
 
 Alternativ über GitHub Actions: Das Workflow-File
 `.github/workflows/build.yml` baut bei jedem `v*`-Tag automatisch die
@@ -310,6 +347,8 @@ da ist, bleibt der „Im Browser öffnen"-Fallback. Details:
   MusicKit-Fenster.
 - **Cutter-Modus** → Kategorien durchklicken, Kopier-Knopf sammelt Credits.
 - **F** öffnet den Vollbild-Player (Leertaste, Pfeiltasten, N/P, Esc).
+- **M** stumm, **+ / −** lauter/leiser, **Mausrad** auf dem Lautstärkeregler.
+- **Einstellungen → Aussehen** → Theme wählen, Akzentfarbe aus dem Cover.
 - **Strg + K** fokussiert die Suche.
 
 Jeder Dienst bekommt eine eigene persistente Session (`persist:cm-<dienst>`),
@@ -419,15 +458,22 @@ discord-rpc.js          Discord Rich Presence über den lokalen Discord-IPC
 preload.js              schmale, sichere Bridge für den Renderer
 renderer/
   index.html            App-Shell
-  styles.css            dunkles Launcher-Theme
+  styles.css            Layout und Farben (über Theme-Variablen)
+  themes.js             die zehn Farbpaletten
+  assets/               Logo und Fenster-Icon
   services.js           Dienste-Registry (URLs + offizielle Such-URLs)
   creator-data.js       Cutter-Modus: Kategorien, NCS-Playlists, YouTube-Klassiker
-  visualizer.js         Web-Audio-Visualizer (Kreis, Balken, Welle, Mini)
+  visualizer.js         Web-Audio-Visualizer (Kreis, Balken, Welle, Mini) und
+                        optionale Audio-Kette (Angleichen, Boost, Limiter)
   app.js                Navigation, Webviews, Bibliothek, Favoriten, Playlists,
                         Vorschläge, Cutter-Modus, Vollbild-Player, Player
   musickit.html/.js     optionale Apple-MusicKit-Wiedergabe
 docs/                   Plugin-API und Screenshots für die README
+extras/plugins/         optionale Plugins zum Selbst-Hinzufügen (OBS-Overlay)
+build/                  App-Icons (aus tools/make-icons.js)
+tools/                  Hilfsskripte (Icons erzeugen)
 plugins/                Lokale Plugin-Dateien – nicht Teil des Repositorys oder der Builds
+THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 ```
 
 ## Nächste sinnvolle Schritte

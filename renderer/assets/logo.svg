@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="cm-bg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#6a82ff" />
+      <stop offset="0.55" stop-color="#93c3ff" />
+      <stop offset="1" stop-color="#b4f5ff" />
+    </linearGradient>
+    <radialGradient id="cm-shine" cx="0.8" cy="0.08" r="0.8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.5" />
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="cm-note" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2b45a6" />
+      <stop offset="1" stop-color="#4b7cc8" />
+    </linearGradient>
+    <linearGradient id="cm-eq" gradientUnits="userSpaceOnUse" x1="0" y1="740" x2="0" y2="1024">
+      <stop offset="0" stop-color="#0a7dff" />
+      <stop offset="1" stop-color="#18f3e1" />
+    </linearGradient>
+    <clipPath id="cm-tile"><rect width="1024" height="1024" rx="232" /></clipPath>
+    <filter id="cm-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="14" result="blur" />
+      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+  <g clip-path="url(#cm-tile)">
+    <rect width="1024" height="1024" fill="url(#cm-bg)" />
+    <rect width="1024" height="1024" fill="url(#cm-shine)" />
+    
+    <g fill="url(#cm-note)" transform="translate(-22 -12)">
+      <path d="M383 330 Q383 288 422 273 L775 152 Q830 133 830 190 L830 650 L726 650 L726 281 L487 363 L487 770 L383 770 Z" />
+      <ellipse cx="368" cy="770" rx="152" ry="114" transform="rotate(-22 368 770)" />
+      <ellipse cx="711" cy="650" rx="152" ry="114" transform="rotate(-22 711 650)" />
+    </g>
+    <g stroke="url(#cm-eq)" stroke-width="21" stroke-linecap="round" filter="url(#cm-glow)">
+      <line x1="18.3" y1="900" x2="18.3" y2="1100" />
+      <line x1="54.9" y1="838" x2="54.9" y2="1100" />
+      <line x1="91.4" y1="812" x2="91.4" y2="1100" />
+      <line x1="128.0" y1="818" x2="128.0" y2="1100" />
+      <line x1="164.6" y1="836" x2="164.6" y2="1100" />
+      <line x1="201.1" y1="796" x2="201.1" y2="1100" />
+      <line x1="237.7" y1="790" x2="237.7" y2="1100" />
+      <line x1="274.3" y1="834" x2="274.3" y2="1100" />
+      <line x1="310.9" y1="762" x2="310.9" y2="1100" />
+      <line x1="347.4" y1="838" x2="347.4" y2="1100" />
+      <line x1="384.0" y1="896" x2="384.0" y2="1100" />
+      <line x1="420.6" y1="834" x2="420.6" y2="1100" />
+      <line x1="457.1" y1="796" x2="457.1" y2="1100" />
+      <line x1="493.7" y1="836" x2="493.7" y2="1100" />
+      <line x1="530.3" y1="868" x2="530.3" y2="1100" />
+      <line x1="566.9" y1="838" x2="566.9" y2="1100" />
+      <line x1="603.4" y1="796" x2="603.4" y2="1100" />
+      <line x1="640.0" y1="812" x2="640.0" y2="1100" />
+      <line x1="676.6" y1="836" x2="676.6" y2="1100" />
+      <line x1="713.1" y1="812" x2="713.1" y2="1100" />
+      <line x1="749.7" y1="798" x2="749.7" y2="1100" />
+      <line x1="786.3" y1="816" x2="786.3" y2="1100" />
+      <line x1="822.9" y1="840" x2="822.9" y2="1100" />
+      <line x1="859.4" y1="870" x2="859.4" y2="1100" />
+      <line x1="896.0" y1="900" x2="896.0" y2="1100" />
+      <line x1="932.6" y1="902" x2="932.6" y2="1100" />
+      <line x1="969.1" y1="924" x2="969.1" y2="1100" />
+      <line x1="1005.7" y1="958" x2="1005.7" y2="1100" />
+    </g>
+  </g>
+  <rect x="6" y="6" width="1012" height="1012" rx="227" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="12" />
+</svg>
