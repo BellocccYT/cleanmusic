@@ -4327,15 +4327,29 @@
     pushPlayerState();
   }
 
+  // A 30-second preview is a cut from the middle of the song – the line times do not fit.
+  function lyricsSynced() {
+    return state.nowMode !== 'preview';
+  }
+
   function renderLyrics() {
     const host = $('#fs-lyrics');
     const button = $('#fs-lyrics-btn');
     if (button) button.classList.toggle('active', lyricsOn());
+    const barButton = $('#btn-lyrics');
+    if (barButton) barButton.classList.toggle('active', lyricsOn());
     if (!host) return;
     host.hidden = !lyricsOn();
     if (host.hidden) return;
     if (lyricsState.loading) {
       host.innerHTML = '<p class="lyrics-note">Songtext wird gesucht …</p>';
+      return;
+    }
+    if (lyricsState.lines.length && !lyricsSynced()) {
+      host.innerHTML =
+        '<p class="lyrics-note">30-Sekunden-Vorschau – der Songtext läuft nur bei vollen Titeln mit (Quellen-Plugin).</p>' +
+        lyricsState.lines.map((line) => `<p class="static">${esc(line.text) || '♪'}</p>`).join('') +
+        '<p class="lyrics-note">Songtext: LRCLIB</p>';
       return;
     }
     if (lyricsState.lines.length) {
@@ -4358,7 +4372,7 @@
   }
 
   function updateLyricLine(force = false) {
-    if (!lyricsOn() || !lyricsState.lines.length) return;
+    if (!lyricsOn() || !lyricsState.lines.length || !lyricsSynced()) return;
     const time = audio.currentTime || 0;
     let index = -1;
     for (let at = 0; at < lyricsState.lines.length; at += 1) {
@@ -4380,7 +4394,7 @@
   }
 
   function currentLyric() {
-    if (!lyricsOn() || !lyricsState.lines.length || lyricsState.index < 0) return null;
+    if (!lyricsOn() || !lyricsState.lines.length || lyricsState.index < 0 || !lyricsSynced()) return null;
     const line = lyricsState.lines[lyricsState.index];
     const next = lyricsState.lines[lyricsState.index + 1];
     return { line: line ? line.text : '', next: next ? next.text : '' };
@@ -4769,6 +4783,18 @@
       });
     });
     if (bridge.onDeepLink) bridge.onDeepLink((link) => openDeepLink(link));
+    const lyricsButton = $('#btn-lyrics');
+    if (lyricsButton) {
+      lyricsButton.addEventListener('click', () => {
+        if (!currentItem()) {
+          toast('Spiel zuerst einen Titel ab.');
+          return;
+        }
+        if (!lyricsOn()) toggleLyrics(true);
+        if (!state.fullscreen) openFullscreen();
+        else renderLyrics();
+      });
+    }
   }
 
   /* --- Sharing ---------------------------------------------------------- */

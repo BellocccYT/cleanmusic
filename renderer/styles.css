@@ -5302,3 +5302,10 @@ html.bg-still #app-bg::after {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+.fs-lyrics p.static {
+  color: rgba(255, 255, 255, 0.72);
+}
+#btn-lyrics.active {
+  color: var(--accent);
+}
