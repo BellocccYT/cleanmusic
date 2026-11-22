@@ -327,6 +327,8 @@ window.CMVisualizer = (function () {
       style: options.style || 'bars',
       anchor: options.anchor || null,
       mini: Boolean(options.mini),
+      reach: Math.max(0, Math.min(0.4, Number(options.reach) || 0)),
+      simulate: Boolean(options.simulate),
       levels: [],
     });
     if (enabled) loop();
@@ -413,6 +415,23 @@ window.CMVisualizer = (function () {
   function idleLevels(count, t) {
     // Keep the idle motion visible if a remote stream restricts audio capture.
     return Array.from({ length: count }, (_, i) => 0.09 + 0.08 * Math.sin(t / 600 + i * 0.45));
+  }
+
+  // Etwas lebendigere Ersatzdarstellung für den großen TV-Ring, wenn Android
+  // keine Tonspur zum Analysieren freigibt (captureStream). Rein visuell.
+  function stagedIdle(count, t) {
+    return Array.from({ length: count }, (_, i) => {
+      const low = Math.max(0, 1 - i / (count * 0.62));
+      const beat = 0.5 + 0.5 * Math.sin(t / 1300);
+      const wave = 0.5 + 0.5 * Math.sin(t / 430 + i * 0.62);
+      const shimmer = 0.5 + 0.5 * Math.sin(t / 190 + i * 2.1);
+      const value =
+        0.1 +
+        low * 0.5 * (0.35 + 0.65 * beat) +
+        wave * (0.12 + low * 0.22) +
+        shimmer * 0.09;
+      return Math.max(0.04, Math.min(1, value));
+    });
   }
 
   // Mirror: the spectrum grows from the middle line up and down, low tones in the centre.
@@ -544,9 +563,16 @@ window.CMVisualizer = (function () {
     }
 
     const count = 120;
-    const levels = smooth(target, source || tapped ? bands(count / 2) : idleLevels(count / 2, t));
+    const levels = smooth(
+      target,
+      source || tapped
+        ? bands(count / 2)
+        : target.simulate
+          ? stagedIdle(count / 2, t)
+          : idleLevels(count / 2, t)
+    );
     const mirrored = levels.concat(levels.slice().reverse());
-    const reach = Math.min(width, height) * 0.15;
+    const reach = Math.min(width, height) * (target.reach > 0 ? target.reach : 0.15);
 
     g.lineCap = 'round';
     g.shadowColor = rgba(colorB, 0.55);

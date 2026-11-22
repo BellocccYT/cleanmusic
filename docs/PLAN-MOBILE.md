@@ -1,13 +1,13 @@
 # Plan: Android, Android TV, Google TV und Fire TV
 
-Stand: umgesetzt in **mobile-1.1.0** (Phase 1 + 2 + 3). Dieses Dokument hält den
+Stand: umgesetzt in **mobile-1.1.1** (Phase 1 + 2 + 3). Dieses Dokument hält den
 Bauplan fest; die Anleitung für Nutzer und Entwickler steht in
 [`../mobile/README.md`](../mobile/README.md).
 
 Eigenes Projekt in `mobile/` (Capacitor), parallel zu den Desktop-Versionen und
 nicht in deren Releases. Oberfläche aus `renderer/` wird wiederverwendet; `app.js`
 hat eine Ersatz-Brücke für den Betrieb ohne Electron. Eigene Versionsnummern
-(`mobile-1.1.0 …`) und eigene Release-Assets
+(`mobile-1.1.1 …`) und eigene Release-Assets
 `CleanMusic-Android-<version>.apk`. Die Namen der Desktop-Assets bleiben
 unverändert, sonst bricht der Updater.
 
@@ -54,8 +54,9 @@ eingebunden.
 
 **Drin:** Jetzt läuft (groß, mit Cover und Songtext), Radio, Charts, Favoriten,
 Songtexte mit Effekten, Themes, Live-Hintergründe, Plattenspieler, Visualizer,
-Warteschlange und Party-Modus (Karaoke-Text mittig, Live-Hintergrund,
-„Als Nächstes“ unten).
+Warteschlange und Party-Modus als große Spektrum-Bühne (Radial-Spektrum um den
+Plattenspieler, Tonarm, Karaoke-Text, „Als Nächstes“ unten). Auf der Startseite
+liegt ein Spektrum-Ring ums Cover; „Spektrum groß“ öffnet die Bühne.
 
 **Handy-Steuerung:** QR-Code auf dem Startbildschirm („Mit dem Handy scannen“).
 Die Steuerseite ist dieselbe wie am Desktop (`renderer/remote/index.html`) mit

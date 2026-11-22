@@ -34,7 +34,7 @@
         <button type="button" class="tv-nav-item" data-tv-view="charts">Charts</button>
         <button type="button" class="tv-nav-item" data-tv-view="favorites">Favoriten</button>
         <button type="button" class="tv-nav-item" data-tv-view="party">Party</button>
-        <button type="button" class="tv-nav-item" data-tv-view="queue">Warteschlange</button>
+        <button type="button" class="tv-nav-item" data-tv-view="queue">Liste</button>
       </nav>
       <div class="tv-head-side">
         <span id="tv-clock" class="tv-clock"></span>
@@ -61,7 +61,10 @@
 
           <div class="tv-now-card">
             <p class="tv-kicker">Jetzt läuft</p>
-            <div class="tv-now-cover" id="tv-home-cover"><span>♪</span></div>
+            <div class="tv-now-visual">
+              <canvas id="tv-home-viz" class="tv-now-ring" aria-hidden="true"></canvas>
+              <div class="tv-now-cover" id="tv-home-cover"><span>♪</span></div>
+            </div>
             <h2 id="tv-home-title">Nichts ausgewählt</h2>
             <p class="tv-muted" id="tv-home-artist">Radio, Charts oder Favoriten starten</p>
             <p class="tv-lyric-line" id="tv-home-lyric"></p>
@@ -74,6 +77,7 @@
           <button type="button" class="tv-btn tv-look" id="tv-background" data-focus>Hintergrund: aus</button>
           <button type="button" class="tv-btn tv-look" id="tv-vinyl" data-focus>Plattenspieler</button>
           <button type="button" class="tv-btn tv-look" id="tv-viz-toggle" data-focus>Visualizer</button>
+          <button type="button" class="tv-btn tv-look" id="tv-stage-open" data-focus>Spektrum groß</button>
         </div>
 
         <div class="tv-next-strip">
@@ -117,16 +121,25 @@
         <div class="tv-grid" id="tv-fav-grid"></div>
       </section>
 
-      <!-- Party: Karaoke-Songtext groß in der Mitte -->
+      <!-- Party: große Spektrum-Bühne mit Plattenspieler und Karaoke-Text -->
       <section class="tv-view tv-party" data-tv-panel="party">
-        <div class="tv-party-stage">
-          <p class="tv-kicker">Party-Modus</p>
-          <div id="tv-party-lyrics" class="tv-party-lyrics">
-            <p class="tv-muted">Songtext erscheint, sobald ein Titel mit Text läuft.</p>
+        <div class="tv-stage">
+          <div class="tv-stage-visual">
+            <canvas id="tv-viz" class="tv-stage-viz" aria-hidden="true"></canvas>
+            <div class="tv-stage-cover" id="tv-party-cover"><span>♪</span></div>
+            <div class="tv-stage-arm" aria-hidden="true"><i></i></div>
           </div>
-          <p class="tv-party-next" id="tv-party-next"></p>
+          <div class="tv-stage-text">
+            <p class="tv-kicker">Jetzt läuft</p>
+            <h1 id="tv-party-title">Nichts ausgewählt</h1>
+            <p class="tv-stage-artist" id="tv-party-artist">Radio, Charts oder Favoriten starten</p>
+            <div id="tv-party-lyrics" class="tv-party-lyrics">
+              <p class="tv-muted">Songtext erscheint, sobald ein Titel mit Text läuft.</p>
+            </div>
+            <p class="tv-party-next" id="tv-party-next"></p>
+            <p class="tv-stage-hint">Zurück-Taste führt zur Startseite</p>
+          </div>
         </div>
-        <canvas id="tv-viz" class="tv-party-viz" aria-hidden="true"></canvas>
       </section>
 
       <!-- Warteschlange -->

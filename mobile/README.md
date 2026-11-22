@@ -1,7 +1,7 @@
 # CleanMusic für Android, Android TV, Google TV und Fire TV
 
 Eigenes Projekt in `mobile/` (Capacitor). Läuft parallel zu den Desktop-Versionen,
-mit eigenen Versionsnummern (`mobile-1.1.0`) und eigenen Release-Dateien
+mit eigenen Versionsnummern (`mobile-1.1.1`) und eigenen Release-Dateien
 `CleanMusic-Android-<version>.apk`. Die Namen der Desktop-Assets bleiben
 unverändert, damit der Desktop-Updater weiter funktioniert.
 
@@ -51,10 +51,15 @@ Dieselbe APK. Auf dem Fernseher startet eine eigene, schlanke Seite
 Wellenform/BPM, Rückblick, Plugins, Playlist-Import, lokale Musik und die
 Ansicht „Erweitert“ sind auf dem Fernseher nicht vorhanden.
 
+![CleanMusic TV Lite: Plattenspieler mit Spektrum-Ring, Titel und Songtext](../docs/images/05-android-tv.png)
+
 Drin: Jetzt läuft (groß, mit Cover und Songtext), Radio, Charts, Favoriten,
 Songtexte mit Effekten, Themes, Live-Hintergründe, Plattenspieler, Visualizer,
-Warteschlange und Party-Modus (Karaoke-Text mittig, Live-Hintergrund, „Als
-Nächstes“ unten).
+Warteschlange und Party-Modus. Der Party-Modus ist die große Spektrum-Bühne:
+Plattenspieler mit Radial-Spektrum und Tonarm, Karaoke-Text, „Als Nächstes“ unten;
+auf der Startseite dreht sich ein Spektrum-Ring ums Cover, „Spektrum groß“ öffnet
+die Bühne. Die Analyse läuft über `captureStream`; gibt Android keine Tonspur
+frei, animiert der Ring als Ersatz (rein visuell).
 
 - Schrift mindestens 24 px, Ränder für Overscan (5 %), klarer Fokusrahmen.
 - Fernbedienung: Pfeile + OK, Play/Pause, Weiter/Zurück, Zurück-Taste.
@@ -167,7 +172,7 @@ mobile/release-assets/CleanMusic-Android-<version>.apk
 2. `npm run build:release` – erzeugt
    `mobile/release-assets/CleanMusic-Android-<version>.apk` und zeigt Größe und
    SHA-256.
-3. GitHub-Release mit Tag `mobile-<version>` anlegen (z. B. `mobile-1.1.0`) und
+3. GitHub-Release mit Tag `mobile-<version>` anlegen (z. B. `mobile-1.1.1`) und
    genau diese APK als Asset hochladen. Die SHA-256 in die Release-Notes.
 4. Am Gerät prüfen: Installation, Wiedergabe, Update von der vorherigen Version.
 

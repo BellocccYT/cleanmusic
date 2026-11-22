@@ -255,16 +255,27 @@
     viz.setEnabled(enabled);
     const mini = $('#tv-mini-viz');
     const party = $('#tv-viz');
+    const home = $('#tv-home-viz');
     if (mini && !mini.dataset.registered) {
       viz.register(mini, { style: 'bars', mini: true });
       mini.dataset.registered = '1';
     }
     if (party && !party.dataset.registered) {
-      viz.register(party, { style: state.settings.vizStyle || 'radial' });
+      viz.register(party, {
+        style: state.settings.vizStyle || 'radial',
+        anchor: $('#tv-party-cover'),
+        reach: 0.24,
+        simulate: true,
+      });
       party.dataset.registered = '1';
+    }
+    if (home && !home.dataset.registered) {
+      viz.register(home, { style: 'radial', anchor: $('#tv-home-cover'), reach: 0.2, simulate: true });
+      home.dataset.registered = '1';
     }
     if (mini && state.settings.vizStyle) viz.setStyle(mini, 'bars');
     if (party) viz.setStyle(party, state.settings.vizStyle || 'radial');
+    if (home) viz.setStyle(home, 'radial');
     if (viz.setPerformance) {
       viz.setPerformance({ profile: root.dataset.perf === 'quality' ? 'quality' : 'balanced' });
     }
@@ -588,8 +599,21 @@
       const art = entry && /^https:\/\//i.test(entry.artwork || '') ? entry.artwork : '';
       cover.innerHTML = art ? `<img src="${esc(art)}" alt="" />` : '<span>♪</span>';
     }
+    paintStageMeta(entry, title, artist);
     renderHomeServices(entry);
     paintParty();
+  }
+
+  function paintStageMeta(entry, title, artist) {
+    const stageTitle = $('#tv-party-title');
+    const stageArtist = $('#tv-party-artist');
+    if (stageTitle) stageTitle.textContent = title;
+    if (stageArtist) stageArtist.textContent = artist || '';
+    const cover = $('#tv-party-cover');
+    if (cover) {
+      const art = entry && /^https:\/\//i.test(entry.artwork || '') ? entry.artwork : '';
+      cover.innerHTML = art ? `<img src="${esc(art)}" alt="" />` : '<span>♪</span>';
+    }
   }
 
   function renderHomeServices(entry) {
@@ -601,13 +625,13 @@
     }
     const services = [
       ['spotify', 'Spotify'],
-      ['ytmusic', 'YouTube Music'],
+      ['ytmusic', 'YT Music'],
       ['apple', 'Apple Music'],
     ];
     host.innerHTML = services
       .map(
         ([id, label]) =>
-          `<button type="button" class="tv-btn" data-open-music="${id}" data-focus>In ${esc(label)} öffnen</button>`
+          `<button type="button" class="tv-btn" data-open-music="${id}" title="In ${esc(label)} öffnen" data-focus>${esc(label)}</button>`
       )
       .join('');
     host.querySelectorAll('[data-open-music]').forEach((button) => {
@@ -1121,7 +1145,7 @@
       if (rotateButton) rotateButton.hidden = true;
       return;
     }
-    status.textContent = `Mit dem Handy scannen · ${state.remote.url}`;
+    status.textContent = state.remote.url.replace(/^https?:\/\//i, '').replace(/\?.*$/, '');
     frame.innerHTML = `<img src="${esc(state.remote.qr)}" alt="QR-Code zur Handy-Steuerung" />`;
     if (toggleButton) toggleButton.textContent = 'Steuerung aus';
     if (rotateButton) rotateButton.hidden = false;
@@ -1507,6 +1531,7 @@
     $('#tv-background').addEventListener('click', cycleBackground);
     $('#tv-vinyl').addEventListener('click', toggleVinyl);
     $('#tv-viz-toggle').addEventListener('click', toggleVisualizer);
+    $('#tv-stage-open').addEventListener('click', () => showView('party'));
   }
 
   function wireMediaSession() {
@@ -1579,6 +1604,9 @@
         window.CMVisualizer.attach(audio);
       }
       applyVisualizer();
+      // Kein Web-Audio-Umweg: createMediaElementSource verlangt CORS und würde
+      // Radio-Streams ohne CORS stumm schalten. Die Analyse läuft über
+      // captureStream; ohne Tonspur bleibt die (animierte) Ersatzdarstellung.
       renderRadioChips();
       refreshLookLabels();
       paintAll();

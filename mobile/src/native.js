@@ -17,7 +17,7 @@
  */
 
 (function () {
-  const MOBILE_VERSION = 'mobile-1.1.0';
+  const MOBILE_VERSION = 'mobile-1.1.1';
   const UPDATE_REPO = 'BellocccYT/cleanmusic';
   const UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
   const UPDATE_KEY = 'cleanmusic.updates.v1';
@@ -1400,6 +1400,13 @@
    * ------------------------------------------------------------------ */
 
   function start() {
+    if (isTv) {
+      // tv.js setzt window.CMBack selbst (Overlay -> Startseite -> App).
+      wireBackgroundAudio();
+      startUpdateLoop();
+      return;
+    }
+
     // Zurück-Taste: Vollbild/Mehr-Blatt/Unteransicht schließen, dann erst App.
     window.CMBack = () => {
       const fullscreen = document.getElementById('fullscreen');
@@ -1419,13 +1426,6 @@
       }
       return false;
     };
-
-    if (isTv) {
-      // tv.js hat eine eigene Oberfläche; hier nur Wiedergabe-Dienst koppeln.
-      wireBackgroundAudio();
-      startUpdateLoop();
-      return;
-    }
 
     buildMobileShell();
     wireBackgroundAudio();

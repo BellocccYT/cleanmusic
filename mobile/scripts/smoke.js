@@ -321,6 +321,26 @@ async function main() {
   ok('TV: Fokus-Navigation erreicht Karten', focus.count > 3 && focus.moved, focus);
   ok('TV: alle sechs Bereiche erreichbar', focus.views.every(Boolean), focus.views);
 
+  const stage = await tv.webContents.executeJavaScript(`
+    (async () => {
+      window.CMTv.showView('party');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const viz = document.querySelector('#tv-viz');
+      const result = {
+        w: viz.width,
+        h: viz.height,
+        homeRing: Boolean(document.querySelector('#tv-home-viz')),
+        openButton: Boolean(document.querySelector('#tv-stage-open')),
+        cover: document.querySelector('#tv-party-cover').getBoundingClientRect().width,
+        vinyl: document.querySelector('#tv').classList.contains('is-vinyl'),
+      };
+      window.CMTv.showView('home');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return result;
+    })()
+  `);
+  ok('TV: große Spektrum-Bühne mit Plattenspieler', stage.w > 200 && stage.h > 200 && stage.homeRing && stage.openButton && stage.cover > 100 && stage.vinyl, stage);
+
   const tvPreview = await tv.webContents.executeJavaScript(`
     (async () => {
       const tv = window.CMTv;
