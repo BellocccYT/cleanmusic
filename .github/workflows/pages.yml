@@ -8,6 +8,7 @@ on:
       - master
     paths:
       - "site/**"
+      - "marketing/screenshots/**"
       - ".github/workflows/pages.yml"
 
 permissions:
@@ -28,8 +29,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy app icon
-        run: cp build/icon.png site/icon.png
+      - name: Copy icon, logo and screenshots
+        run: |
+          cp build/icon.png site/icon.png
+          cp renderer/assets/logo.svg site/logo.svg
+          mkdir -p site/screenshots
+          cp marketing/screenshots/*.png site/screenshots/
 
       - uses: actions/configure-pages@v6
 

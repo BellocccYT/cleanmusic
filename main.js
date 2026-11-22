@@ -941,7 +941,7 @@ function openMiniWindow() {
       preload: path.join(ROOT, 'preload-mini.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
   miniWindow.loadFile(path.join(ROOT, 'renderer', 'mini.html'));
@@ -3799,14 +3799,24 @@ function isAllowedRemoteIp(value) {
 }
 
 function remoteLanAddress() {
-  for (const entries of Object.values(os.networkInterfaces())) {
+  // Virtual adapters (WSL, Hyper-V, Docker, VirtualBox, VMware, VPNs) are not
+  // reachable from the phone – prefer Wi-Fi/Ethernet and 192.168.x.x.
+  const virtual = /vethernet|wsl|hyper-v|docker|virtualbox|vmware|vbox|loopback|tailscale|zerotier|hamachi|vpn|tap|tun/i;
+  const candidates = [];
+  for (const [name, entries] of Object.entries(os.networkInterfaces())) {
     for (const entry of entries || []) {
       if ((entry.family === 'IPv4' || entry.family === 4) && !entry.internal && isPrivateIpv4(entry.address)) {
-        return entry.address;
+        let score = 0;
+        if (virtual.test(name)) score -= 100;
+        if (/wlan|wi-?fi|wireless|ethernet|lan/i.test(name)) score += 10;
+        if (entry.address.startsWith('192.168.')) score += 5;
+        else if (entry.address.startsWith('10.')) score += 2;
+        candidates.push({ address: entry.address, score });
       }
     }
   }
-  return '';
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates.length ? candidates[0].address : '';
 }
 
 function remoteConfig() {
@@ -4025,6 +4035,7 @@ async function handleRemoteRequest(request, response) {
   if (request.method === 'GET' && url.pathname === '/api/state') return sendRemoteJson(response, 200, remoteState());
 
   if (request.method === 'GET' && url.pathname === '/api/events') {
+    if (remoteSseClients.size >= 10) return sendRemoteJson(response, 429, { error: 'too-many-streams' });
     response.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
@@ -4045,14 +4056,19 @@ async function handleRemoteRequest(request, response) {
       fetchJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=30`),
     ]);
     const tracks = [];
+    const seen = new Set();
     results.forEach((result, index) => {
       if (result.status !== 'fulfilled') return;
       const list = index === 0 ? normalizeItunes(result.value) : normalizeDeezer(result.value);
       list.forEach((track) => {
         const safe = safeRemoteTrack(track);
-        if (!safe || remoteKeyCache.has(safe.id)) return;
-        remoteKeyCache.set(safe.id, safe);
-        tracks.push({ id: safe.id, title: safe.title, artist: safe.artist, cover: safe.artwork, source: safe.source });
+        if (!safe) return;
+        const ref = `${safe.source}:${safe.id}`;
+        if (seen.has(ref)) return;
+        seen.add(ref);
+        remoteKeyCache.delete(ref);
+        remoteKeyCache.set(ref, safe);
+        tracks.push({ id: ref, title: safe.title, artist: safe.artist, cover: safe.artwork, source: safe.source });
       });
     });
     while (remoteKeyCache.size > 120) remoteKeyCache.delete(remoteKeyCache.keys().next().value);
@@ -4284,6 +4300,10 @@ async function rotateRemoteKey() {
   const key = crypto.randomBytes(24).toString('base64url');
   writeConfig({ remoteKey: key });
   remoteKeyCache.clear();
+  for (const response of remoteSseClients) {
+    try { response.end(); } catch { /* already closed */ }
+  }
+  remoteSseClients.clear();
   return remoteSettingsPublic();
 }
 
@@ -4622,7 +4642,7 @@ ipcMain.on('diagnostic-state', (event, payload) => {
     layout: payload.layout === 'simple' ? 'Einfach' : 'Erweitert',
   };
 });
-ipcMain.handle('diagnostic-copy', () => diagnosticText());
+ipcMain.handle('diagnostic-copy', (event) => (mainWindow && event.sender === mainWindow.webContents ? diagnosticText() : ''));
 
 function cleanUrl(value, pattern = /^https?:\/\//i) {
   const url = String(value || '');
@@ -5475,6 +5495,7 @@ const activeUpdateNotifications = new Set();
 
 function notifyWindowsUpdate(latest) {
   if (process.platform !== 'win32' || isSmoke || !latest || announcedUpdateVersion === latest) return false;
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused()) return false;
   try {
     const { Notification } = require('electron');
     if (!Notification.isSupported()) return false;

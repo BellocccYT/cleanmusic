@@ -20,13 +20,17 @@
     $('#title').textContent = track ? track.title : 'Nichts ausgewählt';
     $('#artist').textContent = track ? track.artist || 'CleanMusic' : 'CleanMusic';
     const cover = $('#cover');
-    cover.textContent = '';
-    if (track && track.artwork) {
-      const image = document.createElement('img');
-      image.src = track.artwork;
-      image.alt = '';
-      cover.append(image);
-    } else cover.textContent = '♪';
+    const art = track && track.artwork ? track.artwork : '';
+    if (cover.dataset.src !== art) {
+      cover.dataset.src = art;
+      cover.textContent = '';
+      if (art) {
+        const image = document.createElement('img');
+        image.src = art;
+        image.alt = '';
+        cover.append(image);
+      } else cover.textContent = '♪';
+    }
     $('#play').textContent = state.playing ? 'Ⅱ' : '▶';
     $('#seek').max = String(Math.max(0, Number(state.duration) || 0));
     $('#seek').value = String(Math.min(Number(state.duration) || 0, Number(state.position) || 0));
