@@ -22,6 +22,9 @@
 - Optional: Discord Rich Presence über den lokalen Discord-Client.
 - Favoriten und Playlists sind reine lokale Listen (Metadaten + Links), es
   werden keine Audiodaten gespeichert.
+- Der lokale Geschmack („Mehr davon“ / „Weniger davon“, frühe Skips) und die daraus
+  gebauten Mixes bleiben ausschließlich auf deinem Gerät. Für Vorschläge werden – wie
+  bei Favoriten und Verlauf – nur Artist-Namen an die öffentliche Deezer-API geschickt.
 - Rückblick-Bilder werden lokal aus Statistik, Text und Theme-Farben erstellt und enthalten
   keine Cover. Optionale automatische Backups schreiben ein JSON ausschließlich in den von dir
   ausgewählten Ordner und behalten dort höchstens fünf CleanMusic-Backup-Dateien.

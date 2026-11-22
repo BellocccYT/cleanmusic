@@ -186,6 +186,23 @@ Wunsch **nach Ordner**.
 
 Alles bleibt lokal (im Profil der App); es gibt kein Konto und keine Cloud.
 
+### Mixes & dein Geschmack
+
+- **Mehr davon / Weniger davon:** Rechtsklick auf einen Titel (oder das **+**-Menü)
+  → *Geschmack*. Das gilt für den Titel oder direkt für den Artist. Alles wird nur
+  auf deinem Gerät gespeichert.
+- **Mixes** (Seitenleiste, auch auf der Startseite): **Dein Mix**, **Neu für dich**,
+  **Entdecken**, **Nochmal** und **Tiefe Schnitte**. Sie entstehen aus Favoriten,
+  Playlists, lokalen Titeln, Hörverlauf und frischen Vorschlägen – nicht aus einem
+  Cloud-Profil.
+- **Dein Mix** mischt, was du oft hörst, mit Titeln, die dazu passen. **Neu für dich**
+  und **Entdecken** zeigen Neues (bekannte bzw. unbekannte Artists), **Nochmal**
+  holt ältere Lieblinge zurück, **Tiefe Schnitte** gräbt selten gehörte Titel aus
+  deinen Playlists aus.
+- Mixes bleiben einen Tag stabil, lassen sich **neu mischen** und als echte
+  **Playlist speichern**. Frühe Skips (Weiter innerhalb der ersten Sekunden) und
+  „Weniger davon“ sorgen dafür, dass solche Titel seltener auftauchen.
+
 ### Playlists übertragen
 
 Unter **Bibliothek → Playlist übertragen** kannst du Spotify-Playlists per öffentlichem

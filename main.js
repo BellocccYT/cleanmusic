@@ -1639,6 +1639,7 @@ function createMainWindow() {
                 },
                 credits: [{ id: 'smoke-credit', title: 'T', credit: 'Credit-Text' }],
                 history: [],
+                taste: { tracks: { 'backup artist|backup title': { value: 1, at: Date.now(), n: 'Backup Artist' } }, artists: {}, skips: [] },
                 settings: { theme: 'nacht' },
               });
               const rejected = await cm.importBackup({ app: 'Other' });
@@ -1793,6 +1794,36 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_EXTEND:', JSON.stringify(extendSmoke));
+
+          // Taste engine + smart mixes: feedback changes the profile, mixes
+          // render on home and in their own view, reset clears everything.
+          const tasteSmoke = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const before = cm.mixes();
+              cm.tasteAt('charts', 0, 'like');
+              cm.tasteAt('charts', 1, 'artist-dislike');
+              const profile = cm.taste();
+              const after = cm.mixes();
+              cm.showView('mixes');
+              await wait(150);
+              const cards = document.querySelectorAll('#view-mixes .mix-card').length;
+              const homeCards = document.querySelectorAll('#home-mixes .mix-card').length;
+              const tastePanel = Boolean(document.querySelector('#view-mixes .mix-taste'));
+              cm.tasteReset();
+              const cleared = cm.taste();
+              cm.showView('home');
+              return {
+                before, after, cards, homeCards, tastePanel,
+                likes: profile.stats.likes,
+                dislikes: profile.stats.dislikes,
+                topArtist: profile.stats.artists[0] || '',
+                cleared: { likes: cleared.stats.likes, dislikes: cleared.stats.dislikes, tracks: cleared.tracks },
+              };
+            })()
+          `);
+          console.log('SMOKE_TASTE:', JSON.stringify(tasteSmoke));
 
           // First steps assistant + "what's new" card (0.12).
           const onboardingResult = await mainWindow.webContents.executeJavaScript(`

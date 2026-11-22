@@ -25,6 +25,10 @@
       '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M4 12h16"></path><path d="M12 4a14 14 0 0 1 0 16"></path><path d="M12 4a14 14 0 0 0 0 16"></path></svg>',
     heart:
       '<svg class="ic" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.4-9.2-8.9C1.5 8.1 3.4 4.6 6.9 4.6c2.2 0 3.9 1.3 5.1 3 1.2-1.7 2.9-3 5.1-3 3.5 0 5.4 3.5 4.1 6.7-2 4.5-9.2 8.9-9.2 8.9Z"></path></svg>',
+    like:
+      '<svg class="ic" viewBox="0 0 24 24"><path d="M7 10v10H4V10h3Z"></path><path d="M7 10l4-7c1.4 0 2.4 1 2.4 2.4V9h5.1a2 2 0 0 1 2 2.4l-1.2 6A2.5 2.5 0 0 1 16.8 20H7"></path></svg>',
+    dislike:
+      '<svg class="ic" viewBox="0 0 24 24"><path d="M7 14V4H4v10h3Z"></path><path d="M7 14l4 7c1.4 0 2.4-1 2.4-2.4V15h5.1a2 2 0 0 0 2-2.4l-1.2-6A2.5 2.5 0 0 0 16.8 4H7"></path></svg>',
     plus:
       '<svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
     queueNext:
@@ -108,6 +112,7 @@
     stats: 'cleanmusic.stats.v1', // { months: { "YYYY-MM": { secs, plays, hours, tracks, artists, sources } } }
     bpm: 'cleanmusic.bpm.v1', // { entryId: bpm }
     history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
+    taste: 'cleanmusic.taste.v1', // { tracks, artists, skips, revision } – local taste profile
     eq: 'cleanmusic.eq.v1',
     cutProjects: 'cleanmusic.cutprojects.v1',
     autoBackup: 'cleanmusic.autobackup.v1',
@@ -225,6 +230,7 @@
       { tracks: [], seeds: [], loading: false, loaded: false, error: null, seedKey: '', at: 0 },
       restoreRecs()
     ),
+    taste: loadTaste(),
     queue: { items: [], index: -1, kind: 'local', upcoming: -1 },
     nowMode: null,
     nowLabel: null,
@@ -678,6 +684,42 @@
     return { favorites, playlists };
   }
 
+  // Local taste profile: explicit "mehr/weniger davon", plus skips. Nothing
+  // leaves the device; only artist names are used for suggestions, as before.
+  function loadTaste() {
+    const raw = readJSON(STORAGE.taste, null) || {};
+    const taste = { tracks: {}, artists: {}, skips: [], revision: 0 };
+
+    ['tracks', 'artists'].forEach((kind) => {
+      const rows = raw[kind] && typeof raw[kind] === 'object' ? raw[kind] : {};
+      Object.keys(rows)
+        .slice(0, 800)
+        .forEach((key) => {
+          const row = rows[key];
+          if (!row || (row.value !== 1 && row.value !== -1)) return;
+          const clean = { value: row.value, at: Number(row.at) || 0 };
+          if (typeof row.n === 'string') clean.n = primaryArtist(row.n);
+          if (typeof row.a === 'string') clean.a = row.a;
+          if (typeof row.dz === 'string' || typeof row.dz === 'number') clean.dz = row.dz;
+          taste[kind][key] = clean;
+        });
+    });
+
+    taste.skips = (Array.isArray(raw.skips) ? raw.skips : [])
+      .filter((row) => row && Number(row.at) && (row.a || row.t))
+      .slice(-300)
+      .map((row) => ({
+        a: typeof row.a === 'string' ? row.a : '',
+        t: typeof row.t === 'string' ? row.t : '',
+        n: typeof row.n === 'string' ? primaryArtist(row.n) : '',
+        dz: typeof row.dz === 'string' || typeof row.dz === 'number' ? row.dz : null,
+        at: Number(row.at) || 0,
+      }));
+
+    taste.revision = Math.max(0, Number(raw.revision) || 0);
+    return taste;
+  }
+
   function persistCollection() {
     writeJSON(STORAGE.collection, state.collection);
   }
@@ -689,6 +731,9 @@
     syncFavButtons();
     renderFavorites();
     if (state.currentPlaylist) renderPlaylist();
+    invalidateMixes();
+    renderHomeMixes();
+    if (state.view === 'mixes') renderMixes();
     updateNowPlayingActions();
     updateStatusChips();
     if (what.favorites) scheduleRecsRefresh();
@@ -937,7 +982,12 @@
   }
 
   function visibleRecs() {
-    return state.recs.tracks.filter((entry) => entry.kind !== 'plugin' || pluginReady(entry.pluginId));
+    return state.recs.tracks.filter(
+      (entry) =>
+        (entry.kind !== 'plugin' || pluginReady(entry.pluginId)) &&
+        tasteTrackValue(entry) >= 0 &&
+        tasteArtistValue(entry) >= 0
+    );
   }
 
   function listEntries(key) {
@@ -1625,6 +1675,12 @@
 
     const current = currentItem();
     const queueable = !(entries.length === 1 && current && entries[0].id === current.id);
+    const tasteEntry = entries.length === 1 && entries[0].kind !== 'radio' ? entries[0] : null;
+    const tasteArtist = tasteEntry ? primaryArtist(tasteEntry.artist) : '';
+    const trackLiked = tasteEntry ? tasteTrackValue(tasteEntry) > 0 : false;
+    const trackDisliked = tasteEntry ? tasteTrackValue(tasteEntry) < 0 : false;
+    const artistLiked = tasteEntry ? tasteArtistValue(tasteEntry) > 0 : false;
+    const artistDisliked = tasteEntry ? tasteArtistValue(tasteEntry) < 0 : false;
     menu.innerHTML = `
       ${
         entries.length === 1 && entries[0].title
@@ -1645,6 +1701,36 @@
               <span class="menu-text">Zur Warteschlange hinzufügen</span>
             </button>
             <div class="menu-sep"></div>`
+          : ''
+      }
+      ${
+        tasteEntry
+          ? `<div class="service-menu-label">Geschmack</div>
+             <button class="service-menu-item" data-ctx-taste="like">
+               <span class="menu-ic">${ICONS.like}</span>
+               <span class="menu-text">Mehr davon</span>
+               ${trackLiked ? '<span class="menu-count">✓</span>' : ''}
+             </button>
+             <button class="service-menu-item" data-ctx-taste="dislike">
+               <span class="menu-ic">${ICONS.dislike}</span>
+               <span class="menu-text">Weniger davon</span>
+               ${trackDisliked ? '<span class="menu-count">✓</span>' : ''}
+             </button>
+             ${
+               tasteArtist
+                 ? `<button class="service-menu-item" data-ctx-taste="artist-like">
+                      <span class="menu-ic">${ICONS.like}</span>
+                      <span class="menu-text">${esc(tasteArtist)} mehr davon</span>
+                      ${artistLiked ? '<span class="menu-count">✓</span>' : ''}
+                    </button>
+                    <button class="service-menu-item" data-ctx-taste="artist-dislike">
+                      <span class="menu-ic">${ICONS.dislike}</span>
+                      <span class="menu-text">${esc(tasteArtist)} weniger davon</span>
+                      ${artistDisliked ? '<span class="menu-count">✓</span>' : ''}
+                    </button>`
+                 : ''
+             }
+             <div class="menu-sep"></div>`
           : ''
       }
       <div class="service-menu-label">${esc(label)}</div>
@@ -1798,7 +1884,249 @@
     history.sort((a, b) => b.last - a.last);
     history = history.slice(0, HISTORY_MAX);
     writeJSON(STORAGE.history, history);
+    invalidateMixes();
     statsPlay(entry);
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Taste profile
+   *
+   * "Mehr davon / weniger davon" sets an explicit value per title and per
+   * artist. Favourites, listening history and early skips add softer signals.
+   * Everything is stored locally; artist names are the only thing used for
+   * suggestions (same as favourites already were).
+   * ---------------------------------------------------------------- */
+
+  const TASTE_SKIP_DAYS = 45;
+
+  function tasteArtistKey(value) {
+    return normKey(primaryArtist(value));
+  }
+
+  function tasteEntryKey(entry) {
+    return entry ? matchKey(entry) : '';
+  }
+
+  function tasteTrackValue(entry) {
+    const key = tasteEntryKey(entry);
+    const row = key ? state.taste.tracks[key] : null;
+    return row ? Number(row.value) || 0 : 0;
+  }
+
+  function tasteArtistValue(entry) {
+    const key = tasteArtistKey(entry && entry.artist);
+    const row = key ? state.taste.artists[key] : null;
+    return row ? Number(row.value) || 0 : 0;
+  }
+
+  function tasteSkipPenalty(entry) {
+    const artist = tasteArtistKey(entry && entry.artist);
+    const track = tasteEntryKey(entry);
+    if (!artist && !track) return 0;
+    const now = Date.now();
+    let penalty = 0;
+    state.taste.skips.forEach((row) => {
+      const age = (now - (Number(row.at) || 0)) / DAY;
+      if (age > TASTE_SKIP_DAYS) return;
+      const decay = Math.exp(-age / 30);
+      if (artist && row.a === artist) penalty += 0.5 * decay;
+      else if (track && row.t === track) penalty += 0.3 * decay;
+    });
+    return Math.min(2.6, penalty);
+  }
+
+  function tasteScore(entry) {
+    if (!entry || entry.kind === 'radio') return 0;
+    let score = 0;
+
+    const track = tasteTrackValue(entry);
+    if (track > 0) score += 3.2;
+    else if (track < 0) score -= 4.4;
+
+    const artist = tasteArtistValue(entry);
+    if (artist > 0) score += 2.4;
+    else if (artist < 0) score -= 3.4;
+
+    if (favIds.has(entry.id)) score += 1.2;
+
+    const played = history.find((row) => row.entry.id === entry.id);
+    if (played) {
+      const age = (Date.now() - played.last) / DAY;
+      score += Math.min(2.2, played.plays * 0.4) * Math.exp(-age / 120);
+    }
+
+    score -= tasteSkipPenalty(entry);
+    return Math.max(-8, Math.min(8, score));
+  }
+
+  // One list of artist seeds for recommendations: explicit taste first,
+  // then favourites, plays, playlist titles and skips.
+  function artistScores() {
+    const scores = new Map();
+    const add = (name, weight, deezerId = null) => {
+      const clean = primaryArtist(name);
+      const key = clean ? normKey(clean) : '';
+      if (!key || clean.length < 2 || !Number.isFinite(weight) || weight === 0) return;
+      const seed = scores.get(key) || { name: clean, score: 0, deezerId: null };
+      seed.score += weight;
+      if (!seed.deezerId && deezerId) seed.deezerId = deezerId;
+      scores.set(key, seed);
+    };
+
+    Object.values(state.taste.artists).forEach((row) =>
+      add(row.n, row.value > 0 ? 4 : -6.5, row.dz)
+    );
+    Object.values(state.taste.tracks).forEach((row) =>
+      add(row.n, row.value > 0 ? 2.2 : -3.4, row.dz)
+    );
+
+    const now = Date.now();
+    state.collection.favorites.forEach((entry, index) =>
+      add(entry.artist, 1 + Math.max(0, 1 - index / 15), entry.source === 'deezer' ? entry.artistId : null)
+    );
+    history.forEach((row) => {
+      const age = (now - row.last) / DAY;
+      add(
+        row.entry.artist,
+        Math.min(row.plays, 6) * 0.3 * Math.exp(-age / 30),
+        row.entry.source === 'deezer' ? row.entry.artistId : null
+      );
+    });
+    state.collection.playlists.forEach((playlist) =>
+      playlist.items.forEach((entry) => add(entry.artist, 0.35))
+    );
+    state.taste.skips.forEach((row) => {
+      const age = (now - row.at) / DAY;
+      if (age > TASTE_SKIP_DAYS) return;
+      add(row.n, -0.55 * Math.exp(-age / 30), row.dz);
+    });
+
+    return scores;
+  }
+
+  function tasteArtists(limit = 5) {
+    return Array.from(artistScores().values())
+      .filter((artist) => artist.score > 0.05)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ name, deezerId }) => ({ name, deezerId }));
+  }
+
+  function trimTasteMap(map) {
+    const keys = Object.keys(map || {});
+    if (keys.length <= 600) return;
+    keys
+      .sort((a, b) => (Number(map[a].at) || 0) - (Number(map[b].at) || 0))
+      .slice(0, keys.length - 600)
+      .forEach((key) => delete map[key]);
+  }
+
+  function persistTaste() {
+    state.taste.revision = (Number(state.taste.revision) || 0) + 1;
+    trimTasteMap(state.taste.tracks);
+    trimTasteMap(state.taste.artists);
+    writeJSON(STORAGE.taste, state.taste);
+  }
+
+  function setTasteFeedback(entries, target, value) {
+    const list = (Array.isArray(entries) ? entries : [entries]).filter(Boolean);
+    if (!list.length) return;
+    const now = Date.now();
+    let changed = 0;
+    let toggledOff = 0;
+
+    list.forEach((entry) => {
+      if (!entry || entry.kind === 'radio') return;
+      if (target === 'artist') {
+        const key = tasteArtistKey(entry.artist);
+        if (!key) return;
+        const row = state.taste.artists[key];
+        if (row && row.value === value) {
+          delete state.taste.artists[key];
+          toggledOff += 1;
+        } else {
+          state.taste.artists[key] = {
+            value,
+            at: now,
+            n: primaryArtist(entry.artist),
+            dz: entry.source === 'deezer' ? entry.artistId || null : null,
+          };
+        }
+        changed += 1;
+      } else {
+        const key = tasteEntryKey(entry);
+        if (!key) return;
+        const row = state.taste.tracks[key];
+        if (row && row.value === value) {
+          delete state.taste.tracks[key];
+          toggledOff += 1;
+        } else {
+          state.taste.tracks[key] = {
+            value,
+            at: now,
+            n: primaryArtist(entry.artist),
+            a: tasteArtistKey(entry.artist),
+            dz: entry.source === 'deezer' ? entry.artistId || null : null,
+          };
+        }
+        changed += 1;
+      }
+    });
+
+    if (!changed) return;
+    persistTaste();
+    invalidateMixes();
+    const label = target === 'artist' ? 'Artist' : 'Titel';
+    const name =
+      target === 'artist'
+        ? `„${primaryArtist(list[0].artist) || list[0].title}“`
+        : list.length === 1
+          ? `„${list[0].title}“`
+          : `${list.length} Titel`;
+    if (toggledOff === changed) toast(`${label}-Geschmack für ${name} zurückgesetzt`);
+    else toast(`${value > 0 ? 'Mehr davon' : 'Weniger davon'}: ${name}`);
+    if (state.view === 'mixes') renderMixes();
+    renderHomeMixes();
+    scheduleRecsRefresh(1200);
+  }
+
+  function noteSkip(entry) {
+    if (!entry || entry.kind === 'radio' || audio.paused) return;
+    const played = Number(audio.currentTime) || 0;
+    const duration = Number(audio.duration) || 0;
+    const limit = Math.min(20, duration ? duration * 0.55 : 20);
+    if (played < 3 || played >= limit) return;
+
+    const track = tasteEntryKey(entry);
+    const artist = tasteArtistKey(entry.artist);
+    if (!track && !artist) return;
+    const skips = state.taste.skips;
+    const last = skips[skips.length - 1];
+    if (last && last.t === track && Date.now() - last.at < 5000) return;
+
+    skips.push({
+      a: artist,
+      t: track,
+      n: primaryArtist(entry.artist),
+      dz: entry.source === 'deezer' ? entry.artistId || null : null,
+      at: Date.now(),
+    });
+    state.taste.skips = skips.slice(-300);
+    persistTaste();
+    invalidateMixes();
+  }
+
+  function tasteStats() {
+    const trackRows = Object.values(state.taste.tracks);
+    const artistRows = Object.values(state.taste.artists);
+    const cutoff = Date.now() - 30 * DAY;
+    return {
+      likes: trackRows.filter((row) => row.value > 0).length + artistRows.filter((row) => row.value > 0).length,
+      dislikes:
+        trackRows.filter((row) => row.value < 0).length + artistRows.filter((row) => row.value < 0).length,
+      skips: state.taste.skips.filter((row) => row.at >= cutoff).length,
+      artists: tasteArtists(6).map((artist) => artist.name),
+    };
   }
 
   function trackListening() {
@@ -1883,6 +2211,7 @@
       state.pluginCharts = { pluginId: plugin.id, items: [], loading: false, loaded: true, error: error.message };
     }
     renderHomeCharts();
+    mixesChanged();
   }
 
   async function loadReleases(force = false) {
@@ -1904,6 +2233,7 @@
       state.releases = { tracks: [], loading: false, loaded: true, error: error.message };
     }
     renderHomeCharts();
+    mixesChanged();
   }
 
   function buildHome() {
@@ -1947,6 +2277,9 @@
               <button class="quick-action" data-home-action="presets">
                 ${ICONS.spark} Vorlagen
               </button>
+              <button class="quick-action" data-home-action="mixes">
+                ${ICONS.star} Mixes
+              </button>
               <button class="quick-action" data-home-action="creator">
                 ${ICONS.scissors} Cutter-Modus
               </button>
@@ -1970,6 +2303,17 @@
         </section>
 
         <div class="status-row" id="status-row"></div>
+
+        <section class="home-section">
+          <div class="home-section-head">
+            <div class="home-section-title">
+              <h2>Deine Mixes</h2>
+              <span class="muted small" id="home-mixes-sub">Aus deinem Geschmack – jeden Tag neu</span>
+            </div>
+            <button class="btn ghost small" data-home-action="mixes">${ICONS.star} Alle Mixes</button>
+          </div>
+          <div id="home-mixes" class="mix-row"></div>
+        </section>
 
         <section class="home-section">
           <div class="home-section-head">
@@ -2047,6 +2391,7 @@
 
     updateStatusChips();
     renderHomeRecs();
+    renderHomeMixes();
     renderHomeCharts();
     renderHomeRediscover();
     renderHomeLocal();
@@ -2081,6 +2426,7 @@
 
     renderHomeCharts();
     renderSearchResults();
+    mixesChanged();
   }
 
   function skeletonCards(count, className = 'chart-card', artClass = 'chart-art') {
@@ -2283,35 +2629,8 @@
   }
 
   function recSeeds() {
-    const scores = new Map();
-
-    const add = (entry, weight) => {
-      if (!entry || entry.kind === 'radio') return;
-      const name = primaryArtist(entry.artist);
-      if (!name || name.length < 2) return;
-
-      const key = name.toLowerCase();
-      const seed = scores.get(key) || { name, score: 0, deezerId: null };
-      seed.score += weight;
-      if (!seed.deezerId && entry.source === 'deezer' && entry.artistId) seed.deezerId = entry.artistId;
-      scores.set(key, seed);
-    };
-
-    state.collection.favorites.forEach((entry, index) => add(entry, 1 + Math.max(0, 1 - index / 15)));
-    // What you actually listen to: more plays and more recent = stronger.
-    const now = Date.now();
-    history.forEach((row) => {
-      const age = (now - row.last) / DAY;
-      add(row.entry, Math.min(row.plays, 6) * 0.3 * Math.exp(-age / 30));
-    });
-    state.collection.playlists.forEach((playlist) =>
-      playlist.items.forEach((entry) => add(entry, 0.35))
-    );
-
-    const artists = Array.from(scores.values())
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .map(({ name, deezerId }) => ({ name, deezerId }));
+    // Explicit taste + favourites + plays + playlists − skips, computed once.
+    const artists = tasteArtists(5);
 
     // Favourites from a source plugin: the plugin can suggest related titles.
     const pluginSeeds = [];
@@ -2393,6 +2712,7 @@
       state.recs = Object.assign(state.recs, {
         tracks: [], seeds: [], loading: false, loaded: true, error: null, seedKey: seeds.key, at: 0,
       });
+      invalidateMixes();
       renderRecsViews();
       return;
     }
@@ -2455,6 +2775,7 @@
         seedKey: state.recs.seedKey,
         at: state.recs.at,
       });
+      invalidateMixes();
     } catch (error) {
       Object.assign(state.recs, { loading: false, loaded: true, error: error.message });
     }
@@ -2465,6 +2786,525 @@
   function renderRecsViews() {
     renderHomeRecs();
     renderFavRecs();
+    renderHomeMixes();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Smart mixes (local taste engine)
+   *
+   * A mix is a stable set for the current day: built from favourites,
+   * playlists, history, local files, charts and fresh recommendations, scored
+   * by explicit taste, plays, skips and novelty. No server profile,
+   * nothing is uploaded; only artist names go to the public catalogue API.
+   * ---------------------------------------------------------------- */
+
+  const MIX_LIMIT = 30;
+  const MIX_DEFS = [
+    {
+      id: 'daily',
+      title: 'Dein Mix',
+      subtitle: 'dein Geschmack, frisch gemischt',
+      desc: 'Favoriten, was du oft hörst – und Titel, die genau dazu passen.',
+      icon: 'spark',
+      tone: 'daily',
+    },
+    {
+      id: 'fresh',
+      title: 'Neu für dich',
+      subtitle: 'neue Titel deiner Artists',
+      desc: 'Frische Vorschläge abseits deiner Favoriten und der letzten Tage.',
+      icon: 'star',
+      tone: 'fresh',
+    },
+    {
+      id: 'discover',
+      title: 'Entdecken',
+      subtitle: 'neue Artists, neue Richtungen',
+      desc: 'Titel von Artists, die du noch nicht hörst – aber mögen könntest.',
+      icon: 'search',
+      tone: 'discover',
+    },
+    {
+      id: 'again',
+      title: 'Nochmal',
+      subtitle: 'was du früher gern gehört hast',
+      desc: 'Titel mit vielen Plays, die in den letzten Wochen nicht dran waren.',
+      icon: 'refresh',
+      tone: 'again',
+    },
+    {
+      id: 'deep',
+      title: 'Tiefe Schnitte',
+      subtitle: 'Perlen aus deinen Playlists',
+      desc: 'Selten gehörte Titel aus deinen Playlists und deiner lokalen Musik.',
+      icon: 'list',
+      tone: 'deep',
+    },
+  ];
+
+  const mixState = { day: '', revision: -1, nonce: 0, lists: null };
+
+  function todayKey() {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+      date.getDate()
+    ).padStart(2, '0')}`;
+  }
+
+  function stringSeed(value) {
+    let hash = 2166136261;
+    const text = String(value || '');
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function seededShuffle(list, seed) {
+    const copy = list.slice();
+    let value = (seed >>> 0) || 1;
+    const next = () => {
+      value ^= value << 13;
+      value >>>= 0;
+      value ^= value >>> 17;
+      value ^= value << 5;
+      value >>>= 0;
+      return value / 4294967296;
+    };
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const other = Math.floor(next() * (index + 1));
+      [copy[index], copy[other]] = [copy[other], copy[index]];
+    }
+    return copy;
+  }
+
+  function invalidateMixes() {
+    mixState.lists = null;
+  }
+
+  // Data that feeds the mixes changed: rebuild and refresh visible cards.
+  function mixesChanged() {
+    invalidateMixes();
+    renderHomeMixes();
+    if (state.view === 'mixes') renderMixes();
+  }
+
+  function mixPool() {
+    const out = [];
+    const seen = new Set();
+    const add = (entry) => {
+      if (!entry || !validEntry(entry) || entry.kind === 'radio') return;
+      if (entry.kind === 'plugin' && !pluginReady(entry.pluginId)) return;
+      const key = matchKey(entry);
+      if (seen.has(entry.id) || (key && seen.has(key))) return;
+      seen.add(entry.id);
+      if (key) seen.add(key);
+      out.push(entry);
+    };
+
+    state.recs.tracks.forEach(add);
+    state.collection.favorites.forEach(add);
+    state.collection.playlists.forEach((playlist) => playlist.items.forEach(add));
+    history.forEach((row) => add(row.entry));
+    state.library.entries.forEach(add);
+    state.charts.tracks.forEach(add);
+    state.releases.tracks.forEach(add);
+    state.pluginCharts.items.forEach(add);
+    return out;
+  }
+
+  function mixContext(pool = []) {
+    const favoriteIds = new Set();
+    const favoriteKeys = new Set();
+    state.collection.favorites.forEach((entry) => {
+      favoriteIds.add(entry.id);
+      favoriteKeys.add(matchKey(entry));
+    });
+
+    const playlistIds = new Set();
+    state.collection.playlists.forEach((playlist) =>
+      playlist.items.forEach((entry) => playlistIds.add(entry.id))
+    );
+
+    const recIds = new Set(state.recs.tracks.map((entry) => entry.id));
+    const last = new Map();
+    const played = new Map();
+    const knownArtists = new Set();
+    history.forEach((row) => {
+      last.set(row.entry.id, row.last);
+      played.set(row.entry.id, row.plays);
+      const key = tasteArtistKey(row.entry.artist);
+      if (key) knownArtists.add(key);
+    });
+    state.collection.favorites.forEach((entry) => {
+      const key = tasteArtistKey(entry.artist);
+      if (key) knownArtists.add(key);
+    });
+
+    const days = (entry) => {
+      const at = last.get(entry.id);
+      return at ? (Date.now() - at) / DAY : 999;
+    };
+    const plays = (entry) => played.get(entry.id) || 0;
+    const base = new Map();
+    pool.forEach((entry) => base.set(entry, tasteScore(entry)));
+
+    return {
+      favoriteIds,
+      favoriteKeys,
+      playlistIds,
+      recIds,
+      knownArtists,
+      days,
+      plays,
+      baseScore: (entry) => base.get(entry) || 0,
+    };
+  }
+
+  function mixExcluded(entry) {
+    return tasteTrackValue(entry) < 0 || tasteArtistValue(entry) < 0;
+  }
+
+  function mixNoise(entry, id) {
+    const value = stringSeed(`${mixState.day}:${id}:${entry.id}:${mixState.nonce}`);
+    return ((value % 1000) / 1000 - 0.5) * 1.1;
+  }
+
+  function mixScore(entry, id, ctx) {
+    const base = ctx.baseScore(entry) + mixNoise(entry, id);
+    const days = ctx.days(entry);
+    const recent = days < 1 ? 2.2 : days < 3 ? 1.1 : 0;
+    const artistKey = tasteArtistKey(entry.artist);
+
+    if (id === 'daily') {
+      const known = ctx.favoriteIds.has(entry.id) ? 0.9 : 0;
+      const local = entry.kind === 'local' ? 0.25 : 0;
+      const playlist = ctx.playlistIds.has(entry.id) ? 0.25 : 0;
+      return base + known + local + playlist - recent;
+    }
+
+    if (id === 'fresh') {
+      return (
+        base +
+        (ctx.recIds.has(entry.id) ? 1.6 : 0) +
+        (artistKey && ctx.knownArtists.has(artistKey) ? 0.35 : 0) -
+        (days < 7 ? 3 : 0) -
+        (ctx.favoriteIds.has(entry.id) ? 2.5 : 0)
+      );
+    }
+
+    if (id === 'discover') {
+      const unknown = artistKey && !ctx.knownArtists.has(artistKey) ? 2.2 : -0.4;
+      return (
+        base * 0.85 +
+        unknown +
+        (ctx.recIds.has(entry.id) ? 0.5 : 0) -
+        (days < 14 ? 2 : 0) -
+        (ctx.favoriteIds.has(entry.id) ? 4 : 0)
+      );
+    }
+
+    if (id === 'again') {
+      return (
+        base +
+        Math.min(ctx.plays(entry), 8) * 0.45 +
+        (ctx.favoriteIds.has(entry.id) ? 0.6 : 0) +
+        (days > 45 ? 0.8 : 0) -
+        (days < 14 ? 2.5 : 0)
+      );
+    }
+
+    if (id === 'deep') {
+      const plays = ctx.plays(entry);
+      return (
+        base +
+        (plays === 0 ? 1.4 : plays < 3 ? 0.6 : 0) +
+        (days > 30 ? 0.9 : 0) +
+        (entry.kind === 'local' ? 0.25 : 0) -
+        (days < 14 ? 2 : 0)
+      );
+    }
+
+    return base;
+  }
+
+  function buildMixList(id, pool, ctx) {
+    let candidates = pool.filter((entry) => !mixExcluded(entry));
+
+    if (id === 'fresh') {
+      candidates = candidates.filter(
+        (entry) =>
+          !ctx.favoriteIds.has(entry.id) &&
+          !ctx.favoriteKeys.has(matchKey(entry)) &&
+          !ctx.playlistIds.has(entry.id) &&
+          ctx.days(entry) > 7
+      );
+    }
+
+    if (id === 'discover') {
+      candidates = candidates.filter((entry) => {
+        const key = tasteArtistKey(entry.artist);
+        return (
+          key &&
+          !ctx.knownArtists.has(key) &&
+          !ctx.favoriteIds.has(entry.id) &&
+          ctx.days(entry) > 14
+        );
+      });
+    }
+
+    if (id === 'again') {
+      candidates = candidates.filter(
+        (entry) => (ctx.favoriteIds.has(entry.id) || ctx.plays(entry) > 0) && ctx.days(entry) > 7
+      );
+    }
+
+    if (id === 'deep') {
+      candidates = candidates.filter(
+        (entry) =>
+          (ctx.playlistIds.has(entry.id) || entry.kind === 'local') &&
+          !ctx.favoriteIds.has(entry.id)
+      );
+    }
+
+    const scored = candidates
+      .map((entry) => ({ entry, score: mixScore(entry, id, ctx) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MIX_LIMIT)
+      .map((row) => row.entry);
+
+    return seededShuffle(scored, stringSeed(`${mixState.day}:${id}:${mixState.nonce}`));
+  }
+
+  function ensureMixes(force = false) {
+    const day = todayKey();
+    const revision = Number(state.taste.revision) || 0;
+    if (!force && mixState.lists && mixState.day === day && mixState.revision === revision) {
+      return mixState.lists;
+    }
+
+    mixState.day = day;
+    mixState.revision = revision;
+    const pool = mixPool();
+    const ctx = mixContext(pool);
+    const lists = {};
+    MIX_DEFS.forEach((def) => {
+      lists[def.id] = buildMixList(def.id, pool, ctx);
+    });
+    mixState.lists = lists;
+    return lists;
+  }
+
+  function mixById(id) {
+    const lists = ensureMixes();
+    return Array.isArray(lists[id]) ? lists[id] : [];
+  }
+
+  function mixDef(id) {
+    return MIX_DEFS.find((def) => def.id === id) || null;
+  }
+
+  function mixArt(list, def) {
+    const arts = [];
+    list.forEach((entry) => {
+      if (entry.artwork && arts.length < 4 && !arts.includes(entry.artwork)) arts.push(entry.artwork);
+    });
+    if (arts.length >= 4) {
+      return `<div class="cover-grid">${arts
+        .map((src) => `<img src="${esc(src)}" alt="" loading="lazy" />`)
+        .join('')}</div>`;
+    }
+    if (arts.length) return `<img src="${esc(arts[0])}" alt="" loading="lazy" />`;
+    return `<span class="mix-glyph">${ICONS[def.icon] || ICONS.spark}</span>`;
+  }
+
+  function mixCard(def, list, compact = false) {
+    const empty = !list.length;
+    return `
+      <article class="mix-card ${compact ? 'compact' : ''}" data-mix-tone="${esc(def.tone)}">
+        <div class="mix-art">
+          ${mixArt(list, def)}
+          <button class="mix-play" data-mix-action="play" data-mix-id="${esc(def.id)}" ${
+            empty ? 'disabled' : ''
+          } title="${empty ? 'Noch zu wenig Daten' : 'Mix abspielen'}">${ICONS.play}</button>
+          <span class="mix-count">${list.length}</span>
+        </div>
+        <div class="mix-info">
+          <div class="mix-heading">
+            <span class="mix-ic">${ICONS[def.icon] || ICONS.spark}</span>
+            <h3>${esc(def.title)}</h3>
+          </div>
+          <p>${esc(def.desc)}</p>
+          <span class="mix-sub">${
+            empty ? 'Hör ein paar Titel oder markiere ♥' : `${list.length} Titel · ${esc(def.subtitle)}`
+          }</span>
+        </div>
+        ${
+          compact
+            ? ''
+            : `<div class="mix-actions">
+                 <button class="btn primary small mix-play-btn" data-mix-action="play" data-mix-id="${esc(def.id)}" ${
+                   empty ? 'disabled' : ''
+                 }>Abspielen</button>
+                 <button class="btn ghost small mix-icon-btn" data-mix-action="shuffle" data-mix-id="${esc(def.id)}" ${
+                   empty ? 'disabled' : ''
+                 } title="Mix in zufälliger Reihenfolge spielen">${ICONS.shuffle}</button>
+                 <button class="btn ghost small mix-icon-btn" data-mix-action="save" data-mix-id="${esc(def.id)}" ${
+                   empty ? 'disabled' : ''
+                 } title="Als Playlist speichern">${ICONS.plus}</button>
+               </div>`
+        }
+      </article>`;
+  }
+
+  function renderHomeMixes() {
+    const host = $('#home-mixes');
+    if (!host) return;
+    const lists = ensureMixes();
+    const visible = MIX_DEFS.filter((def) => (lists[def.id] || []).length);
+    host.innerHTML = visible.length
+      ? visible.map((def) => mixCard(def, lists[def.id] || [], true)).join('')
+      : '<p class="muted small">Hör ein paar Titel oder markiere ♥ – dann baut CleanMusic hier deine Mixes.</p>';
+  }
+
+  function renderMixes() {
+    const host = $('#view-mixes');
+    if (!host) return;
+
+    const lists = ensureMixes();
+    const stats = tasteStats();
+    const hasTaste = stats.likes + stats.dislikes + stats.skips > 0;
+    const tasteCopy = hasTaste
+      ? `${stats.likes}× mehr davon · ${stats.dislikes}× weniger davon · ${stats.skips} Skips in 30 Tagen`
+      : stats.artists.length
+        ? 'Deine Mixes nutzen schon Favoriten und Hörverlauf. Für noch bessere Treffer: Rechtsklick auf einen Titel → „Mehr davon“ oder „Weniger davon“.'
+        : 'Noch kein Feedback gespeichert. Rechtsklick auf einen Titel → „Mehr davon“ oder „Weniger davon“.';
+    const cards = MIX_DEFS.map((def) => mixCard(def, lists[def.id] || [])).join('');
+
+    host.innerHTML = `
+      <div class="page mixes-page">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Für dich</div>
+            <h2>Deine Mixes</h2>
+            <p>
+              Aus deinen Favoriten, Playlists, lokalen Titeln und dem, was du wirklich hörst.
+              „Mehr davon“ und „weniger davon“ (Rechtsklick auf einen Titel) schärfen das Ergebnis.
+            </p>
+          </div>
+          <div class="page-actions">
+            <button class="btn ghost small" data-mix-action="refresh">${ICONS.refresh} Neu mischen</button>
+          </div>
+        </div>
+
+        <div class="mix-taste">
+          <div class="mix-taste-copy">
+            <strong>Dein Geschmack</strong>
+            <p>${tasteCopy}</p>
+          </div>
+          ${
+            stats.artists.length
+              ? `<div class="mix-chips">${stats.artists
+                  .map((name) => `<span class="mix-chip">${esc(name)}</span>`)
+                  .join('')}</div>`
+              : ''
+          }
+          <button class="btn ghost small" data-mix-action="reset" ${hasTaste ? '' : 'disabled'}>
+            Zurücksetzen
+          </button>
+        </div>
+
+        <div class="mix-grid">${cards}</div>
+        <p class="muted small">
+          Mixes werden einmal pro Tag neu gebaut und bleiben bis dahin stabil. „Speichern“ legt eine
+          echte Playlist an; „Mischen“ spielt denselben Mix in zufälliger Reihenfolge.
+        </p>
+      </div>`;
+  }
+
+  function playMix(id, shuffleOrder = false) {
+    const list = mixById(id);
+    if (!list.length) {
+      toast('Für diesen Mix fehlen noch Titel – hör ein paar Songs oder markiere Favoriten.');
+      return;
+    }
+    const def = mixDef(id);
+    const mixed = shuffleOrder || state.playback.shuffle;
+    const items = mixed ? shuffled(list.slice()) : list.slice();
+
+    if (shuffleOrder && !state.playback.shuffle) {
+      state.playback.shuffle = true;
+      writeJSON(STORAGE.playback, state.playback);
+      syncPlaybackButtons();
+    }
+
+    state.queue = {
+      items,
+      index: 0,
+      kind: `mix:${id}`,
+      upcoming: -1,
+      shuffleBase: mixed ? list.slice() : null,
+    };
+    playFromQueue(0);
+    toast(`${def ? def.title : 'Mix'} · ${items.length} Titel`);
+  }
+
+  function saveMix(id) {
+    const list = mixById(id);
+    const def = mixDef(id);
+    if (!list.length || !def) {
+      toast('Dieser Mix ist noch leer.');
+      return;
+    }
+    const date = new Date();
+    const name = `${def.title} · ${String(date.getDate()).padStart(2, '0')}.${String(
+      date.getMonth() + 1
+    ).padStart(2, '0')}.`;
+    const existing = state.collection.playlists.find((playlist) => playlist.name === name);
+    const playlist = existing || createPlaylist(name);
+    addToPlaylist(playlist.id, list, { quiet: true });
+    toast(
+      existing
+        ? `„${name}“ aktualisiert (${list.length} Titel)`
+        : `„${name}“ gespeichert (${list.length} Titel)`
+    );
+  }
+
+  async function resetTasteProfile() {
+    const ok = await askConfirm({
+      title: 'Geschmack zurücksetzen?',
+      message: 'Mehr/weniger-davon, Skips und die daraus gebauten Mixes werden gelöscht. Favoriten und Verlauf bleiben.',
+      confirm: 'Zurücksetzen',
+      danger: true,
+    });
+    if (!ok) return;
+    state.taste = { tracks: {}, artists: {}, skips: [], revision: (Number(state.taste.revision) || 0) + 1 };
+    writeJSON(STORAGE.taste, state.taste);
+    invalidateMixes();
+    renderMixes();
+    renderHomeMixes();
+    scheduleRecsRefresh(600);
+    toast('Geschmack zurückgesetzt');
+  }
+
+  function handleMixAction(action, id) {
+    if (action === 'refresh') {
+      mixState.nonce += 1;
+      invalidateMixes();
+      renderMixes();
+      renderHomeMixes();
+      toast('Mixes neu gemischt');
+      return;
+    }
+    if (action === 'reset') {
+      resetTasteProfile();
+      return;
+    }
+    if (!mixDef(id)) return;
+    if (action === 'play') playMix(id, false);
+    else if (action === 'shuffle') playMix(id, true);
+    else if (action === 'save') saveMix(id);
   }
 
   /* ---------------------------------------------------------------- *
@@ -3470,6 +4310,7 @@
 
   function rebuildLocalEntries() {
     state.library.entries = state.library.tracks.map(localEntry);
+    mixesChanged();
   }
 
   function restoreLibrary() {
@@ -3939,6 +4780,8 @@
     const items = state.queue.items;
     if (!items.length) return;
 
+    if (direction > 0) noteSkip(currentItem());
+
     if (direction > 0 && autoplayEligible()) {
       const queue = state.queue;
       const task = maybeAutoplay();
@@ -4321,6 +5164,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.17.0': [
+      'Taste Engine: „Mehr davon“ und „Weniger davon“ per Rechtsklick oder +-Menü an jedem Titel – wird lokal gespeichert und für Vorschläge, Autoplay und Mixes genutzt.',
+      'Fünf Smart Mixes: Dein Mix, Neu für dich, Entdecken, Nochmal und Tiefe Schnitte – auf der Startseite und in der neuen Mixes-Ansicht.',
+      'Mixes lassen sich als Playlist speichern, täglich neu mischen und reagieren auch auf frühe Skips. Alles bleibt auf deinem Gerät.',
+    ],
     '1.16.0': [
       'Shuffle mischt jetzt die echte Warteschlange: kein Titel kommt doppelt, bevor alle dran waren; Ausschalten stellt die alte Reihenfolge wieder her.',
       'Autoplay läuft, wenn die Warteschlange endet – auch nach Songwünschen. Abschaltbar in der Warteschlange und unter Einstellungen → Wiedergabe.',
@@ -5457,6 +6305,7 @@
     }
     const { artist, top, albums, related } = page.data;
     const album = page.album;
+    const artistTaste = tasteArtistValue(top[0] || { artist: artist.name, kind: 'preview' });
     const kind = (type) => (type === 'single' ? 'Single' : type === 'ep' ? 'EP' : type === 'compile' ? 'Compilation' : 'Album');
     host.innerHTML = `
       <div class="page artist-page">
@@ -5472,6 +6321,12 @@
             <div class="row">
               ${top.length ? `<button class="btn primary" data-artist-action="play">${ICONS.play} Top-Titel abspielen</button>` : ''}
               ${top.length ? `<button class="btn ghost" data-artist-action="shuffle">${ICONS.shuffle} Shuffle</button>` : ''}
+              <button class="btn ghost small" data-artist-action="taste-like">${ICONS.like} Mehr davon${
+                artistTaste > 0 ? ' ✓' : ''
+              }</button>
+              <button class="btn ghost small" data-artist-action="taste-dislike">${ICONS.dislike} Weniger davon${
+                artistTaste < 0 ? ' ✓' : ''
+              }</button>
             </div>
           </div>
         </div>
@@ -5548,6 +6403,15 @@
             case 'shuffle':
               playListShuffled('artist');
               return;
+            case 'taste-like':
+            case 'taste-dislike': {
+              const entries = page && page.data && page.data.top && page.data.top.length
+                ? [page.data.top[0]]
+                : [{ title: page && page.data ? page.data.artist.name : 'Artist', artist: page && page.data ? page.data.artist.name : '', kind: 'preview' }];
+              setTasteFeedback(entries, 'artist', action.dataset.artistAction === 'taste-dislike' ? -1 : 1);
+              renderArtist();
+              return;
+            }
             case 'close-album':
               if (page) page.album = null;
               renderArtist();
@@ -7020,6 +7884,7 @@
     for (let at = index; at >= 0; at -= 1) {
       const entry = items[at];
       if (!entry || entry.kind === 'radio') continue;
+      if (tasteTrackValue(entry) < 0 || tasteArtistValue(entry) < 0) continue;
       const name = primaryArtist(entry.artist);
       if (name && name.length > 1) return entry;
       if (entry.kind === 'plugin' && entry.refId) {
@@ -7048,6 +7913,12 @@
     if (!seed) return 0;
     const name = primaryArtist(seed.artist);
     const artists = name && name.length > 1 ? [{ name, deezerId: seed.source === 'deezer' ? seed.artistId || null : null }] : [];
+    // Let autoplay drift toward the taste profile instead of only the last artist.
+    tasteArtists(3).forEach((artist) => {
+      if (artists.length >= 3) return;
+      if (artists.some((known) => known.name.toLowerCase() === artist.name.toLowerCase())) return;
+      artists.push({ name: artist.name, deezerId: artist.deezerId || null });
+    });
     const pluginSeeds = [];
     if (seed.kind === 'plugin' && seed.refId) {
       const plugin = pluginById(seed.pluginId);
@@ -7066,7 +7937,12 @@
       known.add(entry.id);
       known.add(matchKey(entry));
     });
-    const keep = (entry) => entry && !known.has(entry.id) && !known.has(matchKey(entry));
+    const keep = (entry) =>
+      entry &&
+      !known.has(entry.id) &&
+      !known.has(matchKey(entry)) &&
+      tasteTrackValue(entry) >= 0 &&
+      tasteArtistValue(entry) >= 0;
     const tracks = (Array.isArray(result.tracks) ? result.tracks : []).map(previewEntry).filter(keep);
     const videos = (Array.isArray(result.pluginItems) ? result.pluginItems : [])
       .map((item) => {
@@ -9456,7 +10332,7 @@
     return {
       app: 'CleanMusic', kind: 'backup', format: 1,
       version: (state.info && state.info.version) || '', exportedAt: new Date().toISOString(),
-      collection: state.collection, credits: state.credits, history, settings,
+      collection: state.collection, credits: state.credits, history, settings, taste: state.taste,
     };
   }
 
@@ -9498,7 +10374,7 @@
   }
 
   function mergeBackup(data) {
-    const counts = { favorites: 0, playlists: 0, credits: 0, history: 0 };
+    const counts = { favorites: 0, playlists: 0, credits: 0, history: 0, taste: 0 };
     const collection = data.collection && typeof data.collection === 'object' ? data.collection : {};
 
     const favorites = Array.isArray(collection.favorites) ? collection.favorites.map(migrateEntry).filter(validEntry) : [];
@@ -9567,6 +10443,48 @@
     history = history.slice(0, HISTORY_MAX);
     writeJSON(STORAGE.history, history);
 
+    // Taste profile: newer values win, feedback is merged instead of replaced.
+    const taste = data.taste && typeof data.taste === 'object' ? data.taste : null;
+    if (taste) {
+      let touched = 0;
+      ['tracks', 'artists'].forEach((kind) => {
+        const rows = taste[kind] && typeof taste[kind] === 'object' ? taste[kind] : {};
+        Object.keys(rows).forEach((key) => {
+          const row = rows[key];
+          if (!row || (row.value !== 1 && row.value !== -1)) return;
+          const mine = state.taste[kind][key];
+          if (mine && (Number(mine.at) || 0) >= (Number(row.at) || 0)) return;
+          const clean = { value: row.value, at: Number(row.at) || 0 };
+          if (typeof row.n === 'string') clean.n = primaryArtist(row.n);
+          if (typeof row.a === 'string') clean.a = row.a;
+          if (typeof row.dz === 'string' || typeof row.dz === 'number') clean.dz = row.dz;
+          state.taste[kind][key] = clean;
+          touched += 1;
+        });
+      });
+      const knownSkips = new Set(state.taste.skips.map((row) => `${row.t}|${row.a}|${row.at}`));
+      (Array.isArray(taste.skips) ? taste.skips : []).forEach((row) => {
+        if (!row || !Number(row.at) || (!row.a && !row.t)) return;
+        const id = `${row.t || ''}|${row.a || ''}|${row.at}`;
+        if (knownSkips.has(id)) return;
+        state.taste.skips.push({
+          a: typeof row.a === 'string' ? row.a : '',
+          t: typeof row.t === 'string' ? row.t : '',
+          n: typeof row.n === 'string' ? primaryArtist(row.n) : '',
+          dz: typeof row.dz === 'string' || typeof row.dz === 'number' ? row.dz : null,
+          at: Number(row.at) || 0,
+        });
+        knownSkips.add(id);
+        touched += 1;
+      });
+      state.taste.skips = state.taste.skips.slice(-300);
+      if (touched) {
+        state.taste.revision = (Number(state.taste.revision) || 0) + 1;
+        writeJSON(STORAGE.taste, state.taste);
+        counts.taste = touched;
+      }
+    }
+
     const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
     BACKUP_SETTINGS.forEach((key) => {
       if (key in settings && typeof settings[key] === typeof state.settings[key]) state.settings[key] = settings[key];
@@ -9600,7 +10518,9 @@
     }
     const counts = mergeBackup(data);
     toast(
-      `Wiederhergestellt: ${counts.favorites} Favoriten, ${counts.playlists} Playlists, ${counts.credits} Credits, ${counts.history} Verlaufstitel`
+      `Wiederhergestellt: ${counts.favorites} Favoriten, ${counts.playlists} Playlists, ${counts.credits} Credits, ${counts.history} Verlaufstitel${
+        counts.taste ? `, ${counts.taste} Geschmacks-Markierungen` : ''
+      }`
     );
     return counts;
   }
@@ -10789,6 +11709,7 @@ ${updatePanel()}
     if (name === 'review') renderReview();
     if (name === 'downloads') loadDownloads();
     if (name === 'presets') renderPresets();
+    if (name === 'mixes') renderMixes();
     if (name === 'search') {
       renderSearchResults();
       if (!state.charts.loaded) loadCharts();
@@ -10800,6 +11721,7 @@ ${updatePanel()}
     }
 
     if (name === 'home' || name === 'favorites') loadRecs(false);
+    if (name === 'home') renderHomeMixes();
 
     if (name === 'creator') {
       renderCreator();
@@ -11162,6 +12084,19 @@ ${updatePanel()}
         return;
       }
 
+      const tasteItem = event.target.closest('[data-ctx-taste]');
+      if (tasteItem) {
+        const mode = tasteItem.dataset.ctxTaste;
+        const entries = ctxEntries.slice();
+        hideMenus();
+        if (mode.startsWith('artist-')) {
+          setTasteFeedback(entries, 'artist', mode.includes('dislike') ? -1 : 1);
+        } else {
+          setTasteFeedback(entries, 'track', mode.includes('dislike') ? -1 : 1);
+        }
+        return;
+      }
+
       const queueItem = event.target.closest('[data-ctx-queue]');
       if (queueItem) {
         const entries = ctxEntries;
@@ -11182,6 +12117,12 @@ ${updatePanel()}
         const entries = ctxEntries;
         hideMenus();
         promptNewPlaylist(entries);
+        return;
+      }
+
+      const mixAction = event.target.closest('[data-mix-action]');
+      if (mixAction) {
+        handleMixAction(mixAction.dataset.mixAction, mixAction.dataset.mixId);
         return;
       }
 
@@ -11209,6 +12150,9 @@ ${updatePanel()}
             return;
           case 'presets':
             showView('presets');
+            return;
+          case 'mixes':
+            showView('mixes');
             return;
           case 'creator':
             showView('creator');
@@ -12588,6 +13532,49 @@ ${updatePanel()}
     enqueueAt: (key, index, mode) => enqueue(entryAt(key, index), mode),
     toggleQueue: (open) => toggleQueuePanel(open),
     next: () => stepQueue(1),
+    taste: () => {
+      const stats = tasteStats();
+      return {
+        stats,
+        tracks: Object.keys(state.taste.tracks).length,
+        artists: Object.keys(state.taste.artists).length,
+        skips: state.taste.skips.length,
+        revision: state.taste.revision,
+      };
+    },
+    tasteAt: (key, index, mode) => {
+      const entry = entryAt(key, index);
+      if (!entry) return false;
+      const target = String(mode).startsWith('artist-') ? 'artist' : 'track';
+      setTasteFeedback([entry], target, String(mode).includes('dislike') ? -1 : 1);
+      return true;
+    },
+    tasteReset: () => {
+      state.taste = { tracks: {}, artists: {}, skips: [], revision: (Number(state.taste.revision) || 0) + 1 };
+      writeJSON(STORAGE.taste, state.taste);
+      invalidateMixes();
+      renderHomeMixes();
+      if (state.view === 'mixes') renderMixes();
+      return true;
+    },
+    mixes: () => {
+      const lists = ensureMixes();
+      return MIX_DEFS.map((def) => ({
+        id: def.id,
+        title: def.title,
+        items: (lists[def.id] || []).length,
+        titles: (lists[def.id] || []).slice(0, 5).map((entry) => entry.title),
+      }));
+    },
+    mixPlay: (id) => playMix(id, false),
+    mixSave: (id) => saveMix(id),
+    mixRefresh: () => {
+      mixState.nonce += 1;
+      invalidateMixes();
+      renderHomeMixes();
+      if (state.view === 'mixes') renderMixes();
+      return true;
+    },
     update: () => ({
       info: updateInfo,
       card: !$('#update-card').hidden,
