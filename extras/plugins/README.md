@@ -34,6 +34,30 @@ Bildquellen.
 Der Server lauscht nur auf `127.0.0.1` und beantwortet nur Anfragen an
 `127.0.0.1` oder `localhost`. Andere Geräte und Webseiten kommen nicht heran.
 
+## OBS Audio-Visualizer (`obs-visualizer.js`)
+
+Ein echter, musikreaktiver Visualizer für OBS: Die Balken, der Kreis oder die
+Welle folgen dem Spektrum, das CleanMusic gerade analysiert – nicht nur dem
+Play/Pause-Zustand. Die Farben kommen aus dem Cover.
+
+1. Plugin wie oben hinzufügen und einschalten.
+2. In der Plugin-Karte auf **Visualizer-URL kopieren** klicken
+   (Standard: `http://127.0.0.1:4789/visualizer`).
+3. In OBS: **Quelle hinzufügen → Browser**, URL einfügen, Hintergrund
+   transparent lassen. Empfohlene Größe: **800 × 300** für Balken, Spiegel und
+   Welle, **420 × 420** für den Kreis.
+
+Stile: **Balken** (Standard), **Spiegel** (wächst von der Mittellinie),
+**Kreis** und **Welle**. In der Plugin-Karte wählbar oder pro Quelle über
+`?style=bars`, `?style=mirror`, `?style=radial` bzw. `?style=wave` an der URL.
+Weitere Einstellungen: Empfindlichkeit, Leuchten, dunkler Hintergrund,
+Titel/Künstler einblenden und „Bei Pause ausblenden“.
+
+Der Visualizer braucht ein aktives Plugin mit der Fähigkeit
+`visualizer: true` (ab CleanMusic 1.15.0). Erst dann schickt CleanMusic das
+Spektrum mit etwa 25 Bildern pro Sekunde an den lokalen Server. Der Server
+lauscht nur auf `127.0.0.1`; andere Geräte und Webseiten kommen nicht heran.
+
 ## Streamer.bot (`streamerbot.js`)
 
 Chat-Befehle für **Twitch** über [Streamer.bot](https://streamer.bot): `!song` schreibt

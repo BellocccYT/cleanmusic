@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('cm', {
   discordUpdate: (track) => ipcRenderer.send('discord-update', track || null),
   setTitleBar: (colors) => ipcRenderer.send('set-titlebar', colors || null),
   playerState: (snapshot) => ipcRenderer.send('player-state', snapshot || null),
+  visualizerState: (snapshot) => ipcRenderer.send('visualizer-state', snapshot || null),
+  onVisualizerWatch: (listener) => {
+    ipcRenderer.on('visualizer-watch', (_event, on) => listener(Boolean(on)));
+  },
   onPlayerCommand: (listener) => {
     ipcRenderer.on('player-command', (_event, command) => listener(command));
   },
@@ -58,6 +62,7 @@ contextBridge.exposeInMainWorld('cm', {
   remoteGet: () => ipcRenderer.invoke('remote-get'),
   remoteSet: (patch) => ipcRenderer.invoke('remote-set', patch),
   remoteRotate: () => ipcRenderer.invoke('remote-rotate'),
+  tvPairSend: (input) => ipcRenderer.invoke('tv-pair-send', input),
   diagnosticCopy: () => ipcRenderer.invoke('diagnostic-copy'),
   diagnosticError: (message) => ipcRenderer.send('diagnostic-error', { message: String(message || '') }),
   diagnosticState: (snapshot) => ipcRenderer.send('diagnostic-state', snapshot || {}),

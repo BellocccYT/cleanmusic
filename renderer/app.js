@@ -4162,6 +4162,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.15.0': [
+      'OBS-Audio-Visualizer als optionales Plugin: echte Spektren als Balken, Spiegel, Kreis oder Welle – mit den Farben des Covers.',
+      'Plugin-API: Overlays können jetzt das Live-Spektrum abonnieren (visualizer: true) – nur bei Bedarf, ohne die Wiedergabe umzuleiten.',
+      'Anleitung und fertiges Plugin: extras/plugins/README.md.',
+    ],
     '1.14.0': [
       'Vorlagen (Seitenleiste): acht fertige Playlists für Gaming, Chill, Episch, Fokus, Workout und mehr – mit einem Klick als echte Playlist.',
       'Jede Vorlage gibt es stream-sicher (nur NCS, CC BY und CC0, mit Credit nutzbar) und normal (Katalogtitel als 30-s-Vorschau).',
@@ -6795,6 +6800,22 @@
     return Object.assign({}, entry, { queued: false, autoplay: false, requestedBy: null, requestedAt: 0 }, flags);
   }
 
+  // Handy-Fernbedienung (Desktop und TV): einen Treffer/Sender sofort spielen,
+  // ohne die restliche Warteschlange zu verwerfen.
+  function playRemoteEntry(entry) {
+    if (!entry) return false;
+    const copy = queueCopy(entry);
+    const q = state.queue;
+    if (q.index >= 0 && q.items[q.index]) {
+      q.items.splice(q.index + 1, 0, copy);
+      playFromQueue(q.index + 1);
+    } else {
+      state.queue = { items: [copy], index: 0, kind: 'queue', upcoming: -1 };
+      playFromQueue(0);
+    }
+    return true;
+  }
+
   function enqueue(entries, mode = 'end', flags = {}) {
     const list = (Array.isArray(entries) ? entries : [entries]).filter(Boolean);
     if (!list.length) return;
@@ -8977,7 +8998,11 @@
         <div class="update-text">
           <strong>CleanMusic ${esc(info.latest)} ist da – möchtest du updaten?</strong>
           <small>Du hast ${esc(info.current)}.${
-            info.installable && info.asset ? ` Download ${esc(formatSize(info.asset.size))}, danach Neustart.` : ''
+            info.installable && info.asset
+              ? info.kind === 'apk'
+                ? ` Download ${esc(formatSize(info.asset.size))}, danach fragt Android nach der Installation.`
+                : ` Download ${esc(formatSize(info.asset.size))}, danach Neustart.`
+              : ''
           }${info.notes ? ' <button class="link-btn" data-update="notes">Was ist neu?</button>' : ''}</small>
         </div>
         <div class="update-actions">
@@ -9003,7 +9028,9 @@
           <small>${
             info.kind === 'setup'
               ? 'Geprüft. CleanMusic schließt sich kurz, installiert das Update und startet von selbst neu.'
-              : 'Geprüft und neben deiner jetzigen Version gespeichert. Die alte EXE kannst du danach löschen.'
+              : info.kind === 'apk'
+                ? 'Geprüft. Tippe auf Installieren – Android fragt einmal nach; deine Daten bleiben erhalten.'
+                : 'Geprüft und neben deiner jetzigen Version gespeichert. Die alte EXE kannst du danach löschen.'
           }</small>
         </div>
         <div class="update-actions">
@@ -9086,7 +9113,11 @@
         onUpdateState(await bridge.updateDownload());
         return;
       case 'install':
-        if (!(await bridge.updateInstall())) toast('Neustart nicht möglich – Datei fehlt.');
+        if (!(await bridge.updateInstall())) {
+          toast(updateInfo && updateInfo.kind === 'apk'
+            ? 'Installer wurde nicht geöffnet – bitte die Update-Karte erneut öffnen.'
+            : 'Neustart nicht möglich – Datei fehlt.');
+        }
         return;
       case 'open':
         bridge.updateOpen();
@@ -9452,6 +9483,58 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Visualizer spectrum for plugins (API v2)
+   *
+   * Only runs while a plugin asks for it (e.g. the OBS visualizer).
+   * The analyser already exists in visualizer.js; this just samples the
+   * 32 log-spaced bands about 25 times per second and hands them over.
+   * ---------------------------------------------------------------- */
+
+  let visualizerWatchOn = false;
+  let visualizerWatchTimer = null;
+  let visualizerLastPlaying = null;
+
+  function visualizerSnapshot() {
+    const viz = window.CMVisualizer;
+    if (!viz || typeof viz.spectrum !== 'function') return { spectrum: [], level: 0 };
+    const spectrum = viz.spectrum(32).map((value) =>
+      Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 255)
+    );
+    const level = viz.level ? Math.max(0, Math.min(1, Number(viz.level()) || 0)) : 0;
+    return { spectrum, level: Number(level.toFixed(3)) };
+  }
+
+  function pushVisualizerState(force = false) {
+    if (!bridge.visualizerState) return;
+    const playing = !audio.paused;
+    // While paused one frame is enough; the overlay fades out by itself.
+    if (!force && !playing && visualizerLastPlaying === false) return;
+    visualizerLastPlaying = playing;
+    try {
+      // Send explicit zeros on pause so the bars fall even if the analyser
+      // still holds its last frame.
+      bridge.visualizerState(
+        playing ? visualizerSnapshot() : { spectrum: new Array(32).fill(0), level: 0 }
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function setVisualizerWatch(on) {
+    const next = Boolean(on);
+    if (next === visualizerWatchOn) return;
+    visualizerWatchOn = next;
+    const viz = window.CMVisualizer;
+    if (viz && typeof viz.setWatching === 'function') viz.setWatching(next);
+    clearInterval(visualizerWatchTimer);
+    visualizerWatchTimer = null;
+    if (!next) return;
+    visualizerWatchTimer = setInterval(() => pushVisualizerState(), 40);
+    pushVisualizerState(true);
+  }
+
+  /* ---------------------------------------------------------------- *
    * Song requests (plugins, e.g. Streamer.bot !sr)
    *
    * A plugin hands over a search text and a name; CleanMusic picks the
@@ -9701,6 +9784,37 @@
             return { ok: false, reason: 'invalid' };
           }
           enqueue(previewEntry(track), value.mode === 'next' ? 'next' : 'end');
+          return { ok: true };
+        });
+        break;
+      case 'remoteRadio':
+        answerPlayerCall(callId, () => {
+          const station = value && value.station;
+          if (!station || typeof station.id !== 'string' || !/^https?:\/\//i.test(station.url || '')) {
+            return { ok: false, reason: 'invalid' };
+          }
+          playRemoteEntry(radioEntry(station));
+          return { ok: true };
+        });
+        break;
+      case 'remoteFavorites':
+        answerPlayerCall(callId, () => {
+          if (value && value.list) {
+            return {
+              ok: true,
+              favorites: state.collection.favorites.slice(0, 60).map((entry) => ({
+                id: entry.id,
+                title: String(entry.title || '').slice(0, 200),
+                artist: String(entry.artist || '').slice(0, 200),
+                cover: /^https:\/\//i.test(entry.artwork || '') ? entry.artwork : '',
+                kind: entry.kind,
+              })),
+            };
+          }
+          const id = String((value && value.id) || '');
+          const entry = state.collection.favorites.find((item) => item.id === id);
+          if (!entry) return { ok: false, reason: 'not-found' };
+          playRemoteEntry(entry);
           return { ok: true };
         });
         break;
@@ -10375,6 +10489,12 @@
           </div>
           ${state.remote.error ? `<p class="muted small">${esc(state.remote.error)}</p>` : ''}
           ${state.remote.enabled && state.remote.url ? `<div class="row" style="align-items:flex-start;margin-top:14px"><img src="${esc(state.remote.qr)}" alt="QR-Code für die Fernbedienung" width="150" height="150" style="border-radius:10px;background:white;padding:5px" /><div><strong>Auf dem Handy öffnen</strong><p class="small"><a href="${esc(state.remote.url)}" id="remote-link">${esc(state.remote.url)}</a></p><p class="muted small">Der Schlüssel steckt im Link. Teile ihn nur mit Geräten, denen du vertraust. Ein neuer Link widerruft den alten sofort.</p></div></div>` : ''}
+          <div class="row" style="margin-top:14px;align-items:center;gap:8px;flex-wrap:wrap">
+            <label class="muted small" for="tv-pair-url">An Fernseher senden</label>
+            <input id="tv-pair-url" type="url" placeholder="http://192.168.…:4790/?k=…" spellcheck="false" style="flex:1 1 240px;min-width:0" />
+            <button class="btn ghost small" data-tv-pair="send">Favoriten &amp; Playlists senden</button>
+          </div>
+          <p class="muted small">Den Link zeigt CleanMusic TV auf dem Startbildschirm (QR-Code). Am Fernseher einmal bestätigen.</p>
         </div>
 
         <div class="panel">
@@ -11130,6 +11250,32 @@ ${updatePanel()}
         renderSettings();
         if (state.remote.error) toast(state.remote.error);
         else if (remoteAction.dataset.remoteAction === 'rotate') toast('Neuer Link erstellt – der alte ist ungültig.');
+        return;
+      }
+
+      const tvPair = event.target.closest('[data-tv-pair]');
+      if (tvPair) {
+        if (!bridge.tvPairSend) {
+          toast('Senden an den Fernseher gibt es nur in der Desktop-App.');
+          return;
+        }
+        const input = $('#tv-pair-url');
+        const url = input ? input.value.trim() : '';
+        if (!url) {
+          toast('Bitte den TV-Link einfügen (steht am Fernseher unter dem QR-Code).');
+          return;
+        }
+        toast('Wird an den Fernseher gesendet …');
+        const result = await bridge.tvPairSend({
+          url,
+          favorites: state.collection.favorites,
+          playlists: state.collection.playlists,
+        });
+        if (result && result.ok) {
+          toast('Am Fernseher bestätigen – danach sind Favoriten und Playlists dort.');
+        } else {
+          toast((result && result.error) || 'Senden fehlgeschlagen.');
+        }
         return;
       }
 
@@ -11996,6 +12142,7 @@ ${updatePanel()}
       listen.last = 0;
     });
     if (bridge.onPlayerCommand) bridge.onPlayerCommand(onPlayerCommand);
+    if (bridge.onVisualizerWatch) bridge.onVisualizerWatch(setVisualizerWatch);
     wireMediaSession();
     if (bridge.onPluginNotify) {
       bridge.onPluginNotify((message) => {
@@ -12090,6 +12237,7 @@ ${updatePanel()}
     search: (query) => buildSearch(query),
     playList,
     openPlaylist,
+    shareCurrent: () => shareEntry(currentItem()),
     toggleFavoriteAt: (key, index) => toggleFavorite(entryAt(key, index)),
     createPlaylist: (name) => createPlaylist(name).id,
     playlistImportDialogSmoke: async () => {
@@ -12308,6 +12456,7 @@ ${updatePanel()}
       refreshDownloadButtons();
     },
     playerSnapshot: () => playerSnapshot(),
+    visualizerSnapshot: () => visualizerSnapshot(),
     setLayout: (mode) => setLayout(mode),
     setVinyl: (on) => setVinyl(on),
     lyricsEffectTest: (effect, index) => {

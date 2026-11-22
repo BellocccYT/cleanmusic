@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanMusic auf Android TV, Google TV und Fire TV installieren</title>
+  <meta name="description" content="Schritt-für-Schritt: CleanMusic als APK auf Android TV, Google TV und Fire TV installieren – mit Downloader oder USB-Stick, ohne Store." />
+  <link rel="icon" href="../icon.png" />
+  <style>
+    :root { color-scheme: dark; --bg:#080a0e; --panel:#11161f; --text:#e8ecf3; --muted:#9aa6b8; --accent:#5b8cff; --accent2:#35e0c0; --border:#232c3a; --warn:#ffcf7a; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:radial-gradient(1200px 620px at 85% -10%, #1b2b4d 0%, var(--bg) 55%); color:var(--text); }
+    .wrap { width:min(940px, 92vw); margin:0 auto; }
+    header { padding:28px 0 8px; display:flex; align-items:center; gap:14px; }
+    header img { width:44px; height:44px; }
+    header strong { font-size:20px; }
+    header a { margin-left:auto; color:var(--muted); text-decoration:none; font-weight:650; }
+    h1 { font-size:clamp(30px, 5vw, 48px); line-height:1.08; margin:24px 0 12px; letter-spacing:-0.6px; }
+    h1 span { color:var(--accent); }
+    h2 { font-size:22px; margin:34px 0 12px; }
+    p.lead { color:var(--muted); font-size:18px; max-width:66ch; margin:0 0 24px; }
+    .download { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:0 0 8px; }
+    .button { display:inline-flex; align-items:center; gap:8px; min-height:52px; padding:12px 22px; border-radius:14px; background:var(--accent); color:#06121a; font-weight:750; text-decoration:none; }
+    .button.secondary { background:transparent; border:1px solid var(--border); color:var(--text); }
+    .button:hover { filter:brightness(1.08); }
+    .note { color:var(--muted); font-size:14px; margin:8px 0 26px; }
+    .status { min-height:22px; color:var(--accent2); font-size:14px; }
+
+    /* bebilderte Schritte: kleine Fernseher-/Handy-Skizzen in SVG */
+    ol.steps { list-style:none; padding:0; margin:16px 0; display:grid; gap:14px; }
+    ol.steps li { display:grid; grid-template-columns:120px minmax(0,1fr); gap:20px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:20px; padding:18px 20px; }
+    ol.steps .art { width:120px; height:82px; border-radius:12px; background:#0b1019; border:1px solid var(--border); display:grid; place-items:center; overflow:hidden; }
+    ol.steps .art svg { width:104px; height:70px; }
+    ol.steps .body strong { display:block; font-size:18px; margin-bottom:4px; }
+    ol.steps .body span { color:var(--muted); font-size:15.5px; }
+    .stepnum { display:inline-grid; place-items:center; width:28px; height:28px; border-radius:50%; background:rgba(91,140,255,.16); color:var(--accent); font-weight:800; font-size:15px; margin-right:8px; }
+
+    .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:14px; margin:18px 0; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:18px 20px; }
+    .card h3 { margin:0 0 6px; font-size:18px; }
+    .card p { margin:0; color:var(--muted); font-size:15px; }
+    .warn { border-color:#6b4a1f; background:#1c1508; }
+    .warn strong { color:var(--warn); }
+    .qr { display:grid; grid-template-columns:180px minmax(0,1fr); gap:22px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:20px; padding:20px; margin:18px 0; }
+    .qr .frame { width:180px; height:180px; border-radius:14px; background:#fff; display:grid; place-items:center; color:#55607a; font-size:13px; text-align:center; padding:10px; }
+    .qr strong { display:block; font-size:18px; margin-bottom:6px; }
+    .qr p { margin:0; color:var(--muted); font-size:15px; }
+    footer { margin:36px 0 50px; color:var(--muted); font-size:13.5px; border-top:1px solid var(--border); padding-top:18px; }
+    footer a { color:var(--muted); }
+    code { background:#1a2230; padding:2px 7px; border-radius:7px; font-size:0.92em; }
+    @media (max-width:560px) {
+      ol.steps li { grid-template-columns:1fr; }
+      ol.steps .art { width:100%; height:96px; }
+      .qr { grid-template-columns:1fr; justify-items:center; text-align:center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="../icon.png" alt="" />
+      <strong>CleanMusic</strong>
+      <a href="../">Zur Startseite</a>
+    </header>
+
+    <h1>CleanMusic auf <span>Android TV</span>, Google TV und Fire TV</h1>
+    <p class="lead">
+      Dieselbe APK wie auf dem Handy. Auf dem Fernseher startet automatisch „CleanMusic TV Lite“:
+      großes Jetzt-läuft, Radio, Charts, Favoriten, Songtexte und Party-Modus – gesteuert mit dem Handy.
+      Kein Store, kein Konto.
+    </p>
+
+    <div class="download">
+      <a class="button" id="download" href="https://github.com/BellocccYT/cleanmusic/releases" rel="noopener">APK herunterladen</a>
+      <a class="button secondary" href="../android/">Handy-Anleitung</a>
+    </div>
+    <p class="note" id="version">Die neueste Version wird direkt von GitHub geladen.</p>
+    <p class="status" id="status" role="status"></p>
+
+    <div class="warn card">
+      <h3>Wichtig für Fire TV: Vega OS</h3>
+      <p>
+        Neuere Fire-TV-Geräte mit <strong>Vega OS</strong> können keine Android-Apps ausführen.
+        Prüfe vor dem Kauf bzw. vor der Installation, welches Betriebssystem dein Gerät hat
+        (Einstellungen → Geräteinfo). Auf Fire OS (Android-Basis) läuft CleanMusic;
+        auf Vega OS nicht.
+      </p>
+    </div>
+
+    <h2>So installierst du die APK</h2>
+
+    <h3>Google TV / Android TV</h3>
+    <ol class="steps">
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="6" y="6" width="92" height="52" rx="6" fill="#141c2a" stroke="#2a3a52"/><circle cx="52" cy="54" r="2" fill="#5b8cff"/><rect x="18" y="18" width="30" height="4" rx="2" fill="#5b8cff" opacity=".8"/><rect x="18" y="28" width="52" height="3" rx="1.5" fill="#3a4a63"/><rect x="18" y="36" width="44" height="3" rx="1.5" fill="#3a4a63"/><path d="M76 22v12M70 28h12" stroke="#35e0c0" stroke-width="3" stroke-linecap="round"/></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">1</span>Entwickleroptionen einschalten</strong><span>Einstellungen → System → Info. Siebenmal auf „Build“ tippen, bis „Du bist jetzt Entwickler“ erscheint.</span></span>
+      </li>
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="6" y="6" width="92" height="52" rx="6" fill="#141c2a" stroke="#2a3a52"/><rect x="16" y="18" width="32" height="3" rx="1.5" fill="#3a4a63"/><rect x="16" y="26" width="44" height="3" rx="1.5" fill="#3a4a63"/><rect x="16" y="34" width="24" height="3" rx="1.5" fill="#3a4a63"/><rect x="66" y="20" width="22" height="26" rx="4" fill="#5b8cff" opacity=".25" stroke="#5b8cff"/><path d="M72 33h10M77 28v10" stroke="#e8ecf3" stroke-width="2"/></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">2</span>Downloader installieren</strong><span>Im Play Store „Downloader“ (AWD) installieren. Ohne Play Store: APK per USB-Stick und Dateimanager.</span></span>
+      </li>
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="10" y="10" width="84" height="42" rx="5" fill="#141c2a" stroke="#2a3a52"/><text x="20" y="38" font-size="14" fill="#9aa6b8" font-family="system-ui">bellocccyt…/tv</text><rect x="68" y="20" width="18" height="6" rx="2" fill="#5b8cff"/><path d="M30 60h44" stroke="#2a3a52" stroke-width="2"/></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">3</span>Kurzen Link eingeben</strong><span>Im Downloader <code>bellocccyt.github.io/cleanmusic/tv</code> eingeben. Der Download startet automatisch, wenn die Seite die neueste APK gefunden hat.</span></span>
+      </li>
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="10" y="8" width="84" height="50" rx="6" fill="#141c2a" stroke="#2a3a52"/><path d="M36 24l16 9-16 9z" fill="#ffcf7a"/><rect x="20" y="48" width="52" height="4" rx="2" fill="#3a4a63"/><text x="58" y="28" font-size="9" fill="#ffcf7a" font-family="system-ui">Achtung</text></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">4</span>Installation erlauben</strong><span>Der Downloader braucht die Erlaubnis „Unbekannte Apps installieren“. Play Protect warnt bei jeder App außerhalb des Stores: „Trotzdem installieren“ wählen.</span></span>
+      </li>
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="6" y="10" width="56" height="40" rx="4" fill="#141c2a" stroke="#2a3a52"/><rect x="70" y="22" width="22" height="34" rx="4" fill="#141c2a" stroke="#2a3a52"/><path d="M76 30h10M76 36h10M76 42h6" stroke="#5b8cff" stroke-width="2" stroke-linecap="round"/><path d="M62 30h8M66 26l4 4-4 4" stroke="#35e0c0" stroke-width="2" fill="none"/></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">5</span>Mit dem Handy steuern</strong><span>CleanMusic startet mit einem QR-Code. Handy-Kamera öffnen, scannen, im Browser steuern. Mehrere Handys sind erlaubt (Party).</span></span>
+      </li>
+    </ol>
+
+    <h3>Fire TV / Fire TV Stick / Fire TV Cube</h3>
+    <ol class="steps">
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="6" y="8" width="92" height="50" rx="6" fill="#141c2a" stroke="#2a3a52"/><text x="14" y="28" font-size="9" fill="#9aa6b8" font-family="system-ui">Mein Fire TV</text><text x="14" y="42" font-size="9" fill="#e8ecf3" font-family="system-ui">Info</text><path d="M78 22v14M72 28h12" stroke="#35e0c0" stroke-width="3" stroke-linecap="round"/></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">1</span>Entwickleroptionen einschalten</strong><span>Einstellungen → Mein Fire TV → Info. Siebenmal auf den Gerätenamen tippen.</span></span>
+      </li>
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="6" y="8" width="92" height="50" rx="6" fill="#141c2a" stroke="#2a3a52"/><text x="14" y="26" font-size="9" fill="#9aa6b8" font-family="system-ui">Unbekannte Apps</text><rect x="14" y="32" width="60" height="5" rx="2.5" fill="#3a4a63"/><rect x="80" y="30" width="10" height="10" rx="5" fill="#5b8cff"/></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">2</span>Downloader erlauben</strong><span>Einstellungen → My Fire TV → Entwickleroptionen → „Apps aus unbekannten Quellen installieren“ → Downloader auf AN.</span></span>
+      </li>
+      <li>
+        <span class="art" aria-hidden="true">
+          <svg viewBox="0 0 104 70"><rect x="10" y="10" width="84" height="42" rx="5" fill="#141c2a" stroke="#2a3a52"/><text x="18" y="36" font-size="13" fill="#9aa6b8" font-family="system-ui">…/cleanmusic/tv</text><rect x="68" y="20" width="18" height="6" rx="2" fill="#5b8cff"/></svg>
+        </span>
+        <span class="body"><strong><span class="stepnum">3</span>Link im Downloader eingeben</strong><span><code>bellocccyt.github.io/cleanmusic/tv</code> – danach die APK installieren und „Öffnen“ wählen.</span></span>
+      </li>
+    </ol>
+
+    <div class="cards">
+      <div class="card">
+        <h3>Alternative ohne Downloader</h3>
+        <p>APK am Computer herunterladen, auf einen USB-Stick kopieren, am Fernseher einen Dateimanager (z. B. „TV File Commander“) installieren und die Datei von dort öffnen.</p>
+      </div>
+      <div class="card">
+        <h3>Warum warnt Play Protect?</h3>
+        <p>Die App kommt nicht aus dem Play Store und ist mit einem eigenen Schlüssel signiert. Die Warnung ist deshalb normal – sie bedeutet nicht, dass die Datei Schadsoftware enthält.</p>
+      </div>
+      <div class="card">
+        <h3>Prüfsumme</h3>
+        <p>In den Release-Notes steht die SHA-256 jeder APK. Vergleiche sie nach dem Download – so merkst du, ob die Datei unverändert ist.</p>
+      </div>
+    </div>
+
+    <div class="qr">
+      <div class="frame" id="qr">QR-Code erscheint in der App</div>
+      <div>
+        <strong>Steuerung ohne Fernbedienung</strong>
+        <p>
+          Auf dem Fernseher zeigt CleanMusic TV Lite auf dem Startbildschirm einen großen QR-Code.
+          Mit der Handy-Kamera scannen – die Steuerseite öffnet sich im Browser, ohne App.
+          Gleicher Schlüssel, gleiche Rechte wie am Desktop.
+        </p>
+      </div>
+    </div>
+
+    <footer>
+      CleanMusic ist ein inoffizielles Projekt und nicht mit Spotify, Apple, Google/YouTube, Amazon,
+      Deezer oder TIDAL verbunden. Keine Konten, keine Anmeldung, keine Telemetrie.
+      <br /><a href="../">Startseite</a> · <a href="../android/">Android/Handy</a> · <a href="https://github.com/BellocccYT/cleanmusic" rel="noopener">GitHub</a>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      const button = document.getElementById('download');
+      const status = document.getElementById('status');
+      const version = document.getElementById('version');
+      const REPO = 'BellocccYT/cleanmusic';
+
+      async function latest() {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        try {
+          const response = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, {
+            signal: controller.signal,
+            headers: { accept: 'application/vnd.github+json' },
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const list = await response.json();
+          const release = (Array.isArray(list) ? list : []).find(
+            (entry) => entry && !entry.draft && /^mobile-\d+\.\d+\.\d+/i.test(String(entry.tag_name || ''))
+          );
+          if (!release) return null;
+          const asset = (release.assets || []).find(
+            (item) => item && /^CleanMusic-Android-\d+\.\d+\.\d+\.apk$/i.test(String(item.name || ''))
+          );
+          return {
+            version: String(release.tag_name).replace(/^mobile-/i, ''),
+            url: asset ? asset.browser_download_url : release.html_url,
+            name: asset ? asset.name : '',
+          };
+        } catch {
+          return null;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      latest().then((info) => {
+        if (!info) {
+          status.textContent = 'Automatische Auswahl nicht möglich – der Knopf führt zu allen Releases.';
+          return;
+        }
+        button.href = info.url;
+        button.textContent = info.name ? `APK ${info.version} herunterladen` : 'Zur Download-Seite';
+        version.textContent = `Aktuelle Version: mobile-${info.version} (Handy, Tablet, Android TV, Google TV, Fire TV).`;
+        status.textContent = 'Download startet gleich …';
+        setTimeout(() => {
+          if (info.url && /\.apk($|\?)/i.test(info.url)) location.href = info.url;
+        }, 2500);
+      });
+    })();
+  </script>
+</body>
+</html>

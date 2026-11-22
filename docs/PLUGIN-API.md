@@ -125,7 +125,8 @@ module.exports = {
   ],
   async onSettings(values) {},         // nach jeder Änderung, values = alle Felder
 
-  // Player-Ereignisse: 'nowplaying' (anderer Titel), 'volume', 'state' (jede Änderung).
+  // Player-Ereignisse: 'nowplaying' (anderer Titel), 'volume', 'state' (jede Änderung),
+  // 'visualizer' (Live-Spektrum, nur wenn das Plugin `visualizer: true` setzt).
   onEvent(type, player) {},
 };
 ```
@@ -138,6 +139,7 @@ module.exports = {
   playing, position, duration, live, // position in Sekunden, Stand von `at`
   volume, muted,                      // volume 0–1,5 (Regler-Wert, 1 = 100 %)
   at,                                 // Zeitstempel (ms) der Meldung
+  visualizer: { spectrum: [0–255, …], level: 0–1, at }, // nur mit `visualizer: true`
 }
 ```
 
@@ -167,6 +169,26 @@ hochrechnen.
 Einstellungen werden schon während `setup()` geliefert. Fehler in `onEvent`
 werden abgefangen und stören die Wiedergabe nie.
 
+### Live-Spektrum für Overlays (CleanMusic 1.15.0+)
+
+Ein Plugin, das `visualizer: true` exportiert, bekommt zusätzlich etwa 25-mal
+pro Sekunde `onEvent('visualizer', player)`. In `player.visualizer` steht dann:
+
+```js
+{
+  spectrum: [0–255, …], // 32 logarithmisch verteilte Bänder, 30 Hz – 16 kHz
+  level: 0–1,           // Bass-Pegel für Puls-/Beat-Effekte
+  at,                   // Zeitstempel (ms) dieser Messung
+}
+```
+
+CleanMusic analysiert dafür weiterhin nur den Ton, der ohnehin läuft
+(`captureStream()`, keine Umleitung); der Visualizer muss dafür nicht sichtbar
+sein. Die Daten fließen nur, solange mindestens ein aktives Plugin
+`visualizer: true` setzt. Ein Overlay-Server kann sie per Server-Sent Events an
+OBS weiterreichen; `extras/plugins/obs-visualizer.js` ist das vollständige
+Beispiel.
+
 ### Charts für die Startseite
 
 ```js
@@ -185,3 +207,12 @@ Server (nur `127.0.0.1`) liefert eine transparente Browserquelle für OBS, live
 per Server-Sent Events, dazu optional Textdateien. Es ist nicht Teil von
 CleanMusic und wird wie jedes Plugin erst nach dem Hinzufügen und Aktivieren
 geladen. Test: `npm run smoke:obs`.
+
+## Beispiel: OBS-Audio-Visualizer
+
+`extras/plugins/obs-visualizer.js` zeigt, wie ein Overlay das Live-Spektrum
+nutzt: `visualizer: true` im Plugin-Objekt, `player.visualizer.spectrum` in
+`onEvent('visualizer', player)` und ein kleiner lokaler Server, der die 32
+Bänder per Server-Sent Events an OBS weitergibt. Stile: Balken, Spiegel, Kreis
+und Welle; die Farben stammen aus dem Cover. Test:
+`npm run smoke:visualizer`.

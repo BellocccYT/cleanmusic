@@ -57,6 +57,7 @@ Unter [Releases](https://github.com/BellocccYT/cleanmusic/releases/latest):
 | `CleanMusic-<version>-setup.exe` | **Installer** – Startmenü- und Desktop-Verknüpfung, Deinstallation über die Windows-Einstellungen, Updates mit einem Klick |
 | `CleanMusic-<version>-portable.exe` | **Portable** – keine Installation, einfach doppelklicken (z. B. vom USB-Stick) |
 | `CleanMusic-<version>.AppImage` | Linux |
+| `CleanMusic-Android-<version>.apk` | **Android, Android TV, Google TV, Fire TV** – eine APK für alles, eigene Versionsnummern (`mobile-…`), eigener Updater. Anleitung: [Android](https://bellocccyt.github.io/cleanmusic/android/) · [TV / Fire TV](https://bellocccyt.github.io/cleanmusic/tv/) |
 
 Installer und portable EXE teilen sich dasselbe Profil (`%APPDATA%\CleanMusic`):
 Favoriten, Playlists und Einstellungen sind in beiden da. Beim Deinstallieren
@@ -542,7 +543,51 @@ Server läuft nur auf `127.0.0.1`. Es ist **nicht** in der EXE enthalten –
 hinzufügen wie jedes andere Plugin, Anleitung in
 [extras/plugins/README.md](extras/plugins/README.md).
 
+### OBS Audio-Visualizer (optionales Plugin)
+
+Ab 1.15.0 liegt unter
+[`extras/plugins/obs-visualizer.js`](extras/plugins/) ein echter,
+musikreaktiver Visualizer für OBS: **Balken**, **Spiegel**, **Kreis** oder
+**Welle** folgen dem Live-Spektrum aus CleanMusic, die Farben kommen aus dem
+Cover. Einfach als transparente Browserquelle einfügen (ca. 800 × 300, Kreis
+420 × 420). Das Plugin meldet CleanMusic dafür `visualizer: true`; nur dann
+schickt die App das Spektrum etwa 25-mal pro Sekunde an den lokalen Server.
+Anleitung: [extras/plugins/README.md](extras/plugins/README.md#obs-audio-visualizer-obs-visualizerjs).
+
 ---
+
+## Android, Android TV und Fire TV
+
+Die Android-App ist ein eigenes Projekt in `mobile/` mit eigenen Versionen
+(`mobile-1.1.0`) und eigenen Release-Dateien `CleanMusic-Android-<version>.apk`.
+Sie läuft parallel zu den Desktop-Versionen; deren Asset-Namen und Updater
+bleiben unverändert.
+
+- **Eine APK für alles:** Handy, Tablet, Android TV, Google TV und Fire TV.
+  Die App erkennt das Gerät (`UiModeManager`) und startet auf dem Fernseher
+  automatisch **CleanMusic TV Lite**.
+- **Keine eingebetteten Streaming-Web-Player:** „In Spotify / YouTube Music /
+  Apple Music öffnen“ übergibt den Titel per Deep Link an die offizielle App.
+- **Keine Plugins, kein yt-dlp, keine Stream-Downloads:** Node-Code läuft auf
+  Android nicht. Die Regeln aus `AGENTS.md` gelten unverändert.
+- **Mit dabei:** Vorschauen (Deezer/Apple), Radio, Charts, Favoriten, Playlists,
+  Verlauf, Rückblick, Songtexte mit Effekten, Themes, Live-Hintergründe,
+  Plattenspieler, Visualizer, Songs teilen und lokale Musik über die
+  Android-Mediathek (nur nach Rückfrage).
+- **Hintergrund-Wiedergabe:** Benachrichtigung, Sperrbildschirm und
+  Kopfhörer-Tasten über `MediaSession` und einen Foreground-Service.
+- **Eingebauter Updater:** prüft beim Start und alle 6 Stunden die
+  GitHub-Releases (`mobile-*`), lädt die APK, prüft Größe und SHA-256 und
+  öffnet den Android-Installer.
+- **TV Lite:** kein Cutter, keine Downloads, keine Wellenform/BPM, kein
+  Rückblick, keine Plugins, kein Playlist-Import, keine lokale Musik und keine
+  Ansicht „Erweitert“ – diese Teile werden auf dem Fernseher gar nicht geladen.
+  Bedienung über QR-Code und Handy (`/api/state`, `/api/cmd`, `/api/search`,
+  `/api/queue`, `/api/events`, `/api/radio`, `/api/favorites`).
+- **Fernbedienung als Notlösung:** Fokus-Navigation, Play/Pause, Weiter/Zurück,
+  Lautstärke und Zurück-Taste funktionieren immer.
+
+Bauen, Signieren und Testen: [`mobile/README.md`](mobile/README.md).
 
 ## Was es bewusst **nicht** macht
 

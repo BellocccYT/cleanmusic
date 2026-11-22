@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="de" data-device="tv" data-perf="balanced">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' https: http: data:; connect-src 'self' https://itunes.apple.com https://api.deezer.com https://de1.api.radio-browser.info https://lrclib.net; object-src 'none';"
+  />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>CleanMusic TV</title>
+  <link rel="icon" href="assets/logo-small.svg" />
+  <link rel="stylesheet" href="tv.css" />
+</head>
+<body>
+  <!-- Live-Hintergrund (renderer/live-bg.js erwartet genau diese drei Elemente) -->
+  <div id="app-bg" aria-hidden="true">
+    <canvas id="live-bg-canvas"></canvas>
+    <video id="live-bg-video" muted loop playsinline disablepictureinpicture></video>
+    <img id="live-bg-gif" alt="" />
+  </div>
+
+  <div id="tv" class="tv">
+    <header id="tv-head" class="tv-head">
+      <div class="tv-brand">
+        <img src="assets/logo-small.svg" alt="" width="40" height="40" />
+        <div>
+          <strong>CleanMusic</strong>
+          <span>TV Lite</span>
+        </div>
+      </div>
+      <nav id="tv-nav" class="tv-nav" aria-label="Hauptbereiche">
+        <button type="button" class="tv-nav-item is-active" data-tv-view="home">Start</button>
+        <button type="button" class="tv-nav-item" data-tv-view="radio">Radio</button>
+        <button type="button" class="tv-nav-item" data-tv-view="charts">Charts</button>
+        <button type="button" class="tv-nav-item" data-tv-view="favorites">Favoriten</button>
+        <button type="button" class="tv-nav-item" data-tv-view="party">Party</button>
+        <button type="button" class="tv-nav-item" data-tv-view="queue">Warteschlange</button>
+      </nav>
+      <div class="tv-head-side">
+        <span id="tv-clock" class="tv-clock"></span>
+      </div>
+    </header>
+
+    <main id="tv-main" class="tv-main">
+      <!-- Start: QR-Code für die Handy-Steuerung + Jetzt läuft -->
+      <section class="tv-view is-active" data-tv-panel="home">
+        <div class="tv-home-grid">
+          <div class="tv-qr-card">
+            <p class="tv-kicker">Handy-Steuerung</p>
+            <h1>Mit dem Handy scannen</h1>
+            <p class="tv-muted" id="tv-remote-state">Steuerung wird vorbereitet …</p>
+            <div class="tv-qr-frame" id="tv-qr">
+              <span class="tv-qr-empty">QR-Code</span>
+            </div>
+            <div class="tv-qr-actions">
+              <button type="button" class="tv-btn" id="tv-remote-toggle" data-focus>Steuerung an</button>
+              <button type="button" class="tv-btn" id="tv-remote-rotate" data-focus>Neuen Link erzeugen</button>
+            </div>
+            <p class="tv-hint">Suchen? Nimm dein Handy. Am Fernseher wird nichts getippt – Suche, Einreihen und Favoriten laufen über die Steuerseite.</p>
+          </div>
+
+          <div class="tv-now-card">
+            <p class="tv-kicker">Jetzt läuft</p>
+            <div class="tv-now-cover" id="tv-home-cover"><span>♪</span></div>
+            <h2 id="tv-home-title">Nichts ausgewählt</h2>
+            <p class="tv-muted" id="tv-home-artist">Radio, Charts oder Favoriten starten</p>
+            <p class="tv-lyric-line" id="tv-home-lyric"></p>
+            <div class="tv-open-services" id="tv-home-services"></div>
+          </div>
+        </div>
+
+        <div class="tv-look-bar">
+          <button type="button" class="tv-btn tv-look" id="tv-theme" data-focus>Theme: Nacht</button>
+          <button type="button" class="tv-btn tv-look" id="tv-background" data-focus>Hintergrund: aus</button>
+          <button type="button" class="tv-btn tv-look" id="tv-vinyl" data-focus>Plattenspieler</button>
+          <button type="button" class="tv-btn tv-look" id="tv-viz-toggle" data-focus>Visualizer</button>
+        </div>
+
+        <div class="tv-next-strip">
+          <h2>Als Nächstes</h2>
+          <ol id="tv-home-next" class="tv-next-list"><li class="tv-muted">Noch keine Titel</li></ol>
+        </div>
+      </section>
+
+      <!-- Radio -->
+      <section class="tv-view" data-tv-panel="radio">
+        <div class="tv-view-head">
+          <div>
+            <h1>Radio</h1>
+            <p class="tv-muted">Live-Sender aus dem offenen Radio-Verzeichnis</p>
+          </div>
+          <div class="tv-chips" id="tv-radio-chips"></div>
+        </div>
+        <div class="tv-grid tv-grid-radio" id="tv-radio-grid"></div>
+      </section>
+
+      <!-- Charts -->
+      <section class="tv-view" data-tv-panel="charts">
+        <div class="tv-view-head">
+          <div>
+            <h1>Charts</h1>
+            <p class="tv-muted">Aktuelle Titel als 30-Sekunden-Vorschau</p>
+          </div>
+          <button type="button" class="tv-btn" id="tv-charts-refresh" data-focus>Neu laden</button>
+        </div>
+        <div class="tv-grid" id="tv-charts-grid"></div>
+      </section>
+
+      <!-- Favoriten -->
+      <section class="tv-view" data-tv-panel="favorites">
+        <div class="tv-view-head">
+          <div>
+            <h1>Favoriten</h1>
+            <p class="tv-muted">Von Handy oder Desktop übernommen – bleibt lokal</p>
+          </div>
+        </div>
+        <div class="tv-grid" id="tv-fav-grid"></div>
+      </section>
+
+      <!-- Party: Karaoke-Songtext groß in der Mitte -->
+      <section class="tv-view tv-party" data-tv-panel="party">
+        <div class="tv-party-stage">
+          <p class="tv-kicker">Party-Modus</p>
+          <div id="tv-party-lyrics" class="tv-party-lyrics">
+            <p class="tv-muted">Songtext erscheint, sobald ein Titel mit Text läuft.</p>
+          </div>
+          <p class="tv-party-next" id="tv-party-next"></p>
+        </div>
+        <canvas id="tv-viz" class="tv-party-viz" aria-hidden="true"></canvas>
+      </section>
+
+      <!-- Warteschlange -->
+      <section class="tv-view" data-tv-panel="queue">
+        <div class="tv-view-head">
+          <div>
+            <h1>Warteschlange</h1>
+            <p class="tv-muted">Was als Nächstes läuft – vom Handy gefüllt</p>
+          </div>
+        </div>
+        <ol class="tv-queue" id="tv-queue-list"></ol>
+      </section>
+    </main>
+
+    <footer id="tv-player" class="tv-player">
+      <div class="tv-player-meta">
+        <div class="tv-player-cover" id="tv-cover"><span>♪</span></div>
+        <div class="tv-player-text">
+          <strong id="tv-title">Nichts ausgewählt</strong>
+          <span id="tv-artist">CleanMusic TV</span>
+        </div>
+      </div>
+      <div class="tv-player-mid">
+        <div class="tv-progress"><i id="tv-progress-fill"></i></div>
+        <div class="tv-player-times"><span id="tv-position">0:00</span><span id="tv-duration">0:00</span></div>
+      </div>
+      <div class="tv-player-controls">
+        <button type="button" class="tv-btn tv-icon" id="tv-prev" data-focus aria-label="Zurück">|◀</button>
+        <button type="button" class="tv-btn tv-play" id="tv-play" data-focus aria-label="Wiedergabe">▶</button>
+        <button type="button" class="tv-btn tv-icon" id="tv-next" data-focus aria-label="Weiter">▶|</button>
+      </div>
+      <canvas id="tv-mini-viz" class="tv-mini-viz" aria-hidden="true"></canvas>
+    </footer>
+  </div>
+
+  <div id="tv-toast" class="tv-toast" role="status" aria-live="polite"></div>
+
+  <div id="tv-confirm" class="tv-confirm" hidden>
+    <div class="tv-confirm-box" role="dialog" aria-modal="true" aria-labelledby="tv-confirm-title">
+      <h2 id="tv-confirm-title">Koppeln</h2>
+      <p id="tv-confirm-text" class="tv-muted"></p>
+      <div class="tv-confirm-actions">
+        <button type="button" class="tv-btn is-primary" id="tv-confirm-yes" data-focus>Übernehmen</button>
+        <button type="button" class="tv-btn" id="tv-confirm-no" data-focus>Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="audio" preload="none"></audio>
+
+  <script src="services.js"></script>
+  <script src="themes.js"></script>
+  <script src="visualizer.js"></script>
+  <script src="live-bg.js"></script>
+  <script src="native.js"></script>
+  <script src="tv.js"></script>
+</body>
+</html>

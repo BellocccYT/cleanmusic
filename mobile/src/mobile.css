@@ -19,7 +19,6 @@ html[data-mobile] body {
 
 html[data-mobile] [data-view="creator"],
 html[data-mobile] [data-view="downloads"],
-html[data-mobile] [data-view="local"],
 html[data-mobile] [data-view="presets"],
 html[data-mobile] #view-presets,
 html[data-mobile] #creator-nav,
@@ -28,7 +27,6 @@ html[data-mobile] #service-nav,
 html[data-mobile] #btn-mini,
 html[data-mobile] #btn-open-external,
 html[data-mobile] #btn-spotify-import,
-html[data-mobile] #update-card,
 html[data-mobile] #whatsnew-card,
 html[data-mobile] #status-row,
 html[data-mobile] #service-host,
@@ -37,17 +35,16 @@ html[data-mobile] #plugins-panel,
 html[data-mobile] #downloads-panel,
 html[data-mobile] #discord-panel,
 html[data-mobile] #remote-panel,
-html[data-mobile] #update-panel,
 html[data-mobile] #backup-panel,
 html[data-mobile] #btn-musickit-search,
-html[data-mobile] #view-search .page > .panel {
-  display: none !important;
-}
-
-/* Leere Desktop-Startbereiche (Charts/Vorschläge) auf dem Handy ausblenden. */
+html[data-mobile] #view-search .page > .panel,
+/* Keine eingebetteten Streaming-Web-Player auf Android: Dienste öffnen
+   sich per Deep Link in der offiziellen App. */
+html[data-mobile] #view-service,
+html[data-mobile] #view-home .home-section:has(.services-grid),
 html[data-mobile] #view-home .home-section:has(#home-recs),
-html[data-mobile] #view-home .home-section:has(#home-charts),
-html[data-mobile] #home-rediscover-section {
+html[data-mobile] #home-rediscover-section,
+html[data-mobile] #view-home .home-split .panel:has(.how-list) {
   display: none !important;
 }
 
@@ -800,3 +797,75 @@ html[data-mobile] #fullscreen .fs-hint {
     max-height: 20vh;
   }
 }
+
+/* Update-Karte: untereinander, damit „Updaten“ / „Später“ gut tippbar sind */
+html[data-mobile] #update-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+html[data-mobile] #update-card .update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+html[data-mobile] #update-card .update-actions .btn {
+  flex: 1 1 46%;
+  min-height: 44px;
+}
+
+/* Deep Links im Vollbild-Player: offizielle Apps statt Web-Player */
+html[data-mobile] .m-open-services {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+html[data-mobile] .m-open-label {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+html[data-mobile] .m-open-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 58px;
+  padding: 8px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  background: rgba(var(--tint), 0.05);
+  color: var(--text);
+}
+
+html[data-mobile] .m-open-btn b {
+  font-size: 15px;
+  color: var(--accent);
+}
+
+html[data-mobile] .m-open-btn span {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Lokale Musik: Mediathek-Knopf gut erreichbar */
+html[data-mobile] #view-local .page > .page-head p {
+  font-size: 13px;
+}
+

@@ -34,6 +34,9 @@ window.CMVisualizer = (function () {
   let freq = null;
   let wave = null;
   let enabled = false;
+  // A plugin (e.g. the OBS visualizer) can ask for the spectrum while the
+  // on-screen visualizer is switched off. It then owns the analyser tap.
+  let watching = false;
   let raf = 0;
   let lastDraw = 0;
   let lastDrawDelta = 0;
@@ -89,7 +92,7 @@ window.CMVisualizer = (function () {
   }
 
   function connect() {
-    if (!enabled || !audioEl) return;
+    if (!(enabled || watching) || !audioEl) return;
     if (engine) {
       ensureContext();
       if (tapped) return;
@@ -201,7 +204,7 @@ window.CMVisualizer = (function () {
     }
     // The captureStream tap is no longer needed – analyse the engine source.
     disconnectSource();
-    if (enabled) connect();
+    if (enabled || watching) connect();
     return engine;
   }
 
@@ -288,12 +291,34 @@ window.CMVisualizer = (function () {
       connect();
       loop();
     } else {
-      disconnectSource();
-      if (ctx && ctx.state === 'running' && !engine) ctx.suspend().catch(() => {});
+      // Keep the analyser alive while a plugin is reading the spectrum.
+      if (!watching) {
+        disconnectSource();
+        if (ctx && ctx.state === 'running' && !engine) ctx.suspend().catch(() => {});
+      }
       cancelAnimationFrame(raf);
       raf = 0;
       targets.forEach((_target, canvas) => clearCanvas(canvas));
     }
+  }
+
+  // Plugin bridge: analyse without drawing anything on screen.
+  function setWatching(on) {
+    const next = Boolean(on);
+    if (next === watching) return;
+    watching = next;
+    if (watching) {
+      connect();
+    } else if (!enabled) {
+      disconnectSource();
+      if (ctx && ctx.state === 'running' && !engine) ctx.suspend().catch(() => {});
+    }
+  }
+
+  // Log-spaced spectrum for plugins, normalised to 0..1.
+  function spectrum(count) {
+    const size = Math.max(8, Math.min(64, Math.round(Number(count)) || 32));
+    return bands(size);
   }
 
   function register(canvas, options = {}) {
@@ -705,6 +730,8 @@ window.CMVisualizer = (function () {
     setColors,
     onFrame,
     wake,
+    setWatching,
+    spectrum,
     energy: () => energy,
     level: () => bassLevel,
     // RMS of what the analyser hears right now (null = nothing connected).

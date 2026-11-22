@@ -12,3 +12,6 @@ android/app/src/main/assets/capacitor.plugins.json
 keystore.properties
 *.apk
 *.aab
+
+# Release-APK (wird zu GitHub hochgeladen, nicht committet)
+release-assets/

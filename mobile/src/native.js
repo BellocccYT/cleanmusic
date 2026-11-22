@@ -1,34 +1,38 @@
 'use strict';
 
 /**
- * CleanMusic Mobile – Brücke für Android (Phase 1, Etappe 1).
+ * CleanMusic Android – Brücke für Handy, Tablet und Fernseher.
  *
- * Netzwerk: nur Katalog-Suche (Apple/Deezer-Vorschauen) und Radio.
- * Beide Wege laufen über CapacitorHttp und dieselben Allowlists wie main.js:
- *   - https://itunes.apple.com/search
- *   - https://api.deezer.com/search
- *   - https://de1.api.radio-browser.info/json/stations/search
+ * Netzwerk: dieselben öffentlichen Schnittstellen wie main.js, aber über
+ * CapacitorHttp und mit einer festen Allowlist:
+ *   - itunes.apple.com/search, /lookup           (Apple-Vorschauen)
+ *   - api.deezer.com/search, /chart, /editorial, (Deezer-Vorschauen,
+ *     /track, /album, /artist, /search/artist      Charts, Künstlerseiten)
+ *   - de1.api.radio-browser.info/json/...         (Radio)
+ *   - lrclib.net/api/get, /api/search             (Songtexte)
+ *   - api.github.com/repos/BellocccYT/cleanmusic/releases (Update-Suche)
  *
- * Wiedergabe: Das <audio>-Element bleibt im WebView. Für Sperrbildschirm
- * und Benachrichtigung spiegelt diese Datei Titel/Status in den nativen
- * Foreground-Service (BackgroundAudioPlugin + BackgroundAudioService).
- *
- * Kein Plugin-Loader, kein Cutter, keine Downloads, kein yt-dlp.
+ * Kein Plugin-Lader, kein Cutter, keine Downloads, kein yt-dlp.
+ * Die APK lädt Updates selbst: Größe + SHA-256 prüfen, dann Android-Installer.
  */
 
 (function () {
-  const MOBILE_VERSION = 'mobile-1.0.0';
+  const MOBILE_VERSION = 'mobile-1.1.0';
+  const UPDATE_REPO = 'BellocccYT/cleanmusic';
+  const UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
+  const UPDATE_KEY = 'cleanmusic.updates.v1';
 
   const root = document.documentElement;
-  root.dataset.mobile = '1';
-  root.dataset.device = 'phone';
+  const isTv = root.dataset.device === 'tv';
+  if (!root.dataset.device) root.dataset.device = 'phone';
+  if (!isTv) root.dataset.mobile = '1';
 
   // Erste mobile Runde: schlanke Ansicht, kein Desktop-Assistent.
   try {
     if (localStorage.getItem('cleanmusic.settings.v1') === null) {
       localStorage.setItem(
         'cleanmusic.settings.v1',
-        JSON.stringify({ layout: 'simple', onboarded: true, background: 'none' })
+        JSON.stringify({ layout: 'simple', onboarded: true, background: 'none', lyrics: true })
       );
     }
     if (localStorage.getItem('cleanmusic.seenversion.v1') === null) {
@@ -39,13 +43,31 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * Netzwerk-Allowlist (identisch zu den Hosts in main.js)
+   * Netzwerk-Allowlist (dieselben Hosts und Wege wie in main.js)
    * ------------------------------------------------------------------ */
 
-  const ALLOWED = [
-    { host: 'itunes.apple.com', path: '/search' },
-    { host: 'api.deezer.com', path: '/search' },
-    { host: 'de1.api.radio-browser.info', path: '/json/stations/search' },
+  const RULES = [
+    { host: 'itunes.apple.com', paths: [/^\/search$/, /^\/lookup$/] },
+    {
+      host: 'api.deezer.com',
+      paths: [
+        /^\/search$/,
+        /^\/search\/artist$/,
+        /^\/chart\/0\/tracks$/,
+        /^\/editorial\/0\/(?:releases|selection)$/,
+        /^\/track\/\d+$/,
+        /^\/album\/\d+$/,
+        /^\/album\/\d+\/tracks$/,
+        /^\/artist\/\d+$/,
+        /^\/artist\/\d+\/(?:top|albums|related)$/,
+      ],
+    },
+    { host: 'de1.api.radio-browser.info', paths: [/^\/json\/stations\/search$/] },
+    { host: 'lrclib.net', paths: [/^\/api\/(?:get|search)$/] },
+    {
+      host: 'api.github.com',
+      paths: [/^\/repos\/BellocccYT\/cleanmusic\/releases(?:\?.*)?$/],
+    },
   ];
 
   const TRANSIENT_NET =
@@ -61,7 +83,11 @@
     if (url.protocol !== 'https:') return false;
     if (url.username || url.password) return false;
     if (url.port && url.port !== '443') return false;
-    return ALLOWED.some((entry) => entry.host === url.hostname && entry.path === url.pathname);
+    return RULES.some(
+      (rule) =>
+        rule.host === url.hostname.toLowerCase() &&
+        rule.paths.some((pattern) => pattern.test(url.pathname))
+    );
   }
 
   function friendlyNetError(error) {
@@ -89,7 +115,10 @@
         const response = await http.request({
           url,
           method: 'GET',
-          headers: { accept: 'application/json' },
+          headers: {
+            accept: 'application/json',
+            'user-agent': `CleanMusic-Android/${currentVersion()}`,
+          },
           connectTimeout: timeoutMs,
           readTimeout: timeoutMs,
           responseType: 'json',
@@ -111,6 +140,7 @@
           signal: controller.signal,
           headers: { accept: 'application/json' },
         });
+        if (response.status === 404) throw new Error('HTTP 404');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await response.json();
       } finally {
@@ -128,6 +158,25 @@
   /* ------------------------------------------------------------------ *
    * Normalisierung – dieselben Formen wie main.js
    * ------------------------------------------------------------------ */
+
+  function cleanText(value, max = 300) {
+    return String(value == null ? '' : value)
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .slice(0, max);
+  }
+
+  function cleanUrl(value, pattern = /^https?:\/\//i, max = 900) {
+    const text = cleanText(value, max);
+    if (!pattern.test(text)) return '';
+    try {
+      const url = new URL(text);
+      if (url.username || url.password) return '';
+      return url.href;
+    } catch {
+      return '';
+    }
+  }
 
   function normalizeItunes(json) {
     const results = json && Array.isArray(json.results) ? json.results : [];
@@ -223,6 +272,269 @@
     return out;
   }
 
+  /* --- Songtexte (LRCLIB) -------------------------------------------- */
+
+  function parseLrc(text) {
+    const lines = [];
+    String(text || '')
+      .split(/\r?\n/)
+      .forEach((line) => {
+        const stamps = line.match(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g);
+        if (!stamps) return;
+        const content = cleanText(line.replace(/\[[^\]]*\]/g, ''), 300);
+        stamps.forEach((stamp) => {
+          const match = stamp.match(/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/);
+          if (!match) return;
+          const time = Number(match[1]) * 60 + Number(match[2]) + Number(`0.${match[3] || 0}`);
+          lines.push({ time, text: content });
+        });
+      });
+    return lines.sort((a, b) => a.time - b.time);
+  }
+
+  const lyricsCache = new Map();
+
+  /* ------------------------------------------------------------------ *
+   * Native Plugins
+   * ------------------------------------------------------------------ */
+
+  function plugin(name) {
+    const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+    return plugins[name] || null;
+  }
+
+  function convertFileSrc(uri) {
+    try {
+      if (window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function') {
+        return window.Capacitor.convertFileSrc(uri);
+      }
+    } catch {
+      /* ältere Laufzeit */
+    }
+    return uri;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Update: GitHub-Releases, APK prüfen, Installer öffnen
+   * ------------------------------------------------------------------ */
+
+  function updateConfig() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(UPDATE_KEY) || '{}');
+      return { auto: raw.auto !== false };
+    } catch {
+      return { auto: true };
+    }
+  }
+
+  function saveUpdateConfig(patch) {
+    const next = Object.assign(updateConfig(), patch);
+    try {
+      localStorage.setItem(UPDATE_KEY, JSON.stringify(next));
+    } catch {
+      /* Speicher gesperrt */
+    }
+    return next;
+  }
+
+  function parseVersion(value) {
+    const match = String(value || '')
+      .trim()
+      .replace(/^mobile-/i, '')
+      .replace(/^v/i, '')
+      .match(/^(\d+)\.(\d+)\.(\d+)/);
+    return match ? match.slice(1).map(Number) : null;
+  }
+
+  function isNewerVersion(latest, current) {
+    const a = parseVersion(latest);
+    const b = parseVersion(current);
+    if (!a || !b) return false;
+    for (let i = 0; i < 3; i += 1) {
+      if (a[i] !== b[i]) return a[i] > b[i];
+    }
+    return false;
+  }
+
+  function currentVersion() {
+    return MOBILE_VERSION.replace(/^mobile-/, '');
+  }
+
+  let updateState = {
+    status: 'idle',
+    current: currentVersion(),
+    latest: null,
+    notes: '',
+    url: `https://github.com/${UPDATE_REPO}/releases`,
+    asset: null,
+    progress: 0,
+    error: null,
+    checkedAt: 0,
+    installable: true,
+    kind: 'apk',
+    auto: updateConfig().auto,
+    file: null,
+  };
+  const updateListeners = new Set();
+  let updateTask = null;
+
+  function publicUpdate() {
+    return Object.assign({}, updateState, { auto: updateConfig().auto, installable: true, kind: 'apk' });
+  }
+
+  function emitUpdate() {
+    const info = publicUpdate();
+    updateListeners.forEach((listener) => {
+      try {
+        listener(info);
+      } catch {
+        /* Listener der Oberfläche */
+      }
+    });
+  }
+
+  function setUpdate(patch) {
+    updateState = Object.assign({}, updateState, patch);
+    emitUpdate();
+  }
+
+  function pickApkAsset(release) {
+    const assets = Array.isArray(release && release.assets) ? release.assets : [];
+    const asset = assets.find((item) => item && /^CleanMusic-Android-\d+\.\d+\.\d+\.apk$/i.test(String(item.name || '')));
+    if (!asset) return null;
+    const digest = /^sha256:[0-9a-f]{64}$/i.test(String(asset.digest || ''))
+      ? String(asset.digest).slice(7).toLowerCase()
+      : null;
+    return {
+      name: String(asset.name),
+      size: Number(asset.size) || 0,
+      url: String(asset.browser_download_url || ''),
+      sha256: digest,
+    };
+  }
+
+  async function checkForUpdates({ silent = false } = {}) {
+    if (updateTask) return updateTask;
+    if (updateState.status === 'downloading' || updateState.status === 'ready') return publicUpdate();
+    if (!updateConfig().auto && silent) return publicUpdate();
+
+    updateTask = (async () => {
+      if (!silent) setUpdate({ status: 'checking', error: null });
+      try {
+        const releases = await requestJson(
+          `https://api.github.com/repos/${UPDATE_REPO}/releases?per_page=30`,
+          15000
+        );
+        const list = Array.isArray(releases) ? releases : [];
+        const mobileRelease = list.find(
+          (release) => release && !release.draft && /^mobile-\d+\.\d+\.\d+/i.test(String(release.tag_name || ''))
+        );
+        if (!mobileRelease) {
+          setUpdate({ status: 'current', latest: null, checkedAt: Date.now(), error: null });
+          return publicUpdate();
+        }
+        const latest = String(mobileRelease.tag_name || '').replace(/^mobile-/i, '');
+        const newer = isNewerVersion(latest, currentVersion());
+        setUpdate({
+          status: newer ? 'available' : 'current',
+          latest: parseVersion(latest) ? latest : null,
+          notes: cleanText(mobileRelease.body || '', 2000),
+          url: cleanUrl(mobileRelease.html_url) || `https://github.com/${UPDATE_REPO}/releases`,
+          asset: newer ? pickApkAsset(mobileRelease) : null,
+          checkedAt: Date.now(),
+          error: null,
+          progress: 0,
+          file: null,
+        });
+      } catch (error) {
+        setUpdate({
+          status: 'error',
+          error: `Update-Prüfung fehlgeschlagen: ${friendlyNetError(error).message || error.message}`,
+          checkedAt: Date.now(),
+        });
+      }
+      return publicUpdate();
+    })().finally(() => {
+      updateTask = null;
+    });
+    return updateTask;
+  }
+
+  async function downloadUpdate() {
+    const asset = updateState.asset;
+    const pluginUpdater = plugin('Updater');
+    if (!asset || (updateState.status !== 'available' && updateState.status !== 'error')) return publicUpdate();
+    if (!pluginUpdater) {
+      setUpdate({ status: 'error', error: 'Updates gibt es nur in der installierten Android-App.' });
+      return publicUpdate();
+    }
+    setUpdate({ status: 'downloading', progress: 0, error: null });
+    try {
+      const result = await pluginUpdater.download({
+        url: asset.url,
+        name: asset.name,
+        size: asset.size,
+        sha256: asset.sha256 || '',
+      });
+      if (!result || !result.file) throw new Error('Download unvollständig');
+      setUpdate({ status: 'ready', progress: 1, file: String(result.file) });
+    } catch (error) {
+      setUpdate({ status: 'error', error: `Download fehlgeschlagen: ${error.message || error}` });
+    }
+    return publicUpdate();
+  }
+
+  async function installUpdate() {
+    const pluginUpdater = plugin('Updater');
+    if (updateState.status !== 'ready' || !updateState.file || !pluginUpdater) return false;
+    try {
+      const result = await pluginUpdater.install({ file: updateState.file });
+      if (result && result.started === false) {
+        setUpdate({
+          status: 'error',
+          error: result.reason === 'permission'
+            ? 'Android braucht die Erlaubnis „Unbekannte Apps installieren“ für CleanMusic.'
+            : 'Der Installer konnte nicht geöffnet werden.',
+        });
+        return false;
+      }
+      return true;
+    } catch (error) {
+      setUpdate({ status: 'error', error: `Installer: ${error.message || error}` });
+      return false;
+    }
+  }
+
+  function startUpdateLoop() {
+    setTimeout(() => {
+      checkForUpdates({ silent: true }).catch(() => {});
+    }, 4000);
+    setInterval(() => {
+      checkForUpdates({ silent: true }).catch(() => {});
+    }, UPDATE_INTERVAL);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Text-Toast ohne app.js (TV und frühe Fehler)
+   * ------------------------------------------------------------------ */
+
+  let fallbackToastTimer = 0;
+  function toast(text) {
+    if (!text) return;
+    let el = document.getElementById('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      el.className = 'toast';
+      el.setAttribute('role', 'status');
+      document.body.append(el);
+    }
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(fallbackToastTimer);
+    fallbackToastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  }
+
   /* ------------------------------------------------------------------ *
    * Mobile Brücke window.cm
    * ------------------------------------------------------------------ */
@@ -232,24 +544,69 @@
   const bridge = {
     isElectron: false,
     isMobile: true,
+    isTv: root.dataset.device === 'tv',
 
     pickFolder: async () => {
-      toast('Ordner-Auswahl gibt es auf dem Handy nicht.');
-      return null;
-    },
-    openExternal: async (url) => {
+      const library = plugin('MediaLibrary');
+      if (!library) {
+        toast('Lokale Musik gibt es nur in der Android-App.');
+        return null;
+      }
       try {
-        const target = new URL(String(url));
-        if (!/^https?:$/.test(target.protocol)) return false;
-        window.open(target.href, '_blank', 'noopener');
-        return true;
-      } catch {
-        return false;
+        const permission = await library.requestPermission();
+        if (!permission || permission.granted === false) {
+          toast('Ohne Zugriff auf Audio-Dateien kann CleanMusic deine Musik nicht lesen.');
+          return null;
+        }
+        const result = await library.listAudio();
+        const files = (result && Array.isArray(result.files) ? result.files : [])
+          .filter((file) => file && file.uri)
+          .map((file) => ({
+            name: cleanText(file.name, 240) || 'Titel',
+            path: String(file.uri),
+            dir: cleanText(file.folder, 160),
+            url: convertFileSrc(String(file.uri)),
+            size: Number(file.size) || 0,
+          }));
+        if (!files.length) {
+          toast('Keine Audiodateien in der Mediathek gefunden.');
+          return null;
+        }
+        return { folder: 'Android-Mediathek', files };
+      } catch (error) {
+        toast(`Mediathek: ${error.message || error}`);
+        return null;
       }
     },
+
+    openExternal: async (url) => {
+      const target = String(url || '');
+      if (!/^https?:\/\//i.test(target)) return false;
+      const links = plugin('AppLinks');
+      if (links) {
+        const result = await links.openExternal({ url: target });
+        return Boolean(result && result.opened);
+      }
+      window.open(target, '_blank', 'noopener');
+      return true;
+    },
+
+    openMusic: async (input) => {
+      const links = plugin('AppLinks');
+      if (!links) return false;
+      const result = await links.openMusic({
+        service: String((input && input.service) || ''),
+        title: String((input && input.title) || ''),
+        artist: String((input && input.artist) || ''),
+        url: String((input && input.url) || ''),
+      });
+      return Boolean(result && result.opened);
+    },
+
     getInfo: async () => ({
       platform: 'android',
       mobile: true,
+      tv: root.dataset.device === 'tv',
       version: MOBILE_VERSION,
       widevine: null,
       smoke: false,
@@ -312,13 +669,237 @@
       }
     },
 
-    // Ohne Katalogsuche keine weiteren Desktop-Netzdienste im Prototyp.
-    refreshPreview: async () => ({ url: null }),
-    topTracks: async () => ({ tracks: [], errors: [] }),
-    newReleases: async () => ({ tracks: [], errors: [] }),
+    topTracks: async () => {
+      try {
+        const json = await requestJson('https://api.deezer.com/chart/0/tracks?limit=30');
+        return { tracks: normalizeDeezer({ data: json && json.data }).slice(0, 30), errors: [] };
+      } catch (error) {
+        return { tracks: [], errors: [{ source: 'Deezer Charts', message: error.message || 'nicht erreichbar' }] };
+      }
+    },
+
+    newReleases: async () => {
+      try {
+        let json = await requestJson('https://api.deezer.com/editorial/0/releases?limit=18');
+        if (!json || !Array.isArray(json.data) || !json.data.length) {
+          json = await requestJson('https://api.deezer.com/editorial/0/selection?limit=18');
+        }
+        const albums = (json && Array.isArray(json.data) ? json.data : []).slice(0, 18);
+        const tracks = await Promise.all(
+          albums.map(async (album) => {
+            try {
+              const list = await requestJson(`https://api.deezer.com/album/${album.id}/tracks?limit=4`);
+              const first = (list && Array.isArray(list.data) ? list.data : []).find(
+                (track) => track && track.preview && track.readable !== false
+              );
+              if (!first) return null;
+              return Object.assign({}, first, {
+                album: Object.assign({}, first.album, {
+                  id: album.id,
+                  title: album.title,
+                  cover_medium: album.cover_medium,
+                  cover_big: album.cover_big,
+                }),
+                artist: first.artist || album.artist,
+                release_date: album.release_date || '',
+              });
+            } catch {
+              return null;
+            }
+          })
+        );
+        const valid = tracks.filter(Boolean);
+        return {
+          tracks: normalizeDeezer({ data: valid }).map((track, index) =>
+            Object.assign(track, { released: cleanText(valid[index].release_date, 12) })
+          ),
+          errors: [],
+        };
+      } catch (error) {
+        return { tracks: [], errors: [{ source: 'Neuerscheinungen', message: error.message || 'nicht erreichbar' }] };
+      }
+    },
+
+    refreshPreview: async (id, meta) => {
+      const value = String(id || '');
+      try {
+        let url = null;
+        let match = value.match(/^deezer:(\d+)$/);
+        if (match) {
+          const json = await requestJson(`https://api.deezer.com/track/${match[1]}`);
+          url = (json && json.preview) || null;
+        }
+        match = value.match(/^apple:(\d+)$/);
+        if (match) {
+          const json = await requestJson(`https://itunes.apple.com/lookup?id=${match[1]}&country=DE`);
+          const hit =
+            json && Array.isArray(json.results) ? json.results.find((entry) => entry && entry.previewUrl) : null;
+          url = hit ? hit.previewUrl : null;
+        }
+        if (!url && meta && typeof meta === 'object' && meta.title) {
+          const params = new URLSearchParams({
+            term: `${meta.artist || ''} ${meta.title}`.trim().slice(0, 120),
+            media: 'music',
+            entity: 'song',
+            limit: '8',
+            country: 'DE',
+          });
+          const json = await requestJson(`https://itunes.apple.com/search?${params}`, 15000);
+          const results = json && Array.isArray(json.results) ? json.results : [];
+          const hit = results.find((entry) => entry && entry.previewUrl);
+          if (hit) {
+            return {
+              url: hit.previewUrl,
+              artwork: hit.artworkUrl100 ? hit.artworkUrl100.replace('100x100bb', '600x600bb') : '',
+            };
+          }
+        }
+        return { url };
+      } catch (error) {
+        return { url: null, error: error.message };
+      }
+    },
+
+    lyricsGet: async (query) => {
+      const input = query && typeof query === 'object' ? query : {};
+      const title = cleanText(input.title, 200).trim();
+      const artist = cleanText(input.artist, 200)
+        .split(/,|;| & | feat\.? | ft\.? /i)[0]
+        .trim();
+      if (!title) return { lines: [], plain: '', error: 'Kein Titel.' };
+      const duration = Math.round(Number(input.duration) || 0);
+      const key = `${artist}|${title}`.toLowerCase();
+      if (!input.refresh && lyricsCache.has(key)) return lyricsCache.get(key);
+
+      const pick = (entry) =>
+        entry && typeof entry === 'object'
+          ? {
+              lines: parseLrc(entry.syncedLyrics),
+              plain: cleanText(entry.plainLyrics || '', 20000),
+              instrumental: Boolean(entry.instrumental),
+            }
+          : null;
+
+      let result = null;
+      try {
+        const params = new URLSearchParams({ track_name: title, artist_name: artist });
+        if (input.album) params.set('album_name', cleanText(input.album, 200));
+        if (duration) params.set('duration', String(duration));
+        result = pick(await requestJson(`https://lrclib.net/api/get?${params}`));
+        if (!result || (!result.lines.length && !result.plain)) {
+          const list = await requestJson(
+            `https://lrclib.net/api/search?${new URLSearchParams({ track_name: title, artist_name: artist })}`
+          );
+          const entries = Array.isArray(list) ? list : [];
+          const best =
+            entries.find((entry) => entry && entry.syncedLyrics) || entries.find((entry) => entry && entry.plainLyrics);
+          if (best) result = pick(best);
+        }
+      } catch {
+        return { lines: [], plain: '', error: 'Die Songtext-Suche ist gerade nicht erreichbar.' };
+      }
+      const out =
+        result && (result.lines.length || result.plain)
+          ? { lines: result.lines, plain: result.plain, error: null }
+          : {
+              lines: [],
+              plain: '',
+              error: result && result.instrumental ? 'Instrumental – kein Songtext.' : 'Kein Songtext gefunden.',
+            };
+      lyricsCache.set(key, out);
+      if (lyricsCache.size > 120) lyricsCache.delete(lyricsCache.keys().next().value);
+      return out;
+    },
+
+    artistPage: async (input) => {
+      const query = input && typeof input === 'object' ? input : {};
+      try {
+        let id = Number(query.deezerId) || 0;
+        const name = cleanText(query.name, 120).trim();
+        if (!id) {
+          if (!name) return { error: 'Kein Künstler angegeben.' };
+          const found = await requestJson(
+            `https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=1`
+          );
+          id = found && Array.isArray(found.data) && found.data[0] ? Number(found.data[0].id) : 0;
+          if (!id) return { error: `„${name}“ wurde bei Deezer nicht gefunden.` };
+        }
+        const [artist, top, albums, related] = await Promise.all([
+          requestJson(`https://api.deezer.com/artist/${id}`),
+          requestJson(`https://api.deezer.com/artist/${id}/top?limit=20`).catch(() => null),
+          requestJson(`https://api.deezer.com/artist/${id}/albums?limit=40`).catch(() => null),
+          requestJson(`https://api.deezer.com/artist/${id}/related?limit=12`).catch(() => null),
+        ]);
+        const card = artist && artist.id
+          ? {
+              id: Number(artist.id),
+              name: cleanText(artist.name, 200),
+              picture: cleanUrl(artist.picture_xl || artist.picture_big || artist.picture_medium || ''),
+              fans: Number(artist.nb_fan) || 0,
+            }
+          : null;
+        if (!card) return { error: 'Künstler nicht gefunden.' };
+        return {
+          artist: Object.assign(card, { albums: Number(artist.nb_album) || 0, link: cleanUrl(artist.link) }),
+          top: normalizeDeezer(top || {}),
+          albums: (albums && Array.isArray(albums.data) ? albums.data : [])
+            .map((album) => ({
+              id: Number(album.id) || 0,
+              title: cleanText(album.title, 200),
+              cover: cleanUrl(album.cover_xl || album.cover_big || album.cover_medium || album.cover || ''),
+              year: cleanText(album.release_date, 10).slice(0, 4),
+              type: cleanText(album.record_type, 20),
+            }))
+            .filter((album) => album.id),
+          related: (related && Array.isArray(related.data) ? related.data : [])
+            .map((entry) =>
+              entry && entry.id
+                ? {
+                    id: Number(entry.id),
+                    name: cleanText(entry.name, 200),
+                    picture: cleanUrl(entry.picture_xl || entry.picture_big || entry.picture_medium || ''),
+                    fans: Number(entry.nb_fan) || 0,
+                  }
+                : null
+            )
+            .filter(Boolean),
+          error: null,
+        };
+      } catch (error) {
+        return { error: friendlyNetError(error).message || error.message };
+      }
+    },
+
+    albumTracks: async (albumId) => {
+      const id = Number(albumId) || 0;
+      if (!id) return { title: '', tracks: [], error: 'Kein Album.' };
+      try {
+        const album = await requestJson(`https://api.deezer.com/album/${id}`);
+        const cover = {
+          id,
+          title: album && album.title,
+          cover: album && album.cover,
+          cover_small: album && album.cover_small,
+          cover_medium: album && album.cover_medium,
+          cover_big: album && album.cover_big,
+          cover_xl: album && album.cover_xl,
+          md5_image: album && album.md5_image,
+        };
+        const tracks = (album && album.tracks && Array.isArray(album.tracks.data) ? album.tracks.data : []).map(
+          (track) => Object.assign({}, track, { album: cover })
+        );
+        return {
+          title: cleanText(album && album.title, 200),
+          tracks: normalizeDeezer({ data: tracks }),
+          error: null,
+        };
+      } catch (error) {
+        return { title: '', tracks: [], error: friendlyNetError(error).message || error.message };
+      }
+    },
+
+    // Ohne Plugin-Laufzeit gibt es keine fremden Kataloge.
     recommendations: async () => ({ tracks: [], videos: [], seeds: [], errors: [] }),
-    artistPage: async () => ({ error: 'Künstlerseiten folgen in einer späteren mobilen Version.' }),
-    albumTracks: async () => ({ tracks: [], error: 'Künstlerseiten folgen in einer späteren mobilen Version.' }),
 
     pluginsList: async () => ({ dirs: [], plugins: [] }),
     pluginSetEnabled: async () => ({ dirs: [], plugins: [] }),
@@ -349,10 +930,14 @@
     shortcutsSet: async () => ({ enabled: false, registered: [] }),
     loginGet: async () => ({ enabled: false }),
     loginSet: async () => ({ enabled: false, supported: false }),
+
+    // Desktop-Fernbedienung: auf dem Handy nicht nötig, die Steuerseite
+    // gehört zum Fernseher.
     remoteGet: async () => ({ enabled: false, port: 4790, url: '', qr: '' }),
     remoteSet: async () => ({ enabled: false }),
     remoteRotate: async () => ({ enabled: false }),
-    diagnosticCopy: async () => '',
+
+    diagnosticCopy: async () => `CleanMusic ${MOBILE_VERSION} · Android`,
     diagnosticError: () => {},
     diagnosticState: () => {},
     backupFolderPick: async () => null,
@@ -362,17 +947,76 @@
     copyPng: async () => false,
     liveBgPick: async () => ({ canceled: true }),
     liveBgGet: async () => ({ url: '', kind: '', missing: false }),
+
+    // Update (eigener Weg, weil es keinen Store gibt)
+    updateGet: async () => publicUpdate(),
+    updateCheck: () => checkForUpdates({ silent: false }),
+    updateDownload: () => downloadUpdate(),
+    updateInstall: () => installUpdate(),
+    updateOpen: async () => {
+      const target = updateState.url || `https://github.com/${UPDATE_REPO}/releases`;
+      const links = plugin('AppLinks');
+      if (links) links.openExternal({ url: target }).catch(() => {});
+      return true;
+    },
+    updateSet: async (patch) => {
+      saveUpdateConfig({ auto: Boolean(patch && patch.auto) });
+      emitUpdate();
+      return publicUpdate();
+    },
+    onUpdateState: (listener) => {
+      if (typeof listener === 'function') updateListeners.add(listener);
+    },
   };
 
-  window.cm = bridge;
+  if (!isTv) {
+    window.cm = bridge;
+  } else {
+    // TV: app.js wird nicht geladen. tv.js bekommt nur die benötigten Wege.
+    window.cm = Object.assign({}, bridge, {
+      tvRemote: {
+        get: async () => {
+          const remote = plugin('RemoteServer');
+          return remote ? remote.get() : { enabled: false, error: 'Nur in der Android-App.' };
+        },
+        setEnabled: async (enabled) => {
+          const remote = plugin('RemoteServer');
+          if (!remote) return { enabled: false, error: 'Nur in der Android-App.' };
+          return enabled ? remote.start() : remote.stop();
+        },
+        rotate: async () => {
+          const remote = plugin('RemoteServer');
+          return remote ? remote.rotate() : { enabled: false };
+        },
+        update: (payload) => {
+          const remote = plugin('RemoteServer');
+          if (remote) remote.updateState(payload);
+        },
+        respond: (payload) => {
+          const remote = plugin('RemoteServer');
+          if (remote) remote.respond(payload);
+        },
+      },
+      onRemoteRequest: (listener) => {
+        const remote = plugin('RemoteServer');
+        if (!remote || !remote.addListener) return;
+        remote.addListener('request', (event) => {
+          try {
+            listener(event);
+          } catch {
+            /* TV-Fehler nicht in den Server tragen */
+          }
+        });
+      },
+    });
+  }
 
   /* ------------------------------------------------------------------ *
    * Hintergrund-Wiedergabe: WebView-Ton -> nativer Foreground-Service
    * ------------------------------------------------------------------ */
 
   function bgPlugin() {
-    const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
-    return plugins.BackgroundAudio || null;
+    return plugin('BackgroundAudio');
   }
 
   function text(id) {
@@ -381,6 +1025,13 @@
   }
 
   function currentMeta() {
+    if (typeof window.CMNowPlaying === 'function') {
+      try {
+        return window.CMNowPlaying() || {};
+      } catch {
+        /* TV-Haken nicht bereit */
+      }
+    }
     const session = navigator.mediaSession;
     const metadata = session && session.metadata;
     const art = document.getElementById('np-art-img');
@@ -403,10 +1054,10 @@
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
     const position = Number.isFinite(audio.currentTime) && audio.currentTime > 0 ? audio.currentTime : 0;
     return {
-      title: meta.title.slice(0, 200),
-      artist: meta.artist.slice(0, 200),
-      album: meta.album.slice(0, 200),
-      artwork: /^https:\/\//i.test(meta.artwork) ? meta.artwork.slice(0, 1000) : '',
+      title: String(meta.title || '').slice(0, 200),
+      artist: String(meta.artist || '').slice(0, 200),
+      album: String(meta.album || '').slice(0, 200),
+      artwork: /^https:\/\//i.test(meta.artwork || '') ? String(meta.artwork).slice(0, 1000) : '',
       playing: Boolean(playing && !audio.paused),
       position: Math.min(position, 24 * 60 * 60),
       duration: Math.min(duration, 24 * 60 * 60),
@@ -419,9 +1070,9 @@
   let pendingTimer = null;
 
   async function pushState(force = false) {
-    const plugin = bgPlugin();
+    const service = bgPlugin();
     const audio = document.getElementById('audio');
-    if (!plugin || !audio) return;
+    if (!service || !audio) return;
 
     const playing = !audio.paused && Boolean(audio.currentSrc || audio.getAttribute('src'));
     const state = snapshot(playing);
@@ -432,7 +1083,7 @@
         serviceStarted = false;
         lastSignature = '';
         try {
-          await plugin.stop();
+          await service.stop();
         } catch {
           /* Dienst war schon weg */
         }
@@ -449,9 +1100,9 @@
     try {
       if (!serviceStarted && state.playing) {
         serviceStarted = true;
-        await plugin.start(state);
+        await service.start(state);
       } else if (serviceStarted) {
-        await plugin.update(state);
+        await service.update(state);
       }
     } catch {
       // Dienst durfte (noch) nicht starten – beim nächsten Ereignis erneut.
@@ -474,6 +1125,13 @@
 
   function handleMediaAction(event) {
     const action = String((event && event.action) || '');
+    const hook = window.CMMediaAction;
+    if (typeof hook === 'function') {
+      hook(action, event);
+      schedulePush(true);
+      return;
+    }
+
     const audio = document.getElementById('audio');
     if (!audio) return;
 
@@ -494,22 +1152,28 @@
       if (!audio.paused) click('btn-play');
       serviceStarted = false;
       lastSignature = '';
-      const plugin = bgPlugin();
-      if (plugin) plugin.stop().catch(() => {});
+      const service = bgPlugin();
+      if (service) service.stop().catch(() => {});
     } else if (action === 'toggle') {
       click('btn-play');
     }
   }
 
   function wireBackgroundAudio() {
-    const plugin = bgPlugin();
-    if (!plugin) {
+    const service = bgPlugin();
+    if (!service) {
       console.warn('BackgroundAudio-Plugin nicht gefunden – Wiedergabe läuft nur im Vordergrund.');
       return;
     }
 
-    if (plugin.addListener) {
-      plugin.addListener('mediaAction', handleMediaAction).catch(() => {});
+    if (service.addListener) {
+      try {
+        // Capacitor 8 gibt ein PluginListenerHandle zurück (kein Promise).
+        const handle = service.addListener('mediaAction', handleMediaAction);
+        if (handle && typeof handle.catch === 'function') handle.catch(() => {});
+      } catch {
+        /* ältere Laufzeit */
+      }
     }
 
     const audio = document.getElementById('audio');
@@ -531,10 +1195,6 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * Start
-   * ------------------------------------------------------------------ */
-
-  /* ------------------------------------------------------------------ *
    * Handy-Oberfläche: Tab-Leiste unten, „Mehr“-Blatt, Mini-Player
    * ------------------------------------------------------------------ */
 
@@ -551,6 +1211,11 @@
     ['radio', 'Radio'],
     ['favorites', 'Favoriten'],
     ['more', 'Mehr'],
+  ];
+  const OPEN_SERVICES = [
+    ['spotify', 'Spotify', 'SP'],
+    ['ytmusic', 'YouTube Music', 'YT'],
+    ['apple', 'Apple Music', 'AM'],
   ];
 
   function activeViewName() {
@@ -584,6 +1249,55 @@
   function closeMore() {
     root.classList.remove('m-more');
     syncTabs();
+  }
+
+  // Welche Dienste gerade geöffnet werden können (Deep Link statt Web-Player).
+  function openInService(serviceId) {
+    const title = text('fs-title');
+    const artist = text('fs-artist');
+    if (!title || title === 'Nichts ausgewählt') {
+      toast('Starte zuerst einen Titel.');
+      return;
+    }
+    bridge
+      .openMusic({ service: serviceId, title, artist })
+      .then((ok) => {
+        if (!ok) {
+          const query = encodeURIComponent([artist, title].filter(Boolean).join(' '));
+          const urls = {
+            spotify: `https://open.spotify.com/search/${query}`,
+            ytmusic: `https://music.youtube.com/search?q=${query}`,
+            apple: `https://music.apple.com/de/search?term=${query}`,
+          };
+          bridge.openExternal(urls[serviceId] || urls.spotify);
+        }
+      })
+      .catch(() => {});
+  }
+
+  function buildOpenServices() {
+    const actions = document.querySelector('#fullscreen .fs-actions');
+    if (!actions || document.getElementById('m-open-services')) return;
+    const host = document.createElement('div');
+    host.id = 'm-open-services';
+    host.className = 'm-open-services';
+    host.innerHTML =
+      '<span class="m-open-label">In der offiziellen App öffnen</span>' +
+      OPEN_SERVICES.map(
+        ([id, label, short]) =>
+          `<button type="button" class="m-open-btn" data-open-music="${id}" title="${label}"><b>${short}</b><span>${label}</span></button>`
+      ).join('') +
+      '<button type="button" class="m-open-btn" data-share-current title="Link zum Teilen kopieren"><b>⧉</b><span>Teilen</span></button>';
+    actions.after(host);
+    host.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-open-music]');
+      if (button) return openInService(button.dataset.openMusic);
+      if (event.target.closest('[data-share-current]')) {
+        if (window.CleanMusic && typeof window.CleanMusic.shareCurrent === 'function') {
+          window.CleanMusic.shareCurrent();
+        }
+      }
+    });
   }
 
   function buildMobileShell() {
@@ -676,17 +1390,52 @@
         ['timeupdate', 'loadedmetadata', 'emptied', 'seeked'].forEach((name) => audio.addEventListener(name, paint));
       }
     }
+
+    buildOpenServices();
     syncTabs();
   }
 
+  /* ------------------------------------------------------------------ *
+   * Start
+   * ------------------------------------------------------------------ */
+
   function start() {
+    // Zurück-Taste: Vollbild/Mehr-Blatt/Unteransicht schließen, dann erst App.
+    window.CMBack = () => {
+      const fullscreen = document.getElementById('fullscreen');
+      if (fullscreen && !fullscreen.hidden) {
+        const close = fullscreen.querySelector('[data-fs-act="close"]');
+        if (close) close.click();
+        return true;
+      }
+      if (root.classList.contains('m-more')) {
+        closeMore();
+        return true;
+      }
+      const active = document.querySelector('.view.active');
+      if (active && active.id !== 'view-home' && window.CleanMusic) {
+        window.CleanMusic.showView('home');
+        return true;
+      }
+      return false;
+    };
+
+    if (isTv) {
+      // tv.js hat eine eigene Oberfläche; hier nur Wiedergabe-Dienst koppeln.
+      wireBackgroundAudio();
+      startUpdateLoop();
+      return;
+    }
+
     buildMobileShell();
     wireBackgroundAudio();
+    startUpdateLoop();
     setTimeout(() => {
       const app = window.CleanMusic;
       const active = document.querySelector('.view.active');
       if (app && typeof app.showView === 'function' && (!active || active.id === 'view-home')) {
-        app.showView('radio');
+        // Startseite zeigt Charts; Radio ist einen Tipp entfernt.
+        app.showView('home');
       }
     }, 350);
   }

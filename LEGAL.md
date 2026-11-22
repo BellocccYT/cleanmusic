@@ -194,7 +194,27 @@ Quellen-Plugin – in CleanMusic.
   behandeln. Keine Cloud, Telemetrie oder lokalen Dateipfade: die Fernbedienung sucht nur im
   öffentlichen Vorschau-Katalog und lädt keine Streams herunter.
 
-## Creator-Projekte, Rückblick-Bilder und Live-Hintergründe (ab 1.13)
+## Android-App (APK, ab mobile-1.1.0)
+
+- Vertrieb ausschließlich als APK über die GitHub-Releases, ohne Play Store und ohne Amazon
+  Appstore. Es gibt kein CleanMusic-Konto, keine Anmeldung und keine Telemetrie.
+- Keine eingebetteten Streaming-Web-Player und keine DRM-Umgehung. Volle Titel öffnen über
+  einen Deep Link in der offiziellen App des jeweiligen Anbieters; 30-Sekunden-Vorschauen von
+  Apple Music und Deezer laufen wie auf dem Desktop im eigenen Player.
+- Keine Plugins, kein yt-dlp, keine Stream-Downloads und keine Werbeblocker. Der Cutter-Modus
+  mit seinen Lizenzprüfungen bleibt dem Handy/Tablet vorbehalten und ist auf dem Fernseher
+  nicht enthalten.
+- Lokale Musik wird nur nach ausdrücklicher Android-Berechtigung gelesen; es wird nichts
+  kopiert oder hochgeladen.
+- Der eingebaute Updater lädt ausschließlich APKs aus den eigenen GitHub-Releases, prüft Größe
+  und SHA-256 und öffnet den Android-Installer. Android kann zusätzlich die Erlaubnis
+  „Unbekannte Apps installieren“ verlangen; die APK ist nicht über einen Store signiert.
+- Die TV-Handy-Steuerung übernimmt dieselben Schutzmaßnahmen wie die Desktop-Fernbedienung
+  (Schlüssel je Anfrage, nur private Netze, Host-Prüfung, Rate-Limit). Die Verbindung ist
+  unverschlüsselt und gehört nur in ein vertrauenswürdiges Heimnetz.
+- Feuer-TV-Geräte mit Vega OS können keine Android-APKs ausführen; das ist auf der
+  Download-Seite kenntlich gemacht.
+
 
 - Cutting-Projekte und deren Credits sind lokale Metadaten. Projekt-Credits werden nur als `.txt`
   unter `_Projekte` im ausgewählten Cutting-Ordner gespeichert. Die bisherigen Download- und

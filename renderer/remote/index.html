@@ -26,6 +26,10 @@
     .result { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid #7a879622; } .result .meta { flex:1; }
     .result button { min-height:40px; padding:8px 10px; font-size:13px; }
     .toolbar { display:flex; gap:8px; } .toolbar button { min-height:38px; padding:6px 10px; font-size:13px; }
+    .genre { background:#263245; color:#c9d3e4; } .genre.active { background:var(--accent); color:#08101e; font-weight:700; }
+    .rowline { display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #7a879622; }
+    .rowline .grow { flex:1; min-width:0; } .rowline .grow div { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .rowline button { min-height:40px; padding:8px 10px; font-size:13px; }
     .status { text-align:center; font-size:12px; color:var(--muted); min-height:18px; }
     @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { color-scheme:light; background:#f0f3f9; color:#18202d; --panel:white; --muted:#596579; --accent:#365ddd; } }
   </style>
@@ -45,21 +49,45 @@
       <p id="lyric" class="lyric muted"></p>
     </section>
     <section class="card"><h2>Suche · Vorschauen</h2><form id="search" class="search"><input id="query" type="search" maxlength="120" placeholder="Titel oder Künstler" autocomplete="off" /><button class="primary">Suchen</button></form><div id="results"></div></section>
+    <section class="card">
+      <h2>Radio</h2>
+      <div class="toolbar" style="flex-wrap:wrap;margin-bottom:8px">
+        <button type="button" class="genre active" data-radio-tag="">Beliebt</button>
+        <button type="button" class="genre" data-radio-tag="pop">Pop</button>
+        <button type="button" class="genre" data-radio-tag="rock">Rock</button>
+        <button type="button" class="genre" data-radio-tag="electronic">Electronic</button>
+        <button type="button" class="genre" data-radio-tag="jazz">Jazz</button>
+        <button type="button" class="genre" data-radio-tag="chillout">Chill</button>
+      </div>
+      <div id="radio"><p class="muted">Sender werden geladen …</p></div>
+    </section>
+    <section class="card"><h2>Favoriten</h2><div id="favorites"><p class="muted">Favoriten werden geladen …</p></div></section>
     <section class="card"><h2>Als Nächstes</h2><ol id="queue" class="queue"><li class="muted">Noch keine Titel</li></ol></section>
     <p id="status" class="status" role="status"></p>
   </main>
   <script>
     (() => {
       const key = new URLSearchParams(location.search).get('k') || '';
+      const device = (() => { try { return localStorage.getItem('cm.device') || ''; } catch { return ''; } })();
       const $ = (selector) => document.querySelector(selector);
       const status = (text) => { $('#status').textContent = text || ''; };
       const api = async (path, options = {}) => {
-        const response = await fetch(path, { ...options, headers: { 'X-CM-Key': key, ...(options.headers || {}) } });
+        const response = await fetch(path, { ...options, headers: { 'X-CM-Key': key, ...(device ? { 'X-CM-Device': device } : {}), ...(options.headers || {}) } });
         if (!response.ok) throw new Error(response.status === 401 ? 'Schlüssel ungültig. Neuen Link in CleanMusic erzeugen.' : `HTTP ${response.status}`);
         return response.json();
       };
       const fmt = (seconds) => { const n = Math.max(0, Math.floor(Number(seconds) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
       const send = async (cmd, value) => { try { await api('/api/cmd', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cmd, value }) }); } catch (error) { status(error.message); } };
+      const line = (title, sub, label, onClick) => {
+        const row = document.createElement('div'); row.className = 'rowline';
+        const meta = document.createElement('div'); meta.className = 'grow';
+        const main = document.createElement('div'); main.textContent = title;
+        const small = document.createElement('div'); small.className = 'muted'; small.textContent = sub || '';
+        meta.append(main, small);
+        const button = document.createElement('button'); button.textContent = label; button.addEventListener('click', onClick);
+        row.append(meta, button);
+        return row;
+      };
       const paint = (state) => {
         $('#title').textContent = state.track ? state.track.title : 'Nichts ausgewählt';
         $('#artist').textContent = state.track ? state.track.artist : 'Starte die Wiedergabe in CleanMusic.';
@@ -88,6 +116,40 @@
       });
       $('#volume').addEventListener('change', (event) => send('volume', Number(event.target.value)));
       $('#theme').addEventListener('click', () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; });
+
+      const loadRadio = async (tag) => {
+        const host = $('#radio'); host.textContent = 'Sender werden geladen …';
+        try {
+          const data = await api(`/api/radio?tag=${encodeURIComponent(tag || '')}`);
+          host.replaceChildren();
+          if (!data.stations || !data.stations.length) { host.textContent = data.error || 'Keine Sender gefunden.'; return; }
+          data.stations.slice(0, 30).forEach((station) => {
+            host.append(line(station.name, station.meta || '', 'Abspielen', async () => {
+              try { await api('/api/radio', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: station.id }) }); status(`Sender: ${station.name}`); } catch (error) { status(error.message); }
+            }));
+          });
+        } catch (error) { host.textContent = error.message; }
+      };
+      document.querySelectorAll('[data-radio-tag]').forEach((button) => button.addEventListener('click', () => {
+        document.querySelectorAll('[data-radio-tag]').forEach((other) => other.classList.toggle('active', other === button));
+        loadRadio(button.dataset.radioTag);
+      }));
+
+      let favoritesAt = 0;
+      const loadFavorites = async () => {
+        const host = $('#favorites');
+        try {
+          const data = await api('/api/favorites');
+          host.replaceChildren();
+          if (!data.favorites || !data.favorites.length) { host.textContent = 'Noch keine Favoriten.'; return; }
+          data.favorites.slice(0, 40).forEach((entry) => {
+            host.append(line(entry.title, entry.artist || (entry.kind === 'radio' ? 'Radio' : ''), 'Abspielen', async () => {
+              try { await api('/api/favorites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: entry.id }) }); status(`Favorit: ${entry.title}`); } catch (error) { status(error.message); }
+            }));
+          });
+          favoritesAt = Date.now();
+        } catch (error) { host.textContent = error.message; }
+      };
       $('#search').addEventListener('submit', async (event) => {
         event.preventDefault(); const query = $('#query').value.trim(); if (!query) return;
         $('#results').textContent = 'Suche …';
@@ -117,6 +179,9 @@
         if (!polling) polling = setInterval(loadState, 1000);
       };
       loadState();
+      loadRadio('');
+      loadFavorites();
+      setInterval(() => { if (Date.now() - favoritesAt > 60000) loadFavorites(); }, 60000);
     })();
   </script>
 </body>

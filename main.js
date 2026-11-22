@@ -36,6 +36,7 @@ const isDev = process.argv.includes('--dev');
 const isSmoke = process.argv.includes('--smoke');
 const isSmokePlugin = process.argv.includes('--smoke-plugin');
 const isSmokeObs = process.argv.includes('--smoke-obs');
+const isSmokeVisualizer = process.argv.includes('--smoke-visualizer');
 const isSmokeStreamerbot = process.argv.includes('--smoke-streamerbot');
 const isAutostart = process.argv.includes('--autostart');
 if (process.platform === 'win32') app.setAppUserModelId('de.cleanmusic.launcher');
@@ -2171,6 +2172,15 @@ function createMainWindow() {
           }
         }
 
+        // Optional: the OBS audio visualizer plugin from extras/ (spectrum end to end).
+        if (isSmokeVisualizer) {
+          try {
+            console.log('SMOKE_VISUALIZER:', JSON.stringify(await smokeVisualizerPlugin()));
+          } catch (error) {
+            console.error('SMOKE_VISUALIZER_FAIL:', error.message);
+          }
+        }
+
         // Optional: the Streamer.bot plugin from extras/ (Fetch-URL commands).
         if (isSmokeStreamerbot) {
           try {
@@ -3841,6 +3851,87 @@ async function smokeObsPlugin() {
   };
 }
 
+/* Smoke test for extras/plugins/obs-visualizer.js (npm run smoke:visualizer). */
+async function smokeVisualizerPlugin() {
+  const http = require('node:http');
+  const port = 4799;
+  const target = path.join(pluginDirs()[0], 'obs-visualizer.js');
+  fs.copyFileSync(path.join(ROOT, 'extras', 'plugins', 'obs-visualizer.js'), target);
+
+  const stored = readConfig().pluginSettings || {};
+  writeConfig({
+    pluginSettings: Object.assign({}, stored, { 'obs-visualizer': { port, style: 'bars' } }),
+  });
+  discoverPlugins();
+  const config = pluginConfig();
+  config.enabled = config.enabled.filter((id) => id !== 'obs-visualizer').concat('obs-visualizer');
+  savePluginConfig(config);
+  const plugin = plugins.get('obs-visualizer');
+  await loadPlugin(plugin);
+
+  const js = (code) => mainWindow.webContents.executeJavaScript(code);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const get = (pathname, host) =>
+    new Promise((resolve) => {
+      const req = http.request(
+        { host: '127.0.0.1', port, path: pathname, headers: host ? { Host: host } : {} },
+        (res) => {
+          let body = '';
+          res.on('data', (chunk) => {
+            body += chunk;
+            if (pathname === '/events' && body.includes('\n\n')) req.destroy();
+          });
+          res.on('end', () => resolve({ status: res.statusCode, body }));
+          res.on('close', () => resolve({ status: res.statusCode, body }));
+        }
+      );
+      req.on('error', (error) => resolve({ status: 0, body: error.message }));
+      req.end();
+    });
+
+  // The earlier steps leave a title in the player; make sure it runs.
+  await js("window.CleanMusic.setVolume(0.7); true");
+  sendPlayerCommand('play');
+  await wait(1600);
+  const snapshot = await js('window.CleanMusic.visualizerSnapshot()');
+  const json = await get('/visualizer.json');
+  const data = json.status === 200 ? JSON.parse(json.body) : null;
+  const page = await get('/visualizer?style=radial');
+  const foreign = await get('/visualizer.json', 'evil.example');
+  const events = await get('/events');
+
+  const settingsResult = await js("window.cm.pluginSettingsSet('obs-visualizer', { style: 'radial' })");
+  const info = (settingsResult.plugins || []).find((entry) => entry.id === 'obs-visualizer');
+  const after = await get('/visualizer.json');
+
+  const cleanup = pluginConfig();
+  cleanup.enabled = cleanup.enabled.filter((id) => id !== 'obs-visualizer');
+  savePluginConfig(cleanup);
+  unloadPlugin(plugin);
+  plugins.delete('obs-visualizer');
+  fs.rmSync(target, { force: true });
+  discoverPlugins();
+  await wait(300);
+  const closed = await get('/visualizer.json');
+
+  return {
+    loaded: !plugin.error,
+    error: plugin.error,
+    rendererBands: snapshot && Array.isArray(snapshot.spectrum) ? snapshot.spectrum.length : 0,
+    rendererLive: Boolean(snapshot && Array.isArray(snapshot.spectrum) && snapshot.spectrum.some((value) => value > 0)),
+    json: json.status,
+    bands: data && Array.isArray(data.spectrum) ? data.spectrum.length : 0,
+    live: Boolean(data && Array.isArray(data.spectrum) && data.spectrum.some((value) => value > 0)),
+    page: page.status === 200 && page.body.includes('Visualizer'),
+    foreignHost: foreign.status,
+    events: events.body.startsWith('retry:') && events.body.includes('"spectrum"'),
+    status: info && info.status ? info.status.text : null,
+    style: info && info.settings ? info.settings.values.style : null,
+    styleServed: after.status === 200 ? JSON.parse(after.body).style : null,
+    closedAfterUnload: closed.status === 0,
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Plugins
  *
@@ -3860,7 +3951,7 @@ async function smokeObsPlugin() {
  * API v2 adds (v1 plugins keep working unchanged):
  *   settings: [{ id, label, type, default, ... }] – fields CleanMusic
  *     shows in the plugin card; onSettings(values) is called on change
- *   onEvent(type, player) – 'nowplaying' | 'state' | 'volume'
+ *   onEvent(type, player) – 'nowplaying' | 'state' | 'volume' | 'visualizer'
  *   charts(limit) + chartsLabel – a top list for the home page
  *   ctx.player (state + play/pause/next/previous/volume), ctx.settings,
  *   ctx.copyText, ctx.openExternal, ctx.openPath, ctx.notify,
@@ -4038,7 +4129,59 @@ const playerState = {
   at: Date.now(),
   lyric: null, // { line, next } while lyrics are on
   upNext: [], // [{ title, artist, by }] – the next titles, by = song request from
+  visualizer: { spectrum: [], level: 0, at: 0 }, // 32 bands 0–255, only for plugins with visualizer: true
 };
+
+/* --- Visualizer spectrum for overlays (API v2) ---------------------- */
+
+let visualizerWatchOn = false;
+
+function pluginWantsVisualizer() {
+  for (const plugin of plugins.values()) {
+    if (plugin.module && plugin.module.visualizer === true) return true;
+  }
+  return false;
+}
+
+function updateVisualizerWatch() {
+  const on = pluginWantsVisualizer();
+  if (on === visualizerWatchOn) return;
+  visualizerWatchOn = on;
+  sendToRenderer('visualizer-watch', on);
+}
+
+function emitVisualizerEvent() {
+  let interested = false;
+  for (const plugin of plugins.values()) {
+    if (plugin.module && plugin.module.visualizer === true && typeof plugin.module.onEvent === 'function') {
+      interested = true;
+      break;
+    }
+  }
+  if (!interested) return;
+  const snapshot = JSON.parse(JSON.stringify(playerState));
+  for (const plugin of plugins.values()) {
+    if (!plugin.module || plugin.module.visualizer !== true) continue;
+    if (typeof plugin.module.onEvent !== 'function') continue;
+    try {
+      const result = plugin.module.onEvent('visualizer', snapshot);
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    } catch {
+      /* a plugin error must never break playback */
+    }
+  }
+}
+
+ipcMain.on('visualizer-state', (event, raw) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  if (!raw || typeof raw !== 'object') return;
+  const spectrum = (Array.isArray(raw.spectrum) ? raw.spectrum : [])
+    .slice(0, 64)
+    .map((value) => Math.max(0, Math.min(255, Math.round(Number(value) || 0))));
+  const level = Math.max(0, Math.min(1, Number(raw.level) || 0));
+  playerState.visualizer = { spectrum, level, at: Date.now() };
+  if (spectrum.length) emitVisualizerEvent();
+});
 
 function sendPlayerCommand(command, value) {
   sendToRenderer('player-command', { command, value });
@@ -4080,6 +4223,7 @@ let remoteServer = null;
 let remoteKeyCache = new Map();
 const remoteSseClients = new Set();
 const remoteRate = new Map();
+const remoteStationCache = new Map();
 
 function isPrivateIpv4(value) {
   const parts = String(value || '').split('.').map(Number);
@@ -4377,6 +4521,55 @@ async function handleRemoteRequest(request, response) {
     return sendRemoteJson(response, 200, { tracks: tracks.slice(0, 30) });
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/radio') {
+    const tag = String(url.searchParams.get('tag') || '').trim().slice(0, 40);
+    const params = new URLSearchParams({ limit: '40', hidebroken: 'true', order: 'clickcount', reverse: 'true' });
+    if (tag) params.set('tag', tag);
+    try {
+      const json = await fetchJson(`https://de1.api.radio-browser.info/json/stations/search?${params.toString()}`, 15000);
+      const stations = normalizeStations(json).slice(0, 30);
+      remoteStationCache.clear();
+      stations.forEach((station) => remoteStationCache.set(station.id, station));
+      return sendRemoteJson(response, 200, {
+        stations: stations.map((station) => ({
+          id: station.id,
+          name: station.name,
+          meta: [station.country, station.codec, station.bitrate ? `${station.bitrate} kbps` : ''].filter(Boolean).join(' · '),
+        })),
+        error: null,
+      });
+    } catch (error) {
+      return sendRemoteJson(response, 200, { stations: [], error: friendlyNetError(error).message || 'Radio nicht erreichbar.' });
+    }
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/radio') {
+    let body;
+    try { body = await readRemoteBody(request); } catch { return sendRemoteJson(response, 400, { error: 'bad-request' }); }
+    const station = remoteStationCache.get(String(body.id || ''));
+    if (!station) return sendRemoteJson(response, 404, { error: 'not-found' });
+    const result = await callRenderer('remoteRadio', { station }, 6000);
+    return sendRemoteJson(response, result && result.ok === false ? 503 : 200, { ok: !(result && result.ok === false) });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/favorites') {
+    const result = await callRenderer('remoteFavorites', { list: true }, 6000);
+    return sendRemoteJson(response, 200, {
+      favorites: result && Array.isArray(result.favorites) ? result.favorites : [],
+    });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/favorites') {
+    let body;
+    try { body = await readRemoteBody(request); } catch { return sendRemoteJson(response, 400, { error: 'bad-request' }); }
+    const id = String(body.id || '').slice(0, 300);
+    if (!id) return sendRemoteJson(response, 400, { error: 'bad-request' });
+    const result = await callRenderer('remoteFavorites', { id }, 6000);
+    return sendRemoteJson(response, result && result.ok === false ? (result.reason === 'not-found' ? 404 : 503) : 200, {
+      ok: !(result && result.ok === false),
+    });
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/cmd') {
     let body;
     try { body = await readRemoteBody(request); } catch { return sendRemoteJson(response, 400, { error: 'bad-request' }); }
@@ -4415,6 +4608,7 @@ function stopRemoteServer() {
   const server = remoteServer;
   remoteServer = null;
   remoteKeyCache.clear();
+  remoteStationCache.clear();
   remoteRate.clear();
   for (const response of remoteSseClients) response.end();
   remoteSseClients.clear();
@@ -4523,6 +4717,12 @@ async function smokeRemote() {
   const searchResponse = await request('/api/search?q=daft%20punk', { headers: authorized });
   const search = await searchResponse.json();
   const searchCount = Array.isArray(search.tracks) ? search.tracks.length : 0;
+  const radioResponse = await request('/api/radio?tag=pop', { headers: authorized });
+  const radio = await radioResponse.json();
+  const radioCount = Array.isArray(radio.stations) ? radio.stations.length : 0;
+  const favoritesResponse = await request('/api/favorites', { headers: authorized });
+  const favorites = await favoritesResponse.json();
+  const favoritesOk = Array.isArray(favorites.favorites);
   let queueStatus = 0;
   if (searchCount) {
     const queueResponse = await request('/api/queue', {
@@ -4565,6 +4765,8 @@ async function smokeRemote() {
     sanitized,
     toggle: toggled,
     search: { status: searchResponse.status, count: searchCount },
+    radio: { status: radioResponse.status, count: radioCount },
+    favorites: { status: favoritesResponse.status, ok: favoritesOk },
     queue: queueStatus,
     taskbarIcons,
     miniBridge,
@@ -4572,7 +4774,7 @@ async function smokeRemote() {
     disabledFeatures,
     stopped: !remoteServer,
   };
-  if (!defaultOff || noKey.status !== 401 || wrongKey.status !== 401 || pageResponse.status !== 200 || !result.page.csp || !result.page.inlineOnly || !result.qr || stateResponse.status !== 200 || !sanitized || !toggled || !searchResponse.ok || !searchCount || queueStatus !== 200 || !taskbarIcons || !miniBridge || !diagnosticsSafe || !disabledFeatures || !result.stopped) {
+  if (!defaultOff || noKey.status !== 401 || wrongKey.status !== 401 || pageResponse.status !== 200 || !result.page.csp || !result.page.inlineOnly || !result.qr || stateResponse.status !== 200 || !sanitized || !toggled || !searchResponse.ok || !searchCount || !radioResponse.ok || !radioCount || !favoritesResponse.ok || !favoritesOk || queueStatus !== 200 || !taskbarIcons || !miniBridge || !diagnosticsSafe || !disabledFeatures || !result.stopped) {
     throw new Error(JSON.stringify(result));
   }
   return result;
@@ -4623,6 +4825,56 @@ async function registeredRemoteAutostart() {
     console.error('Remote server:', error.message);
   }
 }
+
+/* --- Desktop -> TV: Favoriten und Playlists per Link senden ---------- */
+
+function tvPairTarget(value) {
+  let url;
+  try {
+    url = new URL(String(value || ''));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:') return null;
+  const host = url.hostname.toLowerCase();
+  if (host !== 'localhost' && !/^127\./.test(host) && !isPrivateIpv4(host)) return null;
+  const port = Number(url.port);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return null;
+  if (url.username || url.password) return null;
+  const key = url.searchParams.get('k') || '';
+  if (key.length < 20 || key.length > 200) return null;
+  return url;
+}
+
+ipcMain.handle('tv-pair-send', async (event, input) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false, error: 'Nicht erlaubt.' };
+  const target = tvPairTarget(input && input.url);
+  if (!target) return { ok: false, error: 'Bitte den vollständigen TV-Link einfügen (http://IP:Port/?k=…).' };
+  const favorites = Array.isArray(input.favorites) ? input.favorites.slice(0, 2000) : [];
+  const playlists = Array.isArray(input.playlists) ? input.playlists.slice(0, 200) : [];
+  const body = JSON.stringify({ favorites, playlists });
+  if (Buffer.byteLength(body) > 4 * 1024 * 1024) return { ok: false, error: 'Zu viele Daten für den Fernseher.' };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await net.fetch(`${target.origin}/api/pair${target.search}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-cm-key': target.searchParams.get('k') || '' },
+      body,
+      signal: controller.signal,
+    });
+    if (response.status === 401) return { ok: false, error: 'Der TV-Link ist ungültig. Am Fernseher einen neuen Link erzeugen.' };
+    if (!response.ok) return { ok: false, error: `Fernseher antwortet mit HTTP ${response.status}.` };
+    const result = await response.json().catch(() => ({}));
+    if (result && result.ok === false) return { ok: false, error: 'Am Fernseher abgelehnt.' };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.name === 'AbortError' ? 'Fernseher antwortet nicht.' : 'Fernseher nicht erreichbar.' };
+  } finally {
+    clearTimeout(timer);
+  }
+});
 
 ipcMain.handle('remote-get', (event) => event.sender === (mainWindow && mainWindow.webContents) ? remoteSettingsPublic() : null);
 ipcMain.handle('remote-set', (event, patch) => event.sender === (mainWindow && mainWindow.webContents)
@@ -4847,6 +5099,7 @@ async function loadPluginNow(plugin) {
     plugin.error = error.message || String(error);
   }
 
+  updateVisualizerWatch();
   return plugin;
 }
 
@@ -4863,6 +5116,7 @@ function unloadPlugin(plugin) {
     /* ignore */
   }
   plugin.module = null;
+  updateVisualizerWatch();
 }
 
 async function loadEnabledPlugins() {
@@ -6201,6 +6455,7 @@ app.whenReady().then(async () => {
   // Shared links (cleanmusic://): handle one from the start command, register the scheme.
   mainWindow.webContents.on('did-finish-load', () => {
     rendererReady = true;
+    if (visualizerWatchOn) sendToRenderer('visualizer-watch', true);
     if (pendingDeepLink) {
       const link = pendingDeepLink;
       pendingDeepLink = null;
