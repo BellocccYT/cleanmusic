@@ -667,6 +667,8 @@
             name: String(playlist.name || 'Playlist').slice(0, 80),
             createdAt: Number(playlist.createdAt) || Date.now(),
             updatedAt: Number(playlist.updatedAt) || Date.now(),
+            // Preset key ("gaming:safe") when the playlist came from a template.
+            preset: typeof playlist.preset === 'string' ? playlist.preset.slice(0, 80) : '',
             items: Array.isArray(playlist.items)
               ? playlist.items.map(migrateEntry).filter(validEntry)
               : [],
@@ -711,12 +713,13 @@
     return state.collection.playlists.find((playlist) => playlist.id === id) || null;
   }
 
-  function createPlaylist(name) {
+  function createPlaylist(name, preset = '') {
     const playlist = {
       id: uid(),
       name: String(name || 'Playlist').trim().slice(0, 80) || 'Playlist',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      preset: String(preset || '').slice(0, 80),
       items: [],
     };
     state.collection.playlists.push(playlist);
@@ -1842,6 +1845,9 @@
               <button class="quick-action" data-home-action="favorites">
                 ${ICONS.heart} Favoriten
               </button>
+              <button class="quick-action" data-home-action="presets">
+                ${ICONS.spark} Vorlagen
+              </button>
               <button class="quick-action" data-home-action="creator">
                 ${ICONS.scissors} Cutter-Modus
               </button>
@@ -2525,7 +2531,7 @@
         <div class="page-head playlist-head">
           <div class="playlist-cover">${coverMosaic(playlist)}</div>
           <div class="playlist-meta">
-            <div class="eyebrow">Playlist</div>
+            <div class="eyebrow">${playlist.preset ? 'Vorlage' : 'Playlist'}</div>
             <h2>${esc(playlist.name)}</h2>
             <p>${items.length} Titel${total ? ` · ca. ${fmtLong(total)}` : ''}${
               kinds.size ? ` · ${esc(Array.from(kinds).join(', '))}` : ''
@@ -2558,6 +2564,239 @@
                  <button class="btn primary" data-pl-action="search">Songs suchen</button>
                </div>`
         }
+      </div>`;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Pre-made playlists ("Vorlagen")
+   *
+   * Every template exists as "stream-safe" (free licences only: NCS,
+   * CC BY, CC0/Public Domain) and as "normal" (catalogue previews).
+   * Creating one makes a real playlist – editable, sortable, backed up.
+   * ---------------------------------------------------------------- */
+
+  const PLAYLIST_PRESETS = window.CM_PLAYLIST_PRESETS || { presets: [], limit: 40 };
+  let presetBusy = false;
+
+  function presetById(id) {
+    return (PLAYLIST_PRESETS.presets || []).find((preset) => preset.id === id) || null;
+  }
+
+  function presetPlaylist(id, kind) {
+    const key = `${id}:${kind}`;
+    return state.collection.playlists.find((playlist) => playlist.preset === key) || null;
+  }
+
+  // Round-robin so no single source fills the whole playlist.
+  function mixPresetEntries(groups, limit) {
+    const seen = new Set();
+    const out = [];
+    const queues = groups.map((group) => group.slice());
+
+    while (out.length < limit) {
+      let added = false;
+      for (const queue of queues) {
+        while (queue.length) {
+          const entry = queue.shift();
+          if (!entry || !entry.id || seen.has(entry.id)) continue;
+          seen.add(entry.id);
+          out.push(entry);
+          added = true;
+          break;
+        }
+        if (out.length >= limit) break;
+      }
+      if (!added) break;
+    }
+    return out;
+  }
+
+  async function streamSafePresetEntries(preset) {
+    const variant = preset.safe || {};
+    const groups = [];
+
+    const classicsTab = CREATOR.tabs.find((tab) => tab.id === 'classics');
+    if (classicsTab && variant.classics) {
+      groups.push(
+        classicsTab.tracks
+          .filter((track) => variant.classics === 'all' || track.category === variant.classics)
+          .map(classicEntry)
+      );
+    }
+
+    const ncsIds = Array.isArray(variant.ncs) ? variant.ncs : variant.ncs ? [variant.ncs] : [];
+    const ncsTab = CREATOR.tabs.find((tab) => tab.id === 'ncs');
+    if (ncsTab) {
+      for (const categoryId of ncsIds) {
+        const category = ncsTab.categories.find((entry) => entry.id === categoryId);
+        if (!category) continue;
+        try {
+          const result = await bridge.creatorPlaylist(category.playlist);
+          groups.push(
+            (Array.isArray(result.tracks) ? result.tracks : [])
+              .map(ncsEntry)
+              .filter(streamSafe)
+          );
+        } catch {
+          /* next source */
+        }
+      }
+    }
+
+    if (variant.openverse) {
+      try {
+        const result = await bridge.creatorOpenverse({ kind: 'music', query: variant.openverse, page: 1 });
+        groups.push(
+          (Array.isArray(result.items) ? result.items : [])
+            .map(openverseEntry)
+            .filter(streamSafe)
+        );
+      } catch {
+        /* nothing */
+      }
+    }
+
+    return mixPresetEntries(groups, PLAYLIST_PRESETS.limit || 40);
+  }
+
+  async function normalPresetEntries(preset) {
+    const query = preset.normal && preset.normal.query;
+    if (!query) return [];
+    try {
+      const result = await bridge.searchCatalog(query);
+      return (Array.isArray(result.tracks) ? result.tracks : [])
+        .map(previewEntry)
+        .filter((entry) => entry && entry.url)
+        .slice(0, PLAYLIST_PRESETS.limit || 40);
+    } catch {
+      return [];
+    }
+  }
+
+  async function createPresetPlaylist(presetId, kind, button) {
+    const preset = presetById(presetId);
+    if (!preset || presetBusy) return;
+
+    const safe = kind === 'safe';
+    const key = `${preset.id}:${safe ? 'safe' : 'normal'}`;
+    const name = `${preset.title} · ${safe ? 'Stream-sicher' : 'Normal'}`;
+    let playlist = presetPlaylist(preset.id, safe ? 'safe' : 'normal');
+    const created = !playlist;
+    if (!playlist) playlist = createPlaylist(name, key);
+
+    presetBusy = true;
+    const label = button ? button.innerHTML : '';
+    if (button) {
+      button.disabled = true;
+      button.textContent = safe ? 'Sammle freie Titel …' : 'Sammle Titel …';
+    }
+
+    try {
+      const entries = safe ? await streamSafePresetEntries(preset) : await normalPresetEntries(preset);
+      if (!entries.length) {
+        if (created) {
+          state.collection.playlists = state.collection.playlists.filter((item) => item.id !== playlist.id);
+          onCollectionChanged({ playlists: true });
+        }
+        toast(safe ? 'Keine freien Titel gefunden – bitte später erneut versuchen.' : 'Keine Titel gefunden – bitte später erneut versuchen.');
+        if (state.view === 'presets') renderPresets();
+        return;
+      }
+
+      const known = new Set(playlist.items.map((entry) => entry.id));
+      const fresh = entries.filter((entry) => !known.has(entry.id));
+      addToPlaylist(playlist.id, entries, { quiet: true });
+      onCollectionChanged({ playlists: true });
+      openPlaylist(playlist.id);
+
+      const hint = !safe && streamSafeOn() ? ' · nicht stream-sicher' : '';
+      if (created) toast(`Vorlage „${playlist.name}“ mit ${entries.length} Titeln angelegt${hint}`);
+      else if (fresh.length) toast(`${fresh.length} Titel zu „${playlist.name}“ ergänzt${hint}`);
+      else toast(`„${playlist.name}“ ist schon vollständig${hint}`);
+    } finally {
+      presetBusy = false;
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = label;
+      }
+    }
+  }
+
+  function renderPresets() {
+    const host = $('#view-presets');
+    if (!host) return;
+
+    const presets = PLAYLIST_PRESETS.presets || [];
+    if (!presets.length) {
+      host.innerHTML = '<div class="page"><p class="muted small">Keine Vorlagen verfügbar.</p></div>';
+      return;
+    }
+
+    const cards = presets
+      .map((preset) => {
+        const safe = presetPlaylist(preset.id, 'safe');
+        const normal = presetPlaylist(preset.id, 'normal');
+        return `
+          <article class="preset-card" style="--preset:${esc(preset.color || 'var(--accent)')}">
+            <div class="preset-top">
+              <span class="preset-icon">${ICONS[preset.icon] || ICONS.note}</span>
+              <div class="preset-heading">
+                <h3>${esc(preset.title)}</h3>
+                <span>${esc(preset.subtitle || '')}</span>
+              </div>
+            </div>
+            <p class="preset-desc">${esc(preset.description || '')}</p>
+            <div class="preset-sources">
+              <span>Stream-sicher: NCS · CC BY · CC0</span>
+              <span>Normal: Katalog · 30-s-Vorschau</span>
+            </div>
+            ${
+              safe || normal
+                ? `<div class="preset-saved">${[
+                    safe ? `✓ ${safe.items.length} freie Titel` : '',
+                    normal ? `${normal.items.length} Katalogtitel` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}</div>`
+                : ''
+            }
+            <div class="preset-actions">
+              <button class="btn primary small" data-preset-id="${esc(preset.id)}" data-preset-kind="safe">
+                ${ICONS.plus} ${safe ? 'Stream-sicher ergänzen' : 'Stream-sicher anlegen'}
+              </button>
+              <button class="btn ghost small" data-preset-id="${esc(preset.id)}" data-preset-kind="normal">
+                ${ICONS.plus} ${normal ? 'Normal ergänzen' : 'Normal anlegen'}
+              </button>
+            </div>
+          </article>`;
+      })
+      .join('');
+
+    host.innerHTML = `
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Vorlagen</div>
+            <h2>Fertige Playlists</h2>
+            <p>
+              Jede Vorlage gibt es zweimal: <strong>Stream-sicher</strong> nur mit freien Lizenzen
+              (NCS, CC BY, CC0) – und <strong>Normal</strong> aus dem Katalog. Ein Klick legt eine
+              echte Playlist an, die du umbenennen, sortieren und erweitern kannst.
+            </p>
+          </div>
+          <div class="page-actions">
+            <button class="btn ${streamSafeOn() ? 'primary' : 'ghost'} small" data-preset-action="streamsafe">
+              ${streamSafeOn() ? '✓ Stream-sicher-Modus an' : 'Stream-sicher-Modus einschalten'}
+            </button>
+          </div>
+        </div>
+
+        <div class="preset-legend">
+          <span><b>✓ Stream-sicher</b> NCS, CC BY und CC0 – mit Credit im Stream nutzbar.</span>
+          <span><b>Normal</b> Katalogtitel als 30-s-Vorschau – Lizenz nicht garantiert.</span>
+        </div>
+
+        <div class="grid preset-grid">${cards}</div>
       </div>`;
   }
 
@@ -3923,6 +4162,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.14.0': [
+      'Vorlagen (Seitenleiste): acht fertige Playlists für Gaming, Chill, Episch, Fokus, Workout und mehr – mit einem Klick als echte Playlist.',
+      'Jede Vorlage gibt es stream-sicher (nur NCS, CC BY und CC0, mit Credit nutzbar) und normal (Katalogtitel als 30-s-Vorschau).',
+      'Vorlagen lassen sich erneut anklicken: CleanMusic ergänzt neue Titel und zeigt die Playlist danach direkt an.',
+    ],
     '1.13.1': [
       'Vollbild-Leistung: neue Stufen Sparmodus, Ausgewogen und Qualität begrenzen Bildrate, Auflösung und Blur-Effekte.',
       'Der Vollbild-Visualizer lässt sich jetzt getrennt abschalten; der Mini-Visualizer bleibt unabhängig.',
@@ -10245,6 +10489,7 @@ ${updatePanel()}
 
     if (name === 'review') renderReview();
     if (name === 'downloads') loadDownloads();
+    if (name === 'presets') renderPresets();
     if (name === 'search') {
       renderSearchResults();
       if (!state.charts.loaded) loadCharts();
@@ -10663,6 +10908,9 @@ ${updatePanel()}
           case 'favorites':
             showView('favorites');
             return;
+          case 'presets':
+            showView('presets');
+            return;
           case 'creator':
             showView('creator');
             return;
@@ -10789,6 +11037,17 @@ ${updatePanel()}
           return;
         default:
       }
+    });
+
+    $('#view-presets').addEventListener('click', (event) => {
+      if (event.target.closest('[data-preset-action="streamsafe"]')) {
+        setStreamSafe(!streamSafeOn());
+        renderPresets();
+        return;
+      }
+
+      const button = event.target.closest('[data-preset-id]');
+      if (button) createPresetPlaylist(button.dataset.presetId, button.dataset.presetKind, button);
     });
 
     $('#view-radio').addEventListener('click', (event) => {
@@ -11897,6 +12156,30 @@ ${updatePanel()}
     },
     addToPlaylistAt: (id, key, index) => addToPlaylist(id, [entryAt(key, index)].filter(Boolean)),
     movePlaylistItem,
+    // Smoke test: build one template in both variants, check it, clean up.
+    presetSmoke: async (presetId = 'emotional') => {
+      const run = async (kind) => {
+        await createPresetPlaylist(presetId, kind);
+        const playlist = presetPlaylist(presetId, kind);
+        const out = {
+          created: Boolean(playlist),
+          items: playlist ? playlist.items.length : 0,
+          allSafe: playlist ? playlist.items.every(streamSafe) : false,
+          withCredit: playlist ? playlist.items.filter((entry) => Boolean(entry.credit)).length : 0,
+          first: playlist && playlist.items[0] ? playlist.items[0].title : '',
+        };
+        if (playlist) {
+          state.collection.playlists = state.collection.playlists.filter((item) => item.id !== playlist.id);
+          onCollectionChanged({ playlists: true });
+        }
+        return out;
+      };
+
+      const safe = await run('safe');
+      const normal = await run('normal');
+      showView('home');
+      return { safe, normal };
+    },
     loadRecs,
     plugins: () =>
       state.plugins.list.map((plugin) => ({

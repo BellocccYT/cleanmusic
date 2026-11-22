@@ -1934,6 +1934,23 @@ function createMainWindow() {
           `);
           console.log('SMOKE_V18:', JSON.stringify(v18));
 
+          // 1.14: pre-made playlists (stream-safe + normal) render as cards.
+          const presetsSmoke = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              cm.showView('presets');
+              const out = {
+                cards: document.querySelectorAll('#view-presets .preset-card').length,
+                safe: document.querySelectorAll('#view-presets [data-preset-kind="safe"]').length,
+                normal: document.querySelectorAll('#view-presets [data-preset-kind="normal"]').length,
+              };
+              out.playlist = await cm.presetSmoke('emotional');
+              cm.showView('home');
+              return out;
+            })()
+          `);
+          console.log('SMOKE_PRESETS:', JSON.stringify(presetsSmoke));
+
           const liveBg = await mainWindow.webContents.executeJavaScript(`
             (async () => {
               const cm = window.CleanMusic;

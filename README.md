@@ -89,6 +89,7 @@ Update zeigt eine kleine Karte, was neu ist.
 | **Beliebte Titel** | ✅ Deezer-Charts, sofort abspielbar |
 | **Live-Radio** | ✅ tausende öffentliche Sender, volle Songs, kein Login, kein DRM |
 | **Favoriten & Playlists** | ✅ ♥ und + an jedem Titel/Sender, gemischt aus allen Quellen, Drag & Drop |
+| **Vorlagen-Playlists** | ✅ acht Themen, je **stream-sicher** (NCS, CC BY, CC0) oder **normal** (Katalog) mit einem Klick |
 | **Vorschläge „Für dich“** | ✅ aus deinen Favoriten (Deezer-Artist-Radio, verwandte Artists, optional über Plugins) |
 | **Cutter-Modus** | ✅ NCS, YouTube-Klassiker (CC BY), Soundeffekte & freie Musik mit Lizenz und Credit |
 | **Vollbild-Player & Visualizer** | ✅ Cover-Farben, Beat-Puls, Kreis/Balken/Welle, Kino-Modus |
@@ -160,6 +161,11 @@ Wunsch **nach Ordner**.
 - **Drag & Drop:** Titel aus jeder Liste auf *Favoriten*, eine Playlist oder
   *Neue Playlist* in der Seitenleiste ziehen. In einer Playlist per Griff
   sortieren.
+- **Vorlagen** (Seitenleiste): acht fertige Themen wie *Gaming & Retro*,
+  *Chill & Lounge*, *Episch & Action* oder *Workout & Energy*. Jede gibt es
+  **stream-sicher** – nur NCS, CC BY und CC0, also mit Credit im Stream nutzbar –
+  und **normal** aus dem Katalog. Ein Klick legt eine echte Playlist an;
+  erneutes Anklicken ergänzt neue Titel.
 - **„Neu für dich“** auf der Startseite und **„Mehr wie deine Favoriten“** in den
   Favoriten: CleanMusic nimmt deine häufigsten Favoriten-Artists **und was du
   zuletzt oft gehört hast** und holt über die öffentliche Deezer-API Artist-Radio

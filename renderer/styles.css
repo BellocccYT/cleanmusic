@@ -2671,6 +2671,124 @@ code {
   height: 20px;
 }
 
+/* Pre-made playlists ("Vorlagen") ---------------------------------- */
+
+.preset-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(var(--tint), 0.04);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+
+.preset-legend b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.preset-grid {
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+}
+
+.preset-card {
+  --preset: var(--accent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 16px;
+  border-radius: 14px;
+  background:
+    radial-gradient(220px 120px at 100% 0%, color-mix(in srgb, var(--preset) 15%, transparent), transparent 70%),
+    var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.preset-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--preset) 34%, var(--border)),
+    0 14px 34px rgba(0, 0, 0, 0.32);
+}
+
+.preset-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.preset-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: color-mix(in srgb, var(--preset) 88%, #fff);
+  background: color-mix(in srgb, var(--preset) 16%, transparent);
+}
+
+.preset-icon .ic {
+  width: 20px;
+  height: 20px;
+}
+
+.preset-heading {
+  min-width: 0;
+}
+
+.preset-heading h3 {
+  font-size: 14.5px;
+}
+
+.preset-heading span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+
+.preset-desc {
+  flex: 1 1 auto;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.preset-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+.preset-saved {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.preset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-actions .btn {
+  flex: 1 1 140px;
+}
+
+.preset-actions .btn .ic {
+  width: 13px;
+  height: 13px;
+}
+
 /* Plugins ---------------------------------------------------------- */
 
 .plugin-hint {
