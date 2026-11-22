@@ -56,16 +56,20 @@ Die App heißt **CleanMusic**, Paket `de.cleanmusic.mobile`, Version `mobile-1.0
 
 **Oberfläche**
 
+- Untere Leiste: Home, Suche, Radio, Favoriten und Mehr. „Mehr“ öffnet Einstellungen,
+  Rückblick und Playlists.
 - Hochkant und quer drehen; auf einem Tablet testen, falls vorhanden.
 - Einstellungen → Theme, Hintergrund, Visualizer, EQ, Plattenspieler.
-- Vollbild-Player öffnen (Knopf in der Player-Leiste).
+- Vollbild-Player über den Mini-Player (Cover/Titel antippen) öffnen.
 - App aus der Übersicht wegwischen: Die Wiedergabe und die Benachrichtigung sollen
   aufhören (der WebView ist dann weg).
 
 ## Was dieser Prototyp absichtlich nicht kann
 
 - Keine lokale Musik (Android-Medienbibliothek kommt später).
-- Keine Plugins, kein Cutter-Modus, keine Downloads, kein yt-dlp.
+- Keine Plugins, kein Cutter-Modus, keine Downloads.
+- Kein yt-dlp und keine YouTube-Extraktion. YouTube läuft nur über die offizielle App
+  oder Website; auf Android gibt es keine Node-Plugin-Laufzeit.
 - Keine eingebetteten Streaming-Web-Player. „Im Browser“ öffnet die offizielle Seite.
 - Keine Künstlerseiten, keine Songtexte, kein Updater.
 - Kein Release-Signierschlüssel, kein automatisches Update. Die Debug-APK ist nur zum

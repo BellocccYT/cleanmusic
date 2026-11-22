@@ -534,7 +534,153 @@
    * Start
    * ------------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------------ *
+   * Handy-Oberfläche: Tab-Leiste unten, „Mehr“-Blatt, Mini-Player
+   * ------------------------------------------------------------------ */
+
+  const TAB_ICONS = {
+    home: '<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path><path d="M10 21v-6h4v6"></path>',
+    search: '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>',
+    radio: '<circle cx="12" cy="12" r="2"></circle><path d="M8.5 8.5a5 5 0 0 0 0 7"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M5.6 5.6a9 9 0 0 0 0 12.8"></path><path d="M18.4 5.6a9 9 0 0 1 0 12.8"></path>',
+    favorites: '<path d="M12 20.2s-7.2-4.4-9.2-8.9C1.5 8.1 3.4 4.6 6.9 4.6c2.2 0 3.9 1.3 5.1 3 1.2-1.7 2.9-3 5.1-3 3.5 0 5.4 3.5 4.1 6.7-2 4.5-9.2 8.9-9.2 8.9Z"></path>',
+    more: '<circle cx="5" cy="12" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="19" cy="12" r="1.4"></circle>',
+  };
+  const TABS = [
+    ['home', 'Home'],
+    ['search', 'Suche'],
+    ['radio', 'Radio'],
+    ['favorites', 'Favoriten'],
+    ['more', 'Mehr'],
+  ];
+
+  function activeViewName() {
+    const view = document.querySelector('.view.active');
+    return view && view.id ? view.id.replace(/^view-/, '') : '';
+  }
+
+  function syncSearchState() {
+    const view = document.getElementById('view-search');
+    if (!view) return;
+    const input = document.getElementById('global-search');
+    const empty = !input || !input.value.trim();
+    view.classList.toggle('m-search-empty', empty);
+  }
+
+  function syncTabs() {
+    const bar = document.getElementById('m-tabbar');
+    if (!bar) return;
+    const current = activeViewName();
+    const main = TABS.some(([view]) => view === current && view !== 'more');
+    const moreOpen = root.classList.contains('m-more');
+    bar.querySelectorAll('.m-tab').forEach((tab) => {
+      const view = tab.dataset.mView;
+      const on = view === 'more' ? moreOpen || (!main && Boolean(current)) : !moreOpen && view === current;
+      tab.classList.toggle('active', on);
+      tab.setAttribute('aria-current', on ? 'page' : 'false');
+    });
+    syncSearchState();
+  }
+
+  function closeMore() {
+    root.classList.remove('m-more');
+    syncTabs();
+  }
+
+  function buildMobileShell() {
+    const app = document.getElementById('app');
+    if (!app || document.getElementById('m-tabbar')) return;
+
+    const bar = document.createElement('nav');
+    bar.id = 'm-tabbar';
+    bar.setAttribute('aria-label', 'Hauptnavigation');
+    TABS.forEach(([view, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'm-tab';
+      button.dataset.mView = view;
+      button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + TAB_ICONS[view] + '</svg><span>' + label + '</span>';
+      bar.append(button);
+    });
+    app.append(bar);
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'm-sheet-backdrop';
+    app.append(backdrop);
+
+    bar.addEventListener('click', (event) => {
+      const tab = event.target.closest('.m-tab');
+      if (!tab) return;
+      const view = tab.dataset.mView;
+      if (view === 'more') {
+        root.classList.toggle('m-more');
+        syncTabs();
+        return;
+      }
+      root.classList.remove('m-more');
+      const nav = document.querySelector('#sidebar .nav-item[data-view="' + view + '"]');
+      if (nav) nav.click();
+      else if (window.CleanMusic && typeof window.CleanMusic.showView === 'function') window.CleanMusic.showView(view);
+      const content = document.getElementById('content');
+      if (content) content.scrollTop = 0;
+      syncTabs();
+    });
+    backdrop.addEventListener('click', closeMore);
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+      const head = document.createElement('div');
+      head.className = 'm-sheet-head';
+      head.innerHTML =
+        '<strong>Mehr</strong><button type="button" class="m-sheet-close" aria-label="Mehr schließen">×</button>';
+      sidebar.prepend(head);
+      head.querySelector('.m-sheet-close').addEventListener('click', closeMore);
+      sidebar.addEventListener('click', (event) => {
+        if (event.target.closest('.nav-item, #playlist-nav button, #playlist-nav [data-playlist]')) setTimeout(closeMore, 0);
+      });
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && root.classList.contains('m-more')) closeMore();
+    });
+
+    // Aktiven Tab nachziehen, wenn die App selbst die Ansicht wechselt.
+    const observer = new MutationObserver(syncTabs);
+    document.querySelectorAll('.view').forEach((view) => observer.observe(view, { attributes: true, attributeFilter: ['class'] }));
+
+    const globalSearch = document.getElementById('global-search');
+    if (globalSearch) globalSearch.addEventListener('input', syncSearchState);
+
+    // Mini-Player: Tippen auf Cover/Titel öffnet den Vollbild-Player.
+    const playerbar = document.getElementById('playerbar');
+    const np = playerbar && playerbar.querySelector('.np');
+    if (np) {
+      np.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        const fs = document.getElementById('btn-fullscreen');
+        if (fs && !fs.disabled) fs.click();
+      });
+    }
+
+    // Dünne Fortschrittslinie oben am Mini-Player.
+    if (playerbar) {
+      const progress = document.createElement('div');
+      progress.id = 'm-progress';
+      progress.innerHTML = '<i></i>';
+      playerbar.prepend(progress);
+      const fill = progress.firstChild;
+      const audio = document.getElementById('audio');
+      if (audio) {
+        const paint = () => {
+          const dur = Number(audio.duration);
+          const ratio = Number.isFinite(dur) && dur > 0 ? Math.min(1, audio.currentTime / dur) : 0;
+          fill.style.width = (ratio * 100).toFixed(2) + '%';
+        };
+        ['timeupdate', 'loadedmetadata', 'emptied', 'seeked'].forEach((name) => audio.addEventListener(name, paint));
+      }
+    }
+    syncTabs();
+  }
+
   function start() {
+    buildMobileShell();
     wireBackgroundAudio();
     setTimeout(() => {
       const app = window.CleanMusic;

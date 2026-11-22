@@ -20,6 +20,8 @@ html[data-mobile] body {
 html[data-mobile] [data-view="creator"],
 html[data-mobile] [data-view="downloads"],
 html[data-mobile] [data-view="local"],
+html[data-mobile] [data-view="presets"],
+html[data-mobile] #view-presets,
 html[data-mobile] #creator-nav,
 html[data-mobile] .creator-label,
 html[data-mobile] #service-nav,
@@ -52,6 +54,7 @@ html[data-mobile] #home-rediscover-section {
 html[data-mobile] #view-home [data-home-action="creator"],
 html[data-mobile] #view-home [data-home-action="add-folder"],
 html[data-mobile] #view-home [data-home-action="musickit"],
+html[data-mobile] #view-home [data-home-action="presets"],
 html[data-mobile] #view-home kbd {
   display: none !important;
 }
@@ -68,7 +71,13 @@ html[data-mobile] #view-settings [data-shortcuts="open"] {
   display: none !important;
 }
 
-/* Grundraster: oben Kopf, darunter Navigation, Inhalt, Player --------- */
+/* Grundraster wie bei Musik-Apps: Kopf, Inhalt, Mini-Player, Tab-Leiste */
+
+html[data-mobile] {
+  --tabbar-h: 58px;
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
 
 html[data-mobile] #app {
   height: 100dvh;
@@ -77,33 +86,33 @@ html[data-mobile] #app {
   padding-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
   padding-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
     "topbar"
-    "sidebar"
     "content"
-    "player";
+    "player"
+    "tabbar";
 }
 
+/* Kopf: nur Logo + Suche, volle Breite */
+
 html[data-mobile] #topbar {
-  padding: 0 12px;
+  padding: 8px 12px;
   gap: 10px;
-  min-height: 52px;
+  min-height: 54px;
   -webkit-app-region: no-drag;
 }
 
+html[data-mobile] .brand-name,
 html[data-mobile] .brand-sub,
 html[data-mobile] .search-wrap kbd,
 html[data-mobile] #topbar .topbar-actions {
   display: none;
 }
 
-html[data-mobile] .brand-name {
-  font-size: 14px;
-}
-
 html[data-mobile] .search-wrap {
-  height: 38px;
+  flex: 1 1 auto;
+  height: 40px;
   max-width: none;
   margin: 0;
   border-radius: 12px;
@@ -113,70 +122,252 @@ html[data-mobile] #global-search {
   font-size: 16px; /* verhindert Auto-Zoom in mobilen WebViews */
 }
 
-/* Navigation als waagerechte Leiste -------------------------------- */
+/* Tab-Leiste unten (wird von native.js eingefügt) */
 
-html[data-mobile] #sidebar {
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-right: 0;
-  border-bottom: 1px solid var(--border-soft);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
+html[data-mobile] #m-tabbar {
+  grid-area: tabbar;
+  position: relative;
+  z-index: 70;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: rgba(var(--bg-rgb), 0.98);
+  border-top: 1px solid var(--border-soft);
 }
 
-html[data-mobile] #sidebar::-webkit-scrollbar {
+html[data-mobile] .m-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+html[data-mobile] .m-tab svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+html[data-mobile] .m-tab.active {
+  color: var(--accent);
+}
+
+/* „Mehr“: die bisherige Seitenleiste als Blatt von unten */
+
+html[data-mobile] #sidebar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  max-height: 70dvh;
+  padding: 18px 14px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.35);
+  transform: translateY(calc(100% + var(--tabbar-h) + 40px));
+  transition: transform 0.22s ease;
+  visibility: hidden;
+}
+
+html[data-mobile].m-more #sidebar {
+  transform: none;
+  visibility: visible;
+}
+
+html[data-mobile] .m-sheet-head {
+  order: -2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+html[data-mobile] .m-sheet-head strong {
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--text);
+}
+
+html[data-mobile] .m-sheet-close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(var(--tint), 0.06);
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
+
+html[data-mobile] #sidebar .sidebar-footer {
+  order: -1;
+}
+
+html[data-mobile] #sidebar .nav-group,
+html[data-mobile] #sidebar .sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+html[data-mobile] #sidebar .nav-label {
   display: none;
 }
 
-html[data-mobile] #sidebar .nav-group {
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-}
-
-html[data-mobile] #sidebar .nav-group.grow {
-  flex: 0 0 auto;
-}
-
-html[data-mobile] #sidebar .nav-label,
 html[data-mobile] #sidebar .legal {
   display: none;
 }
 
+/* Was schon in der Tab-Leiste steht, nicht doppelt zeigen. */
+html[data-mobile] #sidebar .nav-item[data-view="home"],
+html[data-mobile] #sidebar .nav-item[data-view="search"],
+html[data-mobile] #sidebar .nav-item[data-view="radio"],
+html[data-mobile] #sidebar .nav-item[data-view="favorites"] {
+  display: none;
+}
+
 html[data-mobile] #sidebar .nav-item {
-  width: auto;
-  flex: 0 0 auto;
-  padding: 8px 12px;
-  min-height: 38px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 15px;
+  border-radius: 12px;
   white-space: nowrap;
-  border-radius: 10px;
 }
-
-html[data-mobile] #sidebar .nav-item .svc-name {
-  max-width: 150px;
-}
-
-html[data-mobile] #sidebar .sidebar-footer {
-  flex-direction: row;
-  padding: 0;
-  border-top: 0;
-  margin-left: 0;
-}
-
-/* Einstellungen direkt nach Start, vor der langen Bibliotheksliste. */
-html[data-mobile] #sidebar > .nav-group:first-child { order: 1; }
-html[data-mobile] #sidebar .sidebar-footer { order: 2; }
-html[data-mobile] #sidebar > .nav-group:nth-child(2) { order: 3; }
-html[data-mobile] #sidebar > .nav-group.grow { order: 4; }
 
 html[data-mobile] #playlist-nav {
   display: flex;
-  flex-direction: row;
-  gap: 4px;
+  flex-direction: column;
+  gap: 2px;
 }
+
+html[data-mobile] #m-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: none;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+html[data-mobile].m-more #m-sheet-backdrop {
+  display: block;
+}
+
+/* Mini-Player: eine Zeile, Tippen öffnet den Vollbild-Player */
+
+html[data-mobile] #playerbar {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 64px;
+  padding: 8px 8px 8px 12px;
+  border-top: 1px solid var(--border-soft);
+  background: rgba(var(--bg-rgb), 0.97);
+}
+
+html[data-mobile] #playerbar .np {
+  width: auto;
+  min-width: 0;
+  cursor: pointer;
+}
+
+html[data-mobile] #playerbar .np-art {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+}
+
+html[data-mobile] #playerbar .np-meta {
+  min-width: 0;
+}
+
+html[data-mobile] #playerbar .np-title,
+html[data-mobile] #playerbar .np-artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html[data-mobile] #playerbar .np-actions,
+html[data-mobile] #playerbar .seek-row,
+html[data-mobile] #playerbar .live-indicator,
+html[data-mobile] #playerbar .right-controls,
+html[data-mobile] #playerbar #btn-shuffle,
+html[data-mobile] #playerbar #btn-repeat,
+html[data-mobile] #playerbar #btn-prev {
+  display: none !important;
+}
+
+html[data-mobile] #playerbar .controls {
+  width: auto;
+  gap: 0;
+}
+
+html[data-mobile] #playerbar .buttons {
+  gap: 2px;
+}
+
+html[data-mobile] #playerbar .buttons .icon-btn {
+  width: 46px;
+  height: 46px;
+}
+
+html[data-mobile] #playerbar .buttons .icon-btn.play {
+  width: 48px;
+  height: 48px;
+}
+
+/* Dünner Fortschritt oben am Mini-Player (von native.js gesteuert) */
+html[data-mobile] #m-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 2px;
+  background: rgba(var(--accent-rgb), 0.18);
+  pointer-events: none;
+}
+
+html[data-mobile] #m-progress > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.25s linear;
+}
+
 
 /* Inhalt ------------------------------------------------------------ */
 
@@ -212,79 +403,186 @@ html[data-mobile] .row {
 }
 
 html[data-mobile] .btn,
-html[data-mobile] .radio-tag,
+html[data-mobile] .radio-tag {
+  min-height: 40px;
+}
+
 html[data-mobile] .link-btn {
   min-height: 36px;
+}
+
+/* Leere Suche: freundlicher Hinweis statt „keine Treffer“. */
+html[data-mobile] #view-search.m-search-empty #search-results {
+  display: none;
+}
+
+html[data-mobile] #view-search.m-search-empty::after {
+  content: 'Tippe oben ins Suchfeld und suche nach Song, Künstler oder Album. Vorschauen von Apple Music und Deezer spielen direkt in CleanMusic.';
+  display: block;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 html[data-mobile] .radio-grid {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 
-/* Player-Leiste: kompakt und fingerfreundlich ----------------------- */
-
-html[data-mobile] #playerbar {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  padding: 8px 12px calc(8px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  border-top: 1px solid var(--border);
-  background: rgba(var(--bg-rgb), 0.97);
+/* Songzeilen: auf dem Handy nur Cover, Text, Favorit und Abspielen.
+   Die Desktop-Badges und Zusatzaktionen würden den Titel auf wenige
+   Pixel zusammendrücken. */
+html[data-mobile] .song-row,
+html[data-mobile] .song-row.has-handle {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
 }
 
-html[data-mobile] #playerbar .np {
-  width: 100%;
-}
-
-html[data-mobile] #playerbar .np-art {
-  width: 40px;
-  height: 40px;
-}
-
-html[data-mobile] #playerbar .controls {
-  width: 100%;
-  gap: 2px;
-}
-
-html[data-mobile] #playerbar .right-controls,
-html[data-mobile] #playerbar #btn-shuffle,
-html[data-mobile] #playerbar #btn-repeat {
+html[data-mobile] .song-row .drag-handle,
+html[data-mobile] .song-row .song-badges,
+html[data-mobile] .song-row .song-preview {
   display: none;
 }
 
-html[data-mobile] #playerbar .buttons {
-  gap: 14px;
+html[data-mobile] .song-row .song-actions .icon-btn:not(.song-play):not(.fav),
+html[data-mobile] .song-row .song-actions .project-add {
+  display: none;
 }
 
-html[data-mobile] #playerbar .buttons .icon-btn {
+html[data-mobile] .song-row .song-actions .fav {
+  display: grid;
+  opacity: 1;
+}
+
+html[data-mobile] .song-row .song-actions {
+  gap: 0;
+}
+
+html[data-mobile] .song-row .song-actions .icon-btn {
   width: 38px;
   height: 38px;
 }
 
-html[data-mobile] #playerbar .buttons .icon-btn.play {
-  width: 46px;
-  height: 46px;
+html[data-mobile] .song-row .song-title {
+  font-size: 14px;
 }
 
-html[data-mobile] #playerbar .seek-row {
-  width: 100%;
+html[data-mobile] .song-row .song-sub {
+  font-size: 12px;
 }
 
-html[data-mobile] #playerbar .np-actions {
-  gap: 2px;
+html[data-mobile] #search-results .results-head {
+  flex-wrap: wrap;
+  gap: 2px 10px;
 }
 
-/* Vollbild-Player: etwas mehr Rand, große Ziele ---------------------- */
-
-html[data-mobile] .fs-top {
-  padding: 12px 14px;
+html[data-mobile] #search-results .results-head .results-title {
+  flex: 1 0 100%;
 }
 
-html[data-mobile] .fs-controls .buttons {
+/* Vollbild-Player: eine Spalte, kein seitlicher Überlauf -------------- */
+
+html[data-mobile] .fs-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   gap: 16px;
+  padding: calc(152px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  text-align: center;
+}
+
+html[data-mobile] .fs-cover-wrap {
+  flex: 0 0 auto;
+}
+
+html[data-mobile] .fs-cover {
+  width: min(72vw, 34vh, 320px);
+  border-radius: 22px;
+}
+
+html[data-mobile] .fs-meta {
+  width: 100%;
+  max-width: 520px;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+html[data-mobile] .fs-badge {
+  align-self: center;
+}
+
+html[data-mobile] .fs-title {
+  width: 100%;
+  font-size: clamp(24px, 7vw, 34px);
+  line-height: 1.15;
+}
+
+html[data-mobile] .fs-artist {
+  width: 100%;
+  font-size: 15px;
+}
+
+html[data-mobile] .fs-progress {
+  width: 100%;
+  margin-top: 6px;
+}
+
+html[data-mobile] .fs-live {
+  margin-top: 4px;
+}
+
+html[data-mobile] .fs-controls {
+  width: 100%;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+html[data-mobile] .fs-ctrl {
+  width: 42px;
+  height: 42px;
+}
+
+html[data-mobile] .fs-play {
+  width: 68px;
+  height: 68px;
+}
+
+html[data-mobile] .fs-actions {
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Hardware-Lautstärke reicht auf dem Handy; der Regler war die Ursache
+   für den seitlichen Überlauf. */
+html[data-mobile] .fs-volume {
+  display: none;
 }
 
 html[data-mobile] .fs-lyrics {
+  width: 100%;
+  max-height: 32vh;
+  overflow-y: auto;
   font-size: 20px;
+}
+
+html[data-mobile] .fs-lyrics-tools {
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* Einstellungen: Panels und Formulare ohne Überlauf ------------------ */
@@ -298,6 +596,62 @@ html[data-mobile] .toggle-row {
   gap: 10px;
 }
 
+/* Schieberegler und Auswahlfelder bekommen eine eigene Zeile,
+   statt den Text zu quetschen. */
+html[data-mobile] .toggle-row:has(input[type="range"]),
+html[data-mobile] .toggle-row:has(select) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+html[data-mobile] .toggle-row input[type="range"],
+html[data-mobile] .toggle-row > select {
+  width: 100%;
+}
+
+html[data-mobile] .ps-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+html[data-mobile] .ps-row input,
+html[data-mobile] .ps-row select,
+html[data-mobile] .ps-folder {
+  width: 100%;
+  max-width: none;
+}
+
+/* Songtext-Optionen nicht einrücken; auf dem Handy zählt jede Breite. */
+html[data-mobile] .lyrics-settings {
+  margin: 4px 0 8px;
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* Größere Schalter und Regler für den Daumen. */
+html[data-mobile] .toggle-row input[type="checkbox"] {
+  width: 46px;
+  height: 28px;
+}
+
+html[data-mobile] .toggle-row input[type="checkbox"]::after {
+  width: 22px;
+  height: 22px;
+  top: 3px;
+  left: 3px;
+}
+
+html[data-mobile] .toggle-row input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+html[data-mobile] input[type="range"]::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+}
+
 html[data-mobile] input[type="text"],
 html[data-mobile] input[type="search"],
 html[data-mobile] select,
@@ -307,4 +661,142 @@ html[data-mobile] .select-input {
 
 html[data-mobile] .eq-bands {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Vollbild-Kopfzeile: zwei Reihen statt einer zu breiten Leiste.
+   Schließen und Plattenspieler bleiben immer sichtbar, die Spektrum-Stile
+   lassen sich waagerecht wischen. Hintergrund-Auswahl gibt es in den Einstellungen. */
+html[data-mobile] #fullscreen .fs-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "brand vinyl close"
+    "styles styles styles";
+  align-items: center;
+  gap: 8px;
+  padding: calc(10px + var(--safe-top)) 12px 6px;
+}
+
+html[data-mobile] #fullscreen .fs-top-actions {
+  display: contents;
+}
+
+html[data-mobile] #fullscreen .fs-brand {
+  grid-area: brand;
+  min-width: 0;
+}
+
+html[data-mobile] #fullscreen #fs-vinyl {
+  grid-area: vinyl;
+}
+
+html[data-mobile] #fullscreen [data-fs-act="close"] {
+  grid-area: close;
+}
+
+html[data-mobile] #fullscreen .fs-icon {
+  width: 44px;
+  height: 44px;
+}
+
+html[data-mobile] #fullscreen .fs-bg-select {
+  display: none;
+}
+
+html[data-mobile] #fullscreen .fs-styles {
+  grid-area: styles;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  gap: 4px;
+  padding: 3px;
+}
+
+html[data-mobile] #fullscreen .fs-styles::-webkit-scrollbar {
+  display: none;
+}
+
+html[data-mobile] #fullscreen .fs-styles button {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+/* Tastatur-Hinweise ergeben auf dem Handy keinen Sinn. */
+html[data-mobile] #fullscreen .fs-hint {
+  display: none;
+}
+
+/* Querformat: kompakte Kopfzeile, Cover und Text nebeneinander. */
+@media (orientation: landscape) and (max-height: 520px) {
+  html[data-mobile] #fullscreen .fs-top {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "brand styles vinyl close";
+    gap: 8px;
+    padding: calc(8px + var(--safe-top)) 12px 8px;
+  }
+
+  html[data-mobile] #fullscreen .fs-brand {
+    font-size: 12px;
+  }
+
+  html[data-mobile] #fullscreen .fs-brand .logo {
+    width: 24px;
+    height: 24px;
+  }
+
+  html[data-mobile] #fullscreen .fs-styles {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+    padding: 2px;
+  }
+
+  html[data-mobile] #fullscreen .fs-styles button {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 4px;
+    font-size: 10.5px;
+  }
+
+  html[data-mobile] #fullscreen .fs-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  html[data-mobile] .fs-main {
+    display: grid;
+    grid-template-columns: minmax(0, 38%) minmax(0, 1fr);
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: calc(68px + var(--safe-top)) 18px 16px;
+    text-align: left;
+  }
+
+  html[data-mobile] .fs-cover {
+    width: min(42vh, 240px);
+  }
+
+  html[data-mobile] .fs-meta {
+    max-width: none;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  html[data-mobile] .fs-badge {
+    align-self: flex-start;
+  }
+
+  html[data-mobile] .fs-controls,
+  html[data-mobile] .fs-actions,
+  html[data-mobile] .fs-lyrics-tools {
+    justify-content: flex-start;
+  }
+
+  html[data-mobile] .fs-lyrics {
+    max-height: 20vh;
+  }
 }
