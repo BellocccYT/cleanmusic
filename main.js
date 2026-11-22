@@ -1988,6 +1988,65 @@ function createMainWindow() {
           `);
           console.log('SMOKE_LIVEBG:', JSON.stringify(liveBg));
 
+          const performance = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              cm.showView('settings');
+              await wait(80);
+              const controls = {
+                panel: Boolean(document.querySelector('#performance-panel')),
+                level: Boolean(document.querySelector('#opt-performance')),
+                fsToggle: Boolean(document.querySelector('#opt-fs-viz')),
+              };
+              const initial = cm.performanceInfo();
+              cm.setPerformance('saver');
+              cm.openFullscreen();
+              await wait(500);
+              const saver = cm.performanceInfo();
+              const saverLive = cm.liveBg();
+              cm.setFsVisualizer(false);
+              await wait(80);
+              const fsOff = cm.performanceInfo();
+              const offStyle = document.querySelector('#fs-styles [data-fs-style="off"]').classList.contains('active');
+              cm.setFsVisualizer(true);
+              cm.setPerformance('quality');
+              await wait(500);
+              const quality = cm.performanceInfo();
+              const qualityLive = cm.liveBg();
+              const qualityStyle = document.querySelector('#fs-styles [data-fs-style="radial"]').classList.contains('active');
+              cm.setPerformance('balanced');
+              cm.closeFullscreen();
+              cm.showView('home');
+              const balancedLive = cm.liveBg();
+              return {
+                controls,
+                initial: initial.id,
+                saver: {
+                  id: saver.id,
+                  fps: saver.canvasPerformance && saver.canvasPerformance.maxFps,
+                  liveFps: saverLive.maxFps,
+                  resolution: saverLive.resolution,
+                  shadow: saver.canvasPerformance && saver.canvasPerformance.shadow,
+                  ratio: saver.canvas && saver.canvas.clientWidth ? Number((saver.canvas.width / saver.canvas.clientWidth).toFixed(3)) : null,
+                  frameMs: saver.canvasPerformance && saver.canvasPerformance.lastFrameDelta,
+                },
+                fsOff: { hidden: fsOff.fsVizHidden, offStyle },
+                quality: {
+                  id: quality.id,
+                  fps: quality.canvasPerformance && quality.canvasPerformance.maxFps,
+                  liveFps: qualityLive.maxFps,
+                  liveResolution: qualityLive.resolution,
+                  ratio: quality.canvas && quality.canvas.clientWidth ? Number((quality.canvas.width / quality.canvas.clientWidth).toFixed(3)) : null,
+                  qualityStyle,
+                  frameMs: quality.canvasPerformance && quality.canvasPerformance.lastFrameDelta,
+                },
+                balancedLive: { maxFps: balancedLive.maxFps, resolution: balancedLive.resolution },
+              };
+            })()
+          `);
+          console.log('SMOKE_PERF:', JSON.stringify(performance));
+
           const v113Ui = await mainWindow.webContents.executeJavaScript(`
             (async () => {
               const cm = window.CleanMusic;

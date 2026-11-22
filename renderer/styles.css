@@ -3314,7 +3314,8 @@ code {
 
 body.viz-off .mini-viz,
 body.mini-viz-off .mini-viz,
-body.viz-off .fs-viz {
+body.viz-off .fs-viz,
+body.fs-viz-off .fs-viz {
   display: none;
 }
 
@@ -3383,6 +3384,18 @@ body.fs-open .toast {
 html.bg-still .fs-background-cover-moving .fs-bg img { animation: none !important; }
 html.bg-still .fs-glow { animation: none !important; }
 .fs-bg-select { max-width: 150px; border: 1px solid rgba(var(--border-rgb), .7); border-radius: 8px; padding: 7px 9px; background: rgba(var(--bg-rgb), .62); color: var(--text); }
+
+/* Performance profiles: large blur filters and blend modes are the most
+   expensive parts of the fullscreen player. */
+html[data-perf='balanced'] .fs-viz { mix-blend-mode: normal; opacity: .86; }
+html[data-perf='saver'] .fs-viz { mix-blend-mode: normal; opacity: .66; }
+html[data-perf='balanced'] .fs-bg img { filter: blur(46px) saturate(1.4) brightness(.46); }
+html[data-perf='saver'] .fs-bg img { filter: blur(24px) saturate(1.12) brightness(.5); }
+html[data-perf='balanced'] .fs-background-cover-moving .fs-bg img { animation-duration: 48s; }
+html[data-perf='saver'] .fs-background-cover-moving .fs-bg img { animation: none !important; }
+html[data-perf='balanced'] .fs-bg canvas { filter: blur(20px) saturate(1.1) brightness(.7); }
+html[data-perf='saver'] .fs-bg canvas { filter: saturate(1.05) brightness(.68); }
+html[data-perf='saver'] .fs-glow { animation: none !important; opacity: .9; }
 
 .fs-bg img[hidden] {
   display: none;
@@ -4982,6 +4995,11 @@ html.bg-hidden .fs-glow { animation-play-state: paused !important; }
   .fs-bg img { animation: none !important; }
   .fs-glow { animation: none !important; }
 }
+.performance-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .55fr); align-items: center; gap: 12px; margin: 14px 0 0; }
+.performance-row > span { display: grid; gap: 4px; }
+.performance-row small { color: var(--muted); }
+.performance-row .select-input { width: 100%; }
+.performance-note { margin: 10px 0 0; }
 .eq-preset-row { display: grid; grid-template-columns: minmax(90px, .4fr) 1fr; align-items: center; gap: 12px; margin: 12px 0; }
 .eq-advanced { display: grid; gap: 12px; }
 #eq-curve { display: block; width: 100%; height: 128px; border: 1px solid var(--border-soft); border-radius: 10px; background: rgba(var(--bg-rgb), .22); }

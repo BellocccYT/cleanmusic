@@ -28,11 +28,15 @@ window.CMVisualizer = (function () {
   let engine = null; // { source, level, makeup, gain, limiter }
   const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
   const output = { gain: 1, normalize: false, bass: 0, treble: 0, eqEnabled: false, eq: Array(10).fill(0) };
+  // Fullscreen drawing is deliberately capped: 60 fps at device pixel ratio 2
+  // with large blur shadows was by far the biggest GPU cost of the player.
+  const performance = { maxFps: 24, maxPixelRatio: 1, detail: 0.8, shadow: 0.55 };
   let freq = null;
   let wave = null;
   let enabled = false;
   let raf = 0;
   let lastDraw = 0;
+  let lastDrawDelta = 0;
   let energy = 0;
   let bassLevel = 0;
   let peak = 0;
@@ -260,6 +264,24 @@ window.CMVisualizer = (function () {
     return Boolean(engine);
   }
 
+  function setPerformance(options = {}) {
+    if (Number.isFinite(options.maxFps)) performance.maxFps = Math.max(5, Math.min(60, options.maxFps));
+    if (Number.isFinite(options.maxPixelRatio)) performance.maxPixelRatio = Math.max(0.5, Math.min(2, options.maxPixelRatio));
+    if (Number.isFinite(options.detail)) performance.detail = Math.max(0.25, Math.min(1, options.detail));
+    if (Number.isFinite(options.shadow)) performance.shadow = Math.max(0, Math.min(1, options.shadow));
+    // Force the next frame to re-fit (and apply a lower internal resolution).
+    targets.forEach((target, canvas) => {
+      canvas.width = 0;
+      canvas.height = 0;
+      targetDots(target);
+    });
+    return { ...performance };
+  }
+
+  function targetDots(target) {
+    if (target && Array.isArray(target.dots)) target.dots.length = Math.min(target.dots.length, Math.round(120 * performance.detail));
+  }
+
   function setEnabled(on) {
     enabled = Boolean(on);
     if (enabled) {
@@ -310,7 +332,7 @@ window.CMVisualizer = (function () {
   }
 
   function fit(canvas) {
-    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    const ratio = Math.max(0.5, Math.min(performance.maxPixelRatio, window.devicePixelRatio || 1));
     const width = Math.round(canvas.clientWidth * ratio);
     const height = Math.round(canvas.clientHeight * ratio);
     if (canvas.width !== width || canvas.height !== height) {
@@ -321,6 +343,12 @@ window.CMVisualizer = (function () {
   }
 
   const rgba = (c, a) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+
+  // Large shadow blurs are expensive to redraw every frame; the performance
+  // profile scales them down (or removes them completely in saver mode).
+  function shadow(radius, ratio) {
+    return Math.max(0, radius * ratio * performance.shadow);
+  }
 
   // Log-spaced band levels (0..1) from the FFT, 30 Hz – 16 kHz.
   function bands(count) {
@@ -375,7 +403,7 @@ window.CMVisualizer = (function () {
     const maxHeight = target.mini ? height / 2 : height * 0.22;
     if (!target.mini) {
       g.shadowColor = rgba(colorA, 0.5);
-      g.shadowBlur = 22 * ratio;
+      g.shadowBlur = shadow(22, ratio);
     }
     levels.forEach((level, i) => {
       const h = Math.max(1.5 * ratio, level * maxHeight);
@@ -405,8 +433,9 @@ window.CMVisualizer = (function () {
     const now = t / 1000;
     const dt = Math.min(0.05, target.lastT ? now - target.lastT : 0.016);
     target.lastT = now;
-    const spawn = (target.mini ? 1 : 3) + Math.round(loud * (target.mini ? 4 : 14) + energy * (target.mini ? 2 : 10));
-    for (let k = 0; k < spawn && dots.length < (target.mini ? 60 : 420); k += 1) {
+    const spawn = (target.mini ? 1 : 3) + Math.round((loud * (target.mini ? 4 : 14) + energy * (target.mini ? 2 : 10)) * performance.detail);
+    const maxDots = target.mini ? 60 : Math.round(420 * performance.detail);
+    for (let k = 0; k < spawn && dots.length < maxDots; k += 1) {
       const band = Math.floor(Math.random() * levels.length);
       dots.push({
         x: ((band + Math.random()) / levels.length) * width,
@@ -457,7 +486,7 @@ window.CMVisualizer = (function () {
 
     if (!target.mini) {
       g.shadowColor = rgba(colorB, 0.45);
-      g.shadowBlur = 18 * ratio;
+      g.shadowBlur = shadow(18, ratio);
     }
 
     levels.forEach((level, i) => {
@@ -496,7 +525,7 @@ window.CMVisualizer = (function () {
 
     g.lineCap = 'round';
     g.shadowColor = rgba(colorB, 0.55);
-    g.shadowBlur = 22 * ratio;
+    g.shadowBlur = shadow(22, ratio);
 
     mirrored.forEach((level, i) => {
       const angle = (i / mirrored.length) * Math.PI * 2 - Math.PI / 2 + t / 9000;
@@ -544,7 +573,7 @@ window.CMVisualizer = (function () {
       g.strokeStyle = rgba(layer.color, layer.alpha);
       g.lineWidth = (layerIndex ? 2.5 : 6) * ratio;
       g.shadowColor = rgba(layer.color, 0.6);
-      g.shadowBlur = 20 * ratio;
+      g.shadowBlur = shadow(20, ratio);
       g.stroke();
     });
     g.shadowBlur = 0;
@@ -591,12 +620,19 @@ window.CMVisualizer = (function () {
       const active = Array.from(targets.entries()).filter(([canvas]) => visible(canvas));
       if (!active.length && !frameListeners.size) return; // sleep until register()/setEnabled()
 
-      // Paused: a calm idle animation is enough – ~8 fps instead of 60.
+      // Hard cap from the performance profile (15/24/30 fps).
+      const frameInterval = 1000 / Math.max(1, performance.maxFps);
+      if (t - lastDraw < frameInterval) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      // Paused: a calm idle animation is enough even in high quality mode.
       const resting = !audioEl || audioEl.paused;
       if (resting && energy < 0.01 && t - lastDraw < 120) {
         raf = requestAnimationFrame(tick);
         return;
       }
+      if (lastDraw) lastDrawDelta = t - lastDraw;
       lastDraw = t;
 
       if ((source || tapped) && analyser) {
@@ -649,6 +685,8 @@ window.CMVisualizer = (function () {
     isAnalysing: () => Boolean(source) || tapped,
     setOutput,
     setEq,
+    setPerformance,
+    performance: () => ({ ...performance, lastFrameDelta: Number(lastDrawDelta.toFixed(1)) }),
     eqFrequencies: () => EQ_FREQUENCIES.slice(),
     hasEngine: () => Boolean(engine),
     engineState: () =>

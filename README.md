@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.13.0**
+**Version 1.13.1**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -334,6 +334,21 @@ Stil wählen und den **Mini-Visualizer** in der Player-Leiste gibt es unter
 *Einstellungen → Visualizer*. Bei Pause zeichnet er nur noch ~8× pro Sekunde.
 Die Spektrum-Balken funktionieren auch, wenn der Ton über die optionale
 Lautstärke-/Klang-Kette läuft.
+
+### Leistung im Vollbild (ab 1.13.1)
+
+Unter *Einstellungen → Leistung im Vollbild* lässt sich die GPU-Last regulieren:
+
+- **Ausgewogen** (Standard): Visualizer mit 24 fps, volle CSS-Auflösung und deutlich
+  reduzierte Blur-/Blend-Effekte.
+- **Sparmodus**: 15 fps, kleinere interne Canvas-Auflösung, keine großen Schatten und
+  keine Blur-Effekte. Empfohlen bei hoher GPU-Last oder im Akkubetrieb.
+- **Qualität**: maximal 30 fps mit vollen Effekten.
+
+Der **Vollbild-Visualizer** ist zusätzlich separat abschaltbar; der kleine Visualizer in
+der Player-Leiste bleibt davon unabhängig. Live-Hintergründe und bewegte Cover pausieren
+weiterhin automatisch, wenn das Fenster verborgen ist. Ton, Audio-Kette und EQ bleiben
+von allen Leistungsstufen unberührt.
 
 ### Discord Rich Presence (optional)
 

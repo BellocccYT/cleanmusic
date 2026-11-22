@@ -15,7 +15,10 @@
   const fullCtx = fullCanvas && fullCanvas.getContext('2d', { alpha: true });
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const scenes = new Set(['lava', 'waves', 'synthwave', 'nebula', 'rain']);
-  const config = { id: 'none', motion: true, pulse: false, batteryStop: true, fsMode: 'cover-moving', fsLiveId: 'none', mediaUrl: '', mediaKind: '' };
+  const config = {
+    id: 'none', motion: true, pulse: false, batteryStop: true, fsMode: 'cover-moving', fsLiveId: 'none',
+    mediaUrl: '', mediaKind: '', maxFps: 24, resolution: 0.85, detail: 0.8,
+  };
   let raf = 0;
   let lastFrame = 0;
   let startAt = performance.now();
@@ -54,8 +57,10 @@
 
   function fitted(target) {
     if (!target) return null;
-    const width = Math.max(1, Math.round(target.clientWidth));
-    const height = Math.max(1, Math.round(target.clientHeight));
+    // Lower internal resolution gets upscaled by CSS – much cheaper than
+    // rendering every CSS pixel of a large fullscreen blur.
+    const width = Math.max(1, Math.round(target.clientWidth * config.resolution));
+    const height = Math.max(1, Math.round(target.clientHeight * config.resolution));
     if (target.width !== width || target.height !== height) {
       target.width = width;
       target.height = height;
@@ -64,13 +69,15 @@
   }
 
   function seedScene(width, height) {
-    lavaBlobs = Array.from({ length: 7 }, (_value, index) => ({
+    const blobCount = Math.max(3, Math.round(7 * config.detail));
+    const particleCount = Math.max(24, Math.round(110 * config.detail));
+    lavaBlobs = Array.from({ length: blobCount }, (_value, index) => ({
       x: (0.12 + (index * 0.137) % 0.76) * width,
       y: (0.12 + (index * 0.217) % 0.76) * height,
       radius: Math.min(width, height) * (0.13 + (index % 3) * 0.035),
       phase: index * 1.71,
     }));
-    particles = Array.from({ length: 110 }, (_value, index) => ({
+    particles = Array.from({ length: particleCount }, (_value, index) => ({
       x: ((index * 0.61803398875) % 1) * width,
       y: ((index * 0.754877666) % 1) * height,
       depth: 0.15 + ((index * 0.381966) % 0.85),
@@ -107,7 +114,7 @@
     context.clearRect(0, 0, width, height);
 
     if (id === 'lava') {
-      if (lavaBlobs.length !== 7) seedScene(width, height);
+      if (!lavaBlobs.length) seedScene(width, height);
       context.save();
       context.filter = `blur(${Math.max(18, Math.min(width, height) * 0.045)}px)`;
       lavaBlobs.forEach((blob, index) => {
@@ -126,7 +133,8 @@
     }
 
     if (id === 'waves') {
-      for (let layer = 0; layer < 6; layer += 1) {
+      const layers = Math.max(3, Math.round(6 * config.detail));
+      for (let layer = 0; layer < layers; layer += 1) {
         const color = layer % 2 ? palette.b : palette.a;
         context.beginPath();
         for (let x = 0; x <= width; x += Math.max(8, width / 120)) {
@@ -168,7 +176,7 @@
     }
 
     if (id === 'nebula') {
-      if (particles.length !== 110) seedScene(width, height);
+      if (!particles.length) seedScene(width, height);
       particles.forEach((particle, index) => {
         const x = (particle.x + Math.sin(t / (9000 * particle.depth) + particle.phase) * width * 0.035 + width) % width;
         const y = (particle.y + Math.cos(t / (11000 * particle.depth) + particle.phase) * height * 0.04 + height) % height;
@@ -183,7 +191,7 @@
     }
 
     if (id === 'rain') {
-      if (particles.length !== 110) seedScene(width, height);
+      if (!particles.length) seedScene(width, height);
       context.strokeStyle = rgba(palette.muted, 0.24);
       particles.forEach((drop, index) => {
         const speed = 0.006 + drop.depth * 0.018;
@@ -288,7 +296,7 @@
   function tick(time) {
     raf = 0;
     if (!shouldRun()) { stopLoop(); return; }
-    if (time - lastFrame >= 1000 / 30) {
+    if (time - lastFrame >= 1000 / Math.max(1, config.maxFps)) {
       if (lastFrame) lastFrameDelta = time - lastFrame;
       lastFrame = time;
       frames += 1;
@@ -312,6 +320,17 @@
     if ('batteryStop' in next) config.batteryStop = Boolean(next.batteryStop);
     if ('fsMode' in next) config.fsMode = String(next.fsMode || 'cover-moving');
     if ('fsLiveId' in next) config.fsLiveId = String(next.fsLiveId || 'none');
+    const previousPerf = `${config.maxFps}:${config.resolution}:${config.detail}`;
+    if (Number.isFinite(next.maxFps)) config.maxFps = Math.max(5, Math.min(60, next.maxFps));
+    if (Number.isFinite(next.resolution)) config.resolution = Math.max(0.4, Math.min(1, next.resolution));
+    if (Number.isFinite(next.detail)) config.detail = Math.max(0.25, Math.min(1, next.detail));
+    if (`${config.maxFps}:${config.resolution}:${config.detail}` !== previousPerf) {
+      // Rebuild scene particles and force a new internal canvas size.
+      lavaBlobs = [];
+      particles = [];
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+      if (fullCanvas) { fullCanvas.width = 0; fullCanvas.height = 0; }
+    }
     if ('mediaUrl' in next || 'mediaKind' in next) {
       onError = typeof next.onError === 'function' ? next.onError : onError;
       setMedia(next.mediaUrl || '', next.mediaKind || '');
@@ -338,7 +357,7 @@
   window.CMLiveBackground = {
     configure,
     setBeat,
-    state: () => ({ id: config.id, motion: config.motion, pulse: config.pulse, fsMode: config.fsMode, running: Boolean(raf), paused: !shouldRun(), frames, lastFrameDelta, beat, videoMuted: video.muted, videoVolume: video.volume, videoSrc: Boolean(video.currentSrc), gifPaused: gifFrozen }),
+    state: () => ({ id: config.id, motion: config.motion, pulse: config.pulse, fsMode: config.fsMode, maxFps: config.maxFps, resolution: config.resolution, detail: config.detail, running: Boolean(raf), paused: !shouldRun(), frames, lastFrameDelta, beat, videoMuted: video.muted, videoVolume: video.volume, videoSrc: Boolean(video.currentSrc), gifPaused: gifFrozen }),
     renderTestFrame: (id) => {
       const probe = document.createElement('canvas');
       probe.width = 640;

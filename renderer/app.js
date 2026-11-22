@@ -257,8 +257,11 @@
         systemBrowser: false,
         fullTracks: true,
         visualizer: true,
+        fsVisualizer: true,
         vizStyle: 'radial',
         miniViz: true,
+        performance: 'balanced', // saver | balanced | quality
+
         normalize: false,
         volumeBoost: false,
         bass: 0, // dB, −6 … +9
@@ -3920,6 +3923,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.13.1': [
+      'Vollbild-Leistung: neue Stufen Sparmodus, Ausgewogen und Qualität begrenzen Bildrate, Auflösung und Blur-Effekte.',
+      'Der Vollbild-Visualizer lässt sich jetzt getrennt abschalten; der Mini-Visualizer bleibt unabhängig.',
+      'Ausgewogen ist Standard und reduziert die GPU-Last deutlich, ohne Ton oder EQ-Kette zu verändern.',
+    ],
     '1.13.0': [
       '10-Band-Equalizer mit neun Presets und bis zu zehn eigenen Presets; Bass und Höhen bleiben erhalten.',
       'Cutter-Projekte sammeln Musik-Credits; WAV-Ausschnitte können Fades, Normalisierung und Loop-Übergang enthalten.',
@@ -4291,6 +4299,7 @@
   function syncLiveBackground() {
     const live = window.CMLiveBackground;
     if (!live || typeof live.configure !== 'function') return;
+    const profile = performanceProfile();
     live.configure({
       id: state.settings.background || 'none',
       motion: state.settings.bgMotion !== false,
@@ -4300,6 +4309,9 @@
       fsLiveId: state.settings.background || 'none',
       mediaUrl: state.settings.background === 'custom' ? customBg.url : '',
       mediaKind: state.settings.background === 'custom' ? customBg.kind : '',
+      maxFps: profile.fps,
+      resolution: profile.liveResolution,
+      detail: profile.detail,
       onError: (message) => {
         state.settings.background = 'none';
         saveSettings();
@@ -8245,7 +8257,9 @@
       const style = button.dataset.fsStyle;
       button.classList.toggle(
         'active',
-        style === 'off' ? !state.settings.visualizer : state.settings.visualizer && state.settings.vizStyle === style
+        style === 'off'
+          ? !state.settings.visualizer || !fsVisualizerOn()
+          : state.settings.visualizer && fsVisualizerOn() && state.settings.vizStyle === style
       );
     });
 
@@ -8367,15 +8381,78 @@
     image.src = src;
   }
 
+  const PERFORMANCE_PROFILES = {
+    saver: {
+      id: 'saver', label: 'Sparmodus', fps: 15, pixelRatio: 0.75, liveResolution: 0.65,
+      detail: 0.5, shadow: 0, hint: '15 fps, kleinere Canvas-Auflösung, keine großen Schatten oder Blur-Effekte.',
+    },
+    balanced: {
+      id: 'balanced', label: 'Ausgewogen', fps: 24, pixelRatio: 1, liveResolution: 0.85,
+      detail: 0.8, shadow: 0.55, hint: '24 fps, volle CSS-Auflösung und deutlich reduzierte Blur-/Blend-Effekte. Empfohlen.',
+    },
+    quality: {
+      id: 'quality', label: 'Qualität', fps: 30, pixelRatio: 1, liveResolution: 1,
+      detail: 1, shadow: 1, hint: 'Maximal 30 fps mit vollen Effekten. Braucht die meiste GPU-Leistung.',
+    },
+  };
+
+  function performanceProfile() {
+    return PERFORMANCE_PROFILES[state.settings.performance] || PERFORMANCE_PROFILES.balanced;
+  }
+
+  function fsVisualizerOn() {
+    return state.settings.fsVisualizer !== false;
+  }
+
+  function setPerformance(id) {
+    if (!PERFORMANCE_PROFILES[id]) return;
+    state.settings.performance = id;
+    saveSettings();
+    applyPerformance();
+    renderSettings();
+    toast(`Leistung: ${performanceProfile().label}`);
+  }
+
+  function applyPerformance() {
+    const profile = performanceProfile();
+    document.documentElement.dataset.perf = profile.id;
+    if (window.CMVisualizer && window.CMVisualizer.setPerformance) {
+      window.CMVisualizer.setPerformance({
+        maxFps: profile.fps,
+        maxPixelRatio: profile.pixelRatio,
+        detail: profile.detail,
+        shadow: profile.shadow,
+      });
+    }
+    syncLiveBackground();
+    syncVisualizerEngine();
+    applyVisualizerVisibility();
+    if (state.fullscreen) syncFullscreen();
+  }
+
+  function setFullscreenVisualizer(enabled) {
+    state.settings.fsVisualizer = Boolean(enabled);
+    if (state.settings.fsVisualizer && !state.settings.visualizer) state.settings.visualizer = true;
+    saveSettings();
+    syncVisualizerEngine();
+    applyVisualizerVisibility();
+    if (state.fullscreen) syncFullscreen();
+    renderSettings();
+  }
+
   function setVisualizerStyle(style) {
     if (style === 'off') {
-      setVisualizerEnabled(false);
-    } else {
-      state.settings.vizStyle = style;
-      if (!state.settings.visualizer) setVisualizerEnabled(true);
-      else saveSettings();
-      window.CMVisualizer.setStyle($('#fs-viz'), style);
+      // Fullscreen only: the mini visualizer in the player bar stays untouched.
+      setFullscreenVisualizer(false);
+      return;
     }
+    state.settings.vizStyle = style;
+    state.settings.visualizer = true;
+    state.settings.fsVisualizer = true;
+    saveSettings();
+    window.CMVisualizer.setStyle($('#fs-viz'), style);
+    syncVisualizerEngine();
+    applyVisualizerVisibility();
     syncFullscreen();
     renderSettings();
   }
@@ -8391,12 +8468,15 @@
     const viz = window.CMVisualizer;
     const motionAllowed = state.settings.bgMotion !== false && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const pulseAnalyzer = Boolean(state.settings.bgPulse && motionAllowed && !document.hidden);
-    if (viz && viz.setEnabled) viz.setEnabled(Boolean(state.settings.visualizer || pulseAnalyzer));
+    const drawing = Boolean(state.settings.visualizer && (state.settings.miniViz || fsVisualizerOn()));
+    if (viz && viz.setEnabled) viz.setEnabled(Boolean(drawing || pulseAnalyzer));
   }
 
   function applyVisualizerVisibility() {
-    document.body.classList.toggle('viz-off', !state.settings.visualizer);
-    document.body.classList.toggle('mini-viz-off', !state.settings.miniViz);
+    const on = Boolean(state.settings.visualizer);
+    document.body.classList.toggle('viz-off', !on);
+    document.body.classList.toggle('mini-viz-off', !on || !state.settings.miniViz);
+    document.body.classList.toggle('fs-viz-off', !on || !fsVisualizerOn());
     window.CMVisualizer.wake();
   }
 
@@ -9498,6 +9578,15 @@
           </span>
           <input type="checkbox" id="opt-viz" ${state.settings.visualizer ? 'checked' : ''} />
         </label>
+        <label class="toggle-row ${state.settings.visualizer ? '' : 'disabled'}" style="margin-top:6px">
+          <span>
+            <strong>Visualizer im Vollbild</strong>
+            <small>Der große Effekt hinter Cover und Songtext. Aus spart die meiste GPU-Leistung, der Mini-Visualizer bleibt unabhängig.</small>
+          </span>
+          <input type="checkbox" id="opt-fs-viz" ${fsVisualizerOn() ? 'checked' : ''} ${
+            state.settings.visualizer ? '' : 'disabled'
+          } />
+        </label>
         <div class="row viz-styles">
           ${styles
             .map(
@@ -9517,6 +9606,30 @@
             state.settings.visualizer ? '' : 'disabled'
           } />
         </label>
+      </div>`;
+  }
+
+  function performancePanel() {
+    const profile = performanceProfile();
+    return `
+      <div class="panel" id="performance-panel">
+        <h3>Leistung im Vollbild</h3>
+        <p>
+          Begrenzt Bildrate, Auflösung und Effekte von Visualizer, bewegtem Cover und
+          Live-Hintergrund. Der Ton und die Audio-Kette sind davon nicht betroffen.
+        </p>
+        <label class="performance-row">
+          <span><strong>Leistungsstufe</strong><small id="performance-hint">${esc(profile.hint)}</small></span>
+          <select id="opt-performance" class="select-input">
+            ${Object.values(PERFORMANCE_PROFILES)
+              .map((item) => `<option value="${item.id}" ${profile.id === item.id ? 'selected' : ''}>${esc(item.label)}</option>`)
+              .join('')}
+          </select>
+        </label>
+        <p class="muted small performance-note">
+          Standard ist „Ausgewogen“. Bei hoher GPU-Last oder im Akkubetrieb „Sparmodus“ wählen.
+          Im Hintergrund und bei reduzierter Bewegung pausieren die Animationen automatisch.
+        </p>
       </div>`;
   }
 
@@ -9992,6 +10105,8 @@
         </div>
 
         ${themePanel()}
+
+        ${performancePanel()}
 
         ${visualizerPanel()}
 
@@ -11005,6 +11120,16 @@ ${updatePanel()}
         return;
       }
 
+      if (event.target.id === 'opt-performance') {
+        setPerformance(event.target.value);
+        return;
+      }
+
+      if (event.target.id === 'opt-fs-viz') {
+        setFullscreenVisualizer(event.target.checked);
+        return;
+      }
+
       if (event.target.id === 'opt-viz') {
         setVisualizerEnabled(event.target.checked);
         renderSettings();
@@ -11576,6 +11701,7 @@ ${updatePanel()}
     viz.attach(audio);
     viz.register($('#mini-viz'), { mini: true });
     viz.register($('#fs-viz'), { style: state.settings.vizStyle, anchor: $('#fs-cover') });
+    applyPerformance();
     let lastBackgroundPulse = 0;
     viz.onFrame((energy) => {
       const motionAllowed = state.settings.bgMotion !== false && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -12014,6 +12140,24 @@ ${updatePanel()}
     },
     setBackground: (id) => setBackground(id),
     setFsBackground: (mode) => setFullscreenBackground(mode),
+    setPerformance: (id) => setPerformance(id),
+    setFsVisualizer: (on) => setFullscreenVisualizer(on),
+    performanceInfo: () => {
+      const profile = performanceProfile();
+      const canvas = $('#fs-viz');
+      return {
+        id: profile.id,
+        fps: profile.fps,
+        pixelRatio: profile.pixelRatio,
+        liveResolution: profile.liveResolution,
+        detail: profile.detail,
+        shadow: profile.shadow,
+        fsVisualizer: fsVisualizerOn(),
+        canvas: canvas ? { width: canvas.width, height: canvas.height, clientWidth: canvas.clientWidth } : null,
+        fsVizHidden: document.body.classList.contains('fs-viz-off'),
+        canvasPerformance: window.CMVisualizer && window.CMVisualizer.performance ? window.CMVisualizer.performance() : null,
+      };
+    },
     liveBg: () => window.CMLiveBackground ? window.CMLiveBackground.state() : null,
     liveBgRenderTest: (id) => window.CMLiveBackground ? window.CMLiveBackground.renderTestFrame(id) : null,
     setBgMotion: (on) => { state.settings.bgMotion = Boolean(on); saveSettings(); syncVisualizerEngine(); applyBackground(); },
