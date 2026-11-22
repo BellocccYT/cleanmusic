@@ -1734,6 +1734,66 @@ function createMainWindow() {
           `);
           console.log('SMOKE_QUEUE:', JSON.stringify(queueResult));
 
+          const shuffleSmoke = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const btn = document.querySelector('#btn-shuffle');
+              if (btn.classList.contains('active')) btn.click();
+              cm.playList('charts', 0);
+              await wait(120);
+              const beforeQueue = cm.queue();
+              const before = beforeQueue.items.map((item) => item.id);
+              const beforeContext = beforeQueue.items.filter((item) => !item.queued).map((item) => item.id);
+              btn.click();
+              await wait(120);
+              const mixedQueue = cm.queue();
+              const mixed = mixedQueue.items.map((item) => item.id);
+              const mixedContext = mixedQueue.items.filter((item) => !item.queued).map((item) => item.id);
+              const changed = mixedContext.slice(1).join('|') !== beforeContext.slice(1).join('|');
+              const noDuplicates = new Set(mixedContext).size === mixedContext.length;
+              btn.click();
+              await wait(120);
+              const restored = cm.queue().items.map((item) => item.id);
+              const restoreOk = restored.join('|') === before.join('|');
+              btn.click();
+              await wait(120);
+              cm.next();
+              await wait(120);
+              const sequential = cm.queue().index === 1;
+              btn.click();
+              await wait(120);
+              return { titles: before.length, changed, noDuplicates, sequential, restoreOk };
+            })()
+          `);
+          console.log('SMOKE_SHUFFLE:', JSON.stringify(shuffleSmoke));
+
+          // Playlist "Erweitern": the button exists and appends suggestions
+          // that fit the artists already in the list.
+          const extendSmoke = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const id = cm.createPlaylist('Smoke Erweitern');
+              cm.addToPlaylistAt(id, 'charts', 0);
+              cm.addToPlaylistAt(id, 'charts', 1);
+              cm.openPlaylist(id);
+              await wait(150);
+              const button = document.querySelector('#view-playlist [data-pl-action="extend"]');
+              const buttonThere = Boolean(button);
+              if (button) button.click();
+              for (let i = 0; i < 60; i += 1) {
+                const check = document.querySelector('#view-playlist [data-pl-action="extend"]');
+                if (!check || !check.disabled) break;
+                await wait(250);
+              }
+              const playlist = cm.state().playlists.find((item) => item.name === 'Smoke Erweitern');
+              cm.showView('home');
+              return { buttonThere, items: playlist ? playlist.items : 0 };
+            })()
+          `);
+          console.log('SMOKE_EXTEND:', JSON.stringify(extendSmoke));
+
           // First steps assistant + "what's new" card (0.12).
           const onboardingResult = await mainWindow.webContents.executeJavaScript(`
             (async () => {

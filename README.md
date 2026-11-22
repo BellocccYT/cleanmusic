@@ -159,6 +159,9 @@ Wunsch **nach Ordner**.
 - **+** fügt einen Titel einer **Playlist** hinzu oder legt direkt eine neue
   an. Playlists mischen alle Quellen, zeigen ein Cover-Mosaik und lassen sich
   umbenennen, löschen, abspielen und shuffeln.
+- **Erweitern:** holt zu den Künstlern, die schon in der Playlist sind, neue
+  passende Titel dazu (Deezer-Artist-Radio, bei Plugin-Titeln deren verwandte
+  Titel). Doppelte Titel werden übersprungen; nichts wird umsortiert.
 - **Drag & Drop:** Titel aus jeder Liste auf *Favoriten*, eine Playlist oder
   *Neue Playlist* in der Seitenleiste ziehen. In einer Playlist per Griff
   sortieren.
@@ -390,14 +393,16 @@ Unter **Radio** findest du tausende öffentliche Sender über die
 - **Warteschlange** (Listen-Symbol in der Player-Leiste): läuft gerade, von dir
   eingereiht, Rest der Liste, Autoplay. Ziehen zum Sortieren, ✕ zum Entfernen,
   Klick zum Abspielen.
-- **Autoplay** (Standard an): Ein Titel aus der Suche spielt allein, danach laufen
-  passende Vorschläge weiter (Artist-Radio, bei Plugin-Titeln deren verwandte Titel).
-  Auch am Ende einer Liste geht es so weiter. Nicht bei Radio, lokalen Dateien
-  und Cutter-Sounds. Abschaltbar in der Warteschlange oder unter *Einstellungen → Wiedergabe*.
+- **Autoplay** (Standard an): Sobald die Warteschlange zu Ende ist, laufen passende
+  Vorschläge weiter (Artist-Radio, bei Plugin-Titeln deren verwandte Titel) – auch nach
+  Songwünschen aus dem Chat. Abschaltbar in der Warteschlange oder unter
+  *Einstellungen → Wiedergabe*.
 
 ### Player
 
-- Shuffle und Repeat (aus / alle / Titel) mit gespeichertem Zustand
+- Shuffle mischt die Warteschlange wirklich: kein Titel kommt doppelt, bevor alle
+  dran waren; Ausschalten stellt die alte Reihenfolge wieder her. Repeat
+  (aus / alle / Titel) mit gespeichertem Zustand
 - Queue aus lokalen Titeln, Vorschauen, Plugin-Titeln, Radiosendern, Favoriten
   oder Playlists
 - Cover, Artist und Quellen-Badge im „Now Playing" (z. B. *30 s Vorschau*,

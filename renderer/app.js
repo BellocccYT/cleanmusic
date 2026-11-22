@@ -769,6 +769,99 @@
     onCollectionChanged({ playlists: true });
   }
 
+  /* Automatic playlist extension: Deezer (and the source plugin, if it can
+   * suggest related titles) is asked for music that fits the artists already
+   * in the playlist. Only new titles are appended – nothing is reordered. */
+
+  const playlistExtendBusy = new Set();
+
+  function recommendationSeeds(entries) {
+    const scores = new Map();
+    entries.forEach((entry) => {
+      if (!entry || entry.kind === 'radio') return;
+      const name = primaryArtist(entry.artist);
+      if (!name || name.length < 2) return;
+      const key = name.toLowerCase();
+      const seed = scores.get(key) || { name, score: 0, deezerId: null };
+      seed.score += 1;
+      if (!seed.deezerId && entry.source === 'deezer' && entry.artistId) seed.deezerId = entry.artistId;
+      scores.set(key, seed);
+    });
+
+    const artists = Array.from(scores.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(({ name, deezerId }) => ({ name, deezerId }));
+
+    const pluginSeeds = [];
+    entries.forEach((entry) => {
+      if (!entry || entry.kind !== 'plugin' || !entry.refId) return;
+      const plugin = pluginById(entry.pluginId);
+      if (!isPluginReady(plugin) || !plugin.capabilities.related) return;
+      let seed = pluginSeeds.find((known) => known.id === plugin.id);
+      if (!seed) {
+        seed = { id: plugin.id, refIds: [] };
+        pluginSeeds.push(seed);
+      }
+      if (seed.refIds.length < 2) seed.refIds.push(entry.refId);
+    });
+
+    return { artists, pluginSeeds };
+  }
+
+  async function extendPlaylist(id) {
+    const playlist = playlistById(id);
+    if (!playlist || playlistExtendBusy.has(id)) return;
+    if (!bridge.recommendations) {
+      toast('Vorschläge sind gerade nicht verfügbar.');
+      return;
+    }
+
+    const seeds = recommendationSeeds(playlist.items);
+    if (!seeds.artists.length && !seeds.pluginSeeds.length) {
+      toast('Für diese Playlist fehlen Künstlerangaben – daraus lassen sich keine Vorschläge bauen.');
+      return;
+    }
+
+    playlistExtendBusy.add(id);
+    if (state.currentPlaylist === id) renderPlaylist();
+    try {
+      const result = await bridge.recommendations({
+        artists: seeds.artists,
+        pluginSeeds: seeds.pluginSeeds,
+      });
+
+      const known = new Set();
+      playlist.items.forEach((entry) => {
+        known.add(entry.id);
+        known.add(matchKey(entry));
+      });
+      const isNew = (entry) => Boolean(entry) && !known.has(entry.id) && !known.has(matchKey(entry));
+
+      const tracks = (Array.isArray(result.tracks) ? result.tracks : []).map(previewEntry).filter(isNew);
+      const videos = (Array.isArray(result.pluginItems) ? result.pluginItems : [])
+        .map((item) => {
+          const plugin = pluginById(item.pluginId);
+          return plugin ? pluginEntry(plugin, item) : null;
+        })
+        .filter(isNew);
+      const picked = mergeRecs(tracks, videos).slice(0, 12);
+
+      if (!picked.length) {
+        toast('Keine neuen passenden Titel gefunden – die Playlist ist schon gut gefüllt.');
+        return;
+      }
+
+      addToPlaylist(id, picked, { quiet: true });
+      toast(`${picked.length} Titel ergänzt – passend zu „${playlist.name}“`);
+    } catch (error) {
+      toast(`Erweitern fehlgeschlagen: ${error.message || error}`);
+    } finally {
+      playlistExtendBusy.delete(id);
+      if (state.currentPlaylist === id) renderPlaylist();
+    }
+  }
+
   async function promptNewPlaylist(entries = []) {
     const name = await askText({
       title: 'Neue Playlist',
@@ -890,19 +983,25 @@
     // Titles the user queued stay queued when another list starts.
     const pending = state.queue.items.length ? pendingQueued() : [];
     items.splice(start + 1, 0, ...pending);
-    state.queue = { items, index: start, kind: key, upcoming: -1 };
+    state.queue = { items, index: start, kind: key, upcoming: -1, shuffleBase: null };
+    // Shuffle the rest of the list once; the clicked title keeps playing.
+    if (state.playback.shuffle && !single) shuffleQueueTail(true);
     playFromQueue(start);
   }
 
   function playListShuffled(key) {
-    const items = listEntries(key);
-    if (!items.length) return;
+    const list = listEntries(key);
+    if (!list.length) return;
     if (!state.playback.shuffle) {
       state.playback.shuffle = true;
       writeJSON(STORAGE.playback, state.playback);
       syncPlaybackButtons();
     }
-    playList(key, Math.floor(Math.random() * items.length));
+    const pending = state.queue.items.length ? pendingQueued() : [];
+    const items = shuffled(list.slice());
+    items.splice(1, 0, ...pending);
+    state.queue = { items, index: 0, kind: key, upcoming: -1, shuffleBase: list.slice() };
+    playFromQueue(0);
   }
 
   /* ---------------------------------------------------------------- *
@@ -2542,7 +2641,10 @@
             <button class="btn ghost small danger" data-pl-action="delete">${ICONS.trash} Löschen</button>
             ${
               items.length
-                ? `<button class="btn ghost small" data-pl-action="shuffle">${ICONS.shuffle} Shuffle</button>
+                ? `<button class="btn ghost small" data-pl-action="extend" ${
+                    playlistExtendBusy.has(playlist.id) ? 'disabled' : ''
+                  }>${ICONS.plus} ${playlistExtendBusy.has(playlist.id) ? 'Sucht …' : 'Erweitern'}</button>
+                   <button class="btn ghost small" data-pl-action="shuffle">${ICONS.shuffle} Shuffle</button>
                    <button class="btn primary small" data-pl-action="play">${ICONS.play} Abspielen</button>`
                 : ''
             }
@@ -3721,6 +3823,47 @@
     });
   }
 
+  /* Shuffle works on the real queue order: the running title stays, everything
+   * after it is mixed once. Titles the user queued or requested stay in front;
+   * no title repeats before the whole list has played. Turning shuffle off
+   * restores the order saved when it was switched on. */
+
+  function shufflePriority(entry) {
+    return Boolean(entry && (entry.queued || entry.requestedBy));
+  }
+
+  function shuffleQueueTail(snapshot = false) {
+    const q = state.queue;
+    if (q.index < 0 || q.items.length < 2) return;
+    if (snapshot) q.shuffleBase = q.items.slice();
+    const head = q.items.slice(0, q.index + 1);
+    const tail = q.items.slice(q.index + 1);
+    const front = tail.filter(shufflePriority);
+    const mixed = shuffled(tail.filter((entry) => !shufflePriority(entry)));
+    q.items = head.concat(front, mixed);
+    q.upcoming = tail.length ? q.index + 1 : -1;
+  }
+
+  function restoreQueueTail() {
+    const q = state.queue;
+    const base = Array.isArray(q.shuffleBase) ? q.shuffleBase : null;
+    q.shuffleBase = null;
+    if (!base || q.index < 0) return;
+
+    const current = q.items[q.index];
+    const head = q.items.slice(0, q.index + 1);
+    const tail = q.items.slice(q.index + 1);
+    const at = base.indexOf(current);
+    const baseTail = at >= 0 ? base.slice(at + 1) : [];
+    const inTail = new Set(tail);
+    const front = tail.filter(shufflePriority);
+    const ordered = baseTail.filter((entry) => inTail.has(entry) && !front.includes(entry));
+    const known = new Set([...front, ...ordered]);
+    const added = tail.filter((entry) => !known.has(entry));
+    q.items = head.concat(front, ordered, added);
+    q.upcoming = tail.length ? q.index + 1 : -1;
+  }
+
   function planUpcoming() {
     const { items, index } = state.queue;
     // Titles the user queued always come next – also with shuffle.
@@ -3735,15 +3878,9 @@
       return;
     }
 
-    if (state.playback.shuffle) {
-      let next;
-      do {
-        next = Math.floor(Math.random() * items.length);
-      } while (next === index);
-      state.queue.upcoming = next;
-    } else {
-      state.queue.upcoming = (index + 1) % items.length;
-    }
+    if (index + 1 < items.length) state.queue.upcoming = index + 1;
+    else if (state.playback.repeat === 'all') state.queue.upcoming = 0;
+    else state.queue.upcoming = -1;
     if (state.fullscreen) renderUpNext();
   }
 
@@ -3758,7 +3895,9 @@
     prefetchTimer = setTimeout(() => {
       const { items, upcoming } = state.queue;
       const targets = [items[upcoming]];
-      if (!state.playback.shuffle && upcoming >= 0) targets.push(items[upcoming + 1]);
+      // The queue is in real playback order (shuffle included), so the title
+      // after the next one can be prepared as well.
+      if (upcoming >= 0) targets.push(items[upcoming + 1]);
       targets.filter(Boolean).forEach((entry) => {
         const task = prefetchPluginEntry(entry);
         if (task) task.catch(() => {});
@@ -3801,10 +3940,13 @@
     if (!items.length) return;
 
     if (direction > 0 && autoplayEligible()) {
+      const queue = state.queue;
       const task = maybeAutoplay();
       if (task) {
         task.then(() => {
-          if (state.queue.index < state.queue.items.length - 1) playFromQueue(state.queue.index + 1);
+          if (state.queue === queue && queue.index < queue.items.length - 1) {
+            playFromQueue(queue.index + 1);
+          }
         });
         return;
       }
@@ -3815,12 +3957,22 @@
 
     if (direction > 0 && state.queue.upcoming >= 0 && state.queue.upcoming < items.length) {
       next = state.queue.upcoming;
-    } else if (state.playback.shuffle && items.length > 1) {
-      do {
-        next = Math.floor(Math.random() * items.length);
-      } while (next === current);
     } else {
       next = current < 0 ? 0 : (current + direction + items.length) % items.length;
+    }
+
+    // A new round with shuffle gets a freshly mixed order.
+    if (
+      direction > 0 &&
+      next === 0 &&
+      state.playback.shuffle &&
+      state.playback.repeat === 'all' &&
+      items.length > 1
+    ) {
+      state.queue.items = shuffled(items);
+      state.queue.index = 0;
+      playFromQueue(0);
+      return;
     }
 
     playFromQueue(next);
@@ -3989,11 +4141,17 @@
     });
 
     $('#btn-shuffle').addEventListener('click', () => {
-      state.playback.shuffle = !state.playback.shuffle;
+      const on = !state.playback.shuffle;
+      state.playback.shuffle = on;
       writeJSON(STORAGE.playback, state.playback);
+      if (state.queue.items.length) {
+        if (on) shuffleQueueTail(true);
+        else restoreQueueTail();
+      }
       syncPlaybackButtons();
       planUpcoming();
       schedulePrefetch();
+      renderQueuePanel();
     });
 
     $('#btn-repeat').addEventListener('click', () => {
@@ -4044,7 +4202,8 @@
 
       const { items, index } = state.queue;
       const atEnd = index >= items.length - 1;
-      if (state.playback.repeat === 'off' && !state.playback.shuffle && atEnd) {
+      if (state.playback.repeat === 'off' && atEnd) {
+        // Autoplay keeps going after the last title – also after song requests.
         if (autoplayEligible()) stepQueue(1);
         return;
       }
@@ -4162,6 +4321,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.16.0': [
+      'Shuffle mischt jetzt die echte Warteschlange: kein Titel kommt doppelt, bevor alle dran waren; Ausschalten stellt die alte Reihenfolge wieder her.',
+      'Autoplay läuft, wenn die Warteschlange endet – auch nach Songwünschen. Abschaltbar in der Warteschlange und unter Einstellungen → Wiedergabe.',
+      'Playlists lassen sich mit einem Klick erweitern: passende neue Titel zu den Künstlern, die schon drin sind.',
+    ],
     '1.15.0': [
       'OBS-Audio-Visualizer als optionales Plugin: echte Spektren als Balken, Spiegel, Kreis oder Welle – mit den Farben des Covers.',
       'Plugin-API: Overlays können jetzt das Live-Spektrum abonnieren (visualizer: true) – nur bei Bedarf, ohne die Wiedergabe umzuleiten.',
@@ -4339,7 +4503,7 @@
           <h2>Deine Einstellungen</h2>
           <p>Alles lässt sich später unter Einstellungen ändern.</p>
           <div class="ob-options">
-            ${onboardingToggle('autoplay', 'Autoplay', 'Nach einem Titel aus der Suche passende Vorschläge weiterspielen.', autoplayOn())}
+            ${onboardingToggle('autoplay', 'Autoplay', 'Wenn die Warteschlange zu Ende ist, laufen passende Vorschläge weiter.', autoplayOn())}
             ${onboardingToggle('updates', 'Beim Start nach Updates suchen', 'Neue Versionen mit einem Klick installieren.', updateInfo ? updateInfo.auto : true)}
             ${onboardingToggle('downloads', 'Downloads „Nur Cutting“', 'Freie Musik und Sounds (CC0, CC BY) mit Credit-Datei herunterladen.', state.settings.downloads === 'cutting')}
             ${onboardingToggle('visualizer', 'Visualizer', 'Tanzt im Vollbild-Player zur Musik.', state.settings.visualizer)}
@@ -6782,7 +6946,6 @@
    * ---------------------------------------------------------------- */
 
   const SINGLE_CONTEXTS = ['search', 'ext', 'shared'];
-  const AUTOPLAY_KINDS = ['preview', 'plugin'];
   let autoplayTask = null;
   let queuePanelOpen = false;
 
@@ -6844,22 +7007,36 @@
 
   function autoplayEligible() {
     const { items, index } = state.queue;
-    const item = items[index];
-    return Boolean(
-      autoplayOn() &&
-        item &&
-        AUTOPLAY_KINDS.includes(item.kind) &&
-        !state.playback.shuffle &&
-        state.playback.repeat === 'off' &&
-        index >= items.length - 1
-    );
+    if (!autoplayOn()) return false;
+    if (state.playback.repeat !== 'off') return false;
+    if (index < 0 || index < items.length - 1) return false;
+    return Boolean(autoplaySeed());
+  }
+
+  // The current title is the best seed; if it has no artist (radio, local file
+  // without tags), look back through what just played.
+  function autoplaySeed() {
+    const { items, index } = state.queue;
+    for (let at = index; at >= 0; at -= 1) {
+      const entry = items[at];
+      if (!entry || entry.kind === 'radio') continue;
+      const name = primaryArtist(entry.artist);
+      if (name && name.length > 1) return entry;
+      if (entry.kind === 'plugin' && entry.refId) {
+        const plugin = pluginById(entry.pluginId);
+        if (isPluginReady(plugin) && plugin.capabilities.related) return entry;
+      }
+    }
+    return null;
   }
 
   function maybeAutoplay() {
     if (autoplayTask) return autoplayTask;
-    if (!autoplayEligible() || !bridge.recommendations) return null;
-    const seed = currentItem();
-    autoplayTask = fetchAutoplay(seed)
+    const seed = autoplaySeed();
+    if (!autoplayEligible() || !bridge.recommendations || !seed) return null;
+    const queue = state.queue;
+    const index = queue.index;
+    autoplayTask = fetchAutoplay(seed, queue, index)
       .catch(() => 0)
       .finally(() => {
         autoplayTask = null;
@@ -6867,7 +7044,8 @@
     return autoplayTask;
   }
 
-  async function fetchAutoplay(seed) {
+  async function fetchAutoplay(seed, queue, index) {
+    if (!seed) return 0;
     const name = primaryArtist(seed.artist);
     const artists = name && name.length > 1 ? [{ name, deezerId: seed.source === 'deezer' ? seed.artistId || null : null }] : [];
     const pluginSeeds = [];
@@ -6878,9 +7056,10 @@
     if (!artists.length && !pluginSeeds.length) return 0;
 
     const result = await bridge.recommendations({ artists, pluginSeeds });
-    // The user may have started something else meanwhile.
-    const now = currentItem();
-    if (!now || now.id !== seed.id) return 0;
+    // The user may have started something else (or skipped) meanwhile.
+    if (state.queue !== queue || state.queue.index !== index) return 0;
+    const current = state.queue.items[state.queue.index];
+    if (!current) return 0;
 
     const known = new Set();
     state.queue.items.forEach((entry) => {
@@ -7010,13 +7189,13 @@
         body += `<p class="queue-empty">${
           autoplayTask
             ? 'Autoplay sucht passende Titel …'
-            : autoplayOn() && AUTOPLAY_KINDS.includes(current.kind)
-              ? 'Danach geht es mit Vorschlägen weiter.'
+            : autoplayOn() && state.playback.repeat === 'off'
+              ? 'Danach geht es mit passenden Vorschlägen weiter.'
               : 'Danach ist Schluss.'
         }</p>`;
       }
       if (state.playback.shuffle) {
-        body += '<p class="queue-hint">Zufall ist an: Von dir eingereihte Titel kommen trotzdem zuerst.</p>';
+        body += '<p class="queue-hint">Zufall ist an: Die Reihenfolge ist gemischt, kein Titel kommt doppelt. Von dir eingereihte Titel und Songwünsche bleiben vorn.</p>';
       }
     }
 
@@ -7043,7 +7222,7 @@
     if (on) maybeAutoplay();
     renderQueuePanel();
     renderSettings();
-    toast(on ? 'Autoplay an – nach einzelnen Titeln laufen Vorschläge weiter' : 'Autoplay aus');
+    toast(on ? 'Autoplay an – nach dem Ende der Warteschlange laufen passende Vorschläge weiter' : 'Autoplay aus');
   }
 
   function wireQueuePanel() {
@@ -8432,11 +8611,11 @@
     const { items, index, upcoming } = state.queue;
     const next = [];
     if (upcoming >= 0 && items[upcoming]) next.push(upcoming);
-    if (!state.playback.shuffle) {
-      for (let step = 2; next.length < 3 && step <= items.length; step += 1) {
-        const position = (index + step) % items.length;
-        if (position !== index && !next.includes(position)) next.push(position);
-      }
+    for (let step = 2; next.length < 3 && step <= items.length; step += 1) {
+      const position = index + step;
+      if (position >= items.length && state.playback.repeat !== 'all') break;
+      const wrapped = position % items.length;
+      if (wrapped !== index && !next.includes(wrapped)) next.push(wrapped);
     }
 
     if (!next.length) {
@@ -10382,7 +10561,7 @@
           <label class="toggle-row">
             <span>
               <strong>Autoplay</strong>
-              <small>Nach einem einzelnen Titel aus der Suche laufen passende Vorschläge weiter. Von dir Eingereihtes kommt immer zuerst.</small>
+              <small>Wenn die Warteschlange zu Ende ist, laufen passende Vorschläge weiter – auch nach Songwünschen. Von dir Eingereihtes kommt immer zuerst.</small>
             </span>
             <input type="checkbox" id="opt-autoplay" ${autoplayOn() ? 'checked' : ''} />
           </label>
@@ -11145,6 +11324,9 @@ ${updatePanel()}
           return;
         case 'shuffle':
           playListShuffled(key);
+          return;
+        case 'extend':
+          extendPlaylist(state.currentPlaylist);
           return;
         case 'rename':
           renamePlaylist(state.currentPlaylist);
