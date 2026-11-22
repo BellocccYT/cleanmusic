@@ -5278,6 +5278,8 @@
       updateFsProgress();
     });
 
+    audio.addEventListener('timeupdate', checkSilence);
+
     $('#seek').addEventListener('input', (event) => {
       const value = Number(event.target.value);
       if (Number.isFinite(value)) audio.currentTime = value;
@@ -5312,6 +5314,8 @@
     '1.18.0': [
       'Chrome-Erweiterung „CleanMusic für YouTube“: Knopf im Player und Toolbar-Popup – Video zur Warteschlange hinzufügen oder direkt in CleanMusic abspielen.',
       'Neue Deep-Link-Aktion cleanmusic://add: Ein Titel landet in der Warteschlange, ohne die laufende Wiedergabe zu unterbrechen.',
+      'Spielt, aber kein Ton? CleanMusic prüft die Wiedergabe selbst: Volle Plugin-Titel werden einmal neu geladen, danach läuft die 30-s-Vorschau – Vorschauen und lokale Titel bekommen einen Hinweis.',
+      'Crossfade abgesichert: Ein abgebrochener Übergang kann die Lautstärke nicht mehr auf 0 hängen lassen.',
     ],
     '1.17.0': [
       'Taste Engine: „Mehr davon“ und „Weniger davon“ per Rechtsklick oder +-Menü an jedem Titel – wird lokal gespeichert und für Vorschläge, Autoplay und Mixes genutzt.',
@@ -6709,17 +6713,22 @@
   }
 
   function stopGhost() {
-    if (!transition) return;
-    const { ghost, timer } = transition;
-    clearInterval(timer);
+    const running = transition;
     transition = null;
-    try {
-      ghost.pause();
-      ghost.removeAttribute('src');
-      ghost.load();
-    } catch {
-      /* gone */
+    if (running) {
+      clearInterval(running.timer);
+      clearTimeout(running.hardStop);
+      try {
+        running.ghost.pause();
+        running.ghost.removeAttribute('src');
+        running.ghost.load();
+      } catch {
+        /* gone */
+      }
     }
+    // Always restore the level: a half-finished crossfade must never leave the
+    // main player silent – that looks exactly like "it plays, but you hear
+    // nothing".
     if (fadeFactor !== 1) {
       fadeFactor = 1;
       applyVolume();
@@ -6755,6 +6764,7 @@
     ghost.addEventListener(
       'loadedmetadata',
       () => {
+        if (!transition || transition.ghost !== ghost) return;
         try {
           ghost.currentTime = audio.currentTime + 0.2;
         } catch {
@@ -6771,15 +6781,21 @@
         if (!transition || transition.ghost !== ghost) return;
         fadeFactor = 0;
         applyVolume();
-        stepQueue(1);
         const from = ghost.volume;
         const begin = performance.now();
+        // Whatever happens: the fade ends after 30 s at the latest and the
+        // level is restored, even if the next title never starts.
+        transition.hardStop = setTimeout(() => {
+          if (transition && transition.ghost === ghost) stopGhost();
+        }, 30000);
         transition.timer = setInterval(() => {
           if (!transition) return;
           const now = performance.now();
           const ghostT = Math.min(1, (now - begin) / (secs * 1000));
           ghost.volume = Math.max(0, from * (1 - ghostT));
-          if (!audio.paused && !transition.mainBegin) transition.mainBegin = now;
+          // Fade in only once the next title was handed over – until then the
+          // old one still runs through the ghost.
+          if (transition.started && !audio.paused && !transition.mainBegin) transition.mainBegin = now;
           const mainT = transition.mainBegin ? Math.min(1, (now - transition.mainBegin) / (secs * 1000)) : 0;
           if (fadeFactor !== mainT) {
             fadeFactor = mainT;
@@ -6787,6 +6803,13 @@
           }
           if ((ghostT >= 1 && mainT >= 1) || now - begin > 30000) stopGhost();
         }, 60);
+        try {
+          stepQueue(1);
+        } catch {
+          /* the ticker above restores the level anyway */
+        } finally {
+          if (transition && transition.ghost === ghost) transition.started = true;
+        }
       },
       { once: true }
     );
@@ -8706,6 +8729,84 @@
 
   function updateMuteIcon() {
     updateVolumeUi();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Silence guard: a title can "play" without any audio data – a stream
+   * that carries no sound, a broken output chain, a device that went away.
+   * The visualizer analyser (pre-gain, so the volume never matters) reports
+   * exact digital silence; then a streamed title is reloaded once with a
+   * fresh URL, afterwards the 30 s preview runs. Local titles only get a
+   * hint, once per title. Radio is left alone (gaps are normal there), and
+   * without analysis nothing is assumed.
+   * ---------------------------------------------------------------- */
+
+  const silence = { id: null, tries: 0, toldAt: 0 };
+
+  // Pure decision (also used by the smoke test). Deliberately patient: real
+  // music is never digitally silent for ten seconds, and a title with a long
+  // silent intro should not be restarted.
+  function silenceDecision(sample) {
+    const { time, silentFor, mode, tries } = sample || {};
+    if (!(Number(time) > 8) || !(Number(silentFor) > 10000)) return 'wait';
+    if (mode === 'plugin' || mode === 'matched') {
+      if (Number(tries) < 1) return 'reload';
+      if (Number(tries) < 2) return 'preview';
+    }
+    return 'tell';
+  }
+
+  function checkSilence() {
+    const viz = window.CMVisualizer;
+    if (!viz || typeof viz.silentFor !== 'function') return;
+    const item = currentItem();
+    if (!item || !item.id) return;
+    if (audio.paused || audio.ended || audio.seeking || state.nowMode === 'error') return;
+    // Muted or turned down by the user is not "no sound from the title".
+    if (vol.muted || volumeLevel() < 0.02) return;
+    if (silence.id !== item.id) {
+      silence.id = item.id;
+      silence.tries = 0;
+    }
+    if (item.kind === 'radio') return;
+
+    const decision = silenceDecision({
+      time: audio.currentTime,
+      silentFor: viz.silentFor(),
+      mode: state.nowMode,
+      tries: silence.tries,
+    });
+    if (decision === 'wait') return;
+
+    if (decision === 'reload') {
+      silence.tries = 1;
+      toast('Der Stream liefert keinen Ton – Titel wird neu geladen …');
+      playFromQueue(state.queue.index, { force: true, retry: true });
+      return;
+    }
+    if (decision === 'preview') {
+      silence.tries = 2;
+      const token = playToken;
+      const index = state.queue.index;
+      freshPreview(item, true)
+        .then((url) => {
+          if (!url || token !== playToken || state.queue.index !== index) return;
+          state.nowMode = 'preview';
+          state.nowLabel = null;
+          setNowPlaying(item);
+          audio.src = url;
+          audio.play().catch(() => {});
+          toast('Voller Titel ohne Ton – 30-s-Vorschau läuft.');
+        })
+        .catch(() => {});
+      return;
+    }
+
+    silence.tries = 3;
+    // Never nag: at most one hint every 90 seconds, even across titles.
+    if (Date.now() - silence.toldAt < 90000) return;
+    silence.toldAt = Date.now();
+    toast(`„${item.title}“ läuft ohne Ton – bitte Ausgabegerät und Titel prüfen.`);
   }
 
   /* ---------------------------------------------------------------- *
@@ -14027,6 +14128,30 @@ ${updatePanel()}
     setVolume: (level) => setVolume(Number(level)),
     setMuted: (muted) => setMuted(muted),
     setTone: (bass, treble) => setTone(Number(bass), Number(treble)),
+    silenceGuard: (sample) => silenceDecision(sample),
+    // Smoke: play a URL for a moment and report whether the analyser sees
+    // digital silence (a silent WAV must be flagged, music must not).
+    silenceProbe: async (url) => {
+      const previous = audio.src;
+      audio.pause();
+      audio.loop = true;
+      audio.src = url;
+      await audio.play().catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 2600));
+      const result = {
+        playing: !audio.paused,
+        time: Number(audio.currentTime.toFixed(2)),
+        duration: Number.isFinite(audio.duration) ? Number(audio.duration.toFixed(2)) : null,
+        readyState: audio.readyState,
+        currentSrc: (audio.currentSrc || '').slice(0, 24),
+        signal: window.CMVisualizer.signal(),
+        silentFor: Math.round(window.CMVisualizer.silentFor()),
+      };
+      audio.pause();
+      audio.loop = false;
+      if (previous) audio.src = previous;
+      return result;
+    },
     visualizer: () => ({
       enabled: window.CMVisualizer.isEnabled(),
       analysing: window.CMVisualizer.isAnalysing(),

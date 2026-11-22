@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.13.1**
+**Version 1.18.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -360,6 +360,12 @@ Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. E
   Limiter gegen Übersteuern. Beides ist standardmäßig aus.
 - **Klang:** Bass und Höhen (Regler und Voreinstellungen wie *Mehr Bass*, *Stimme klar*,
   *Laptop-Lautsprecher*) unter *Einstellungen → Klang*. 0 dB = unverändert.
+- **Kein Ton, obwohl der Titel läuft:** Der Visualizer hört mit und erkennt echte
+  Stille (digitale Null, nicht „leise“ – Lautstärke oder Stummschalten lösen das
+  nie aus). Liefert ein voller Titel über ein Plugin nach einigen Sekunden keinen
+  Ton, wird er einmal neu geladen; bleibt es dabei, läuft die 30-s-Vorschau.
+  Vorschauen und lokale Titel bekommen nur einen Hinweis, Radio bleibt außen vor
+  (Pausen sind dort normal). Ohne Visualizer wird nichts vermutet.
 
 ### Visualizer (optional)
 

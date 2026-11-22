@@ -1333,6 +1333,66 @@ function createMainWindow() {
           `);
           console.log('SMOKE_VOLUME:', JSON.stringify(volumeResult));
 
+          // Silence guard: real digital silence must be recognised, music must
+          // not, and the recovery steps must be sane. The silent file is served
+          // over http – the renderer's CSP does not allow data: media.
+          let silentServer = null;
+          try {
+            const silentWav = Buffer.from(smokeWavDataUrl().split(',')[1], 'base64');
+            const silentUrl = await new Promise((resolve, reject) => {
+              silentServer = http.createServer((request, response) => {
+                if (request.url !== '/silent.wav') {
+                  response.writeHead(404);
+                  response.end();
+                  return;
+                }
+                response.writeHead(200, {
+                  'content-type': 'audio/wav',
+                  'content-length': silentWav.length,
+                  'accept-ranges': 'none',
+                  'cache-control': 'no-store',
+                });
+                response.end(silentWav);
+              });
+              silentServer.on('error', reject);
+              silentServer.listen(0, '127.0.0.1', () =>
+                resolve(`http://localhost:${silentServer.address().port}/silent.wav`)
+              );
+            });
+            const silentResult = await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const cm = window.CleanMusic;
+                const before = {
+                  signal: window.CMVisualizer.signal(),
+                  silentFor: Math.round(window.CMVisualizer.silentFor()),
+                };
+                const probe = await cm.silenceProbe(${JSON.stringify(silentUrl)});
+                return {
+                  before,
+                  probe,
+                  decisions: {
+                    short: cm.silenceGuard({ time: 3, silentFor: 2000, mode: 'plugin', tries: 0 }),
+                    audible: cm.silenceGuard({ time: 12, silentFor: 0, mode: 'plugin', tries: 0 }),
+                    reload: cm.silenceGuard({ time: 12, silentFor: 12000, mode: 'plugin', tries: 0 }),
+                    preview: cm.silenceGuard({ time: 12, silentFor: 12000, mode: 'matched', tries: 1 }),
+                    tell: cm.silenceGuard({ time: 12, silentFor: 12000, mode: 'preview', tries: 2 }),
+                  },
+                };
+              })()
+            `);
+            console.log('SMOKE_SILENCE:', JSON.stringify(silentResult));
+          } catch (error) {
+            console.error('SMOKE_SILENCE_FAIL:', error.message);
+          } finally {
+            if (silentServer) {
+              try {
+                silentServer.close();
+              } catch {
+                /* already gone */
+              }
+            }
+          }
+
           const seekResult = await mainWindow.webContents.executeJavaScript(`
             (() => {
               const seek = document.querySelector('#seek');

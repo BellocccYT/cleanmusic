@@ -634,6 +634,10 @@ window.CMVisualizer = (function () {
   // after a device change or a stream rebuffer) – resume the context and tap again.
   let silentSince = 0;
   let lastRecover = 0;
+  // Separate from the recovery above: exact digital silence while analysing
+  // (a stream that carries no audio). Read by app.js ("silence guard").
+  let quietSince = 0;
+  let analyserAt = 0;
   function watchdog(t) {
     if (!audioEl || audioEl.paused || audioEl.ended || !audioEl.getAttribute('src')) {
       silentSince = 0;
@@ -689,6 +693,20 @@ window.CMVisualizer = (function () {
       if ((source || tapped) && analyser) {
         analyser.getByteFrequencyData(freq);
         analyser.getByteTimeDomainData(wave);
+        analyserAt = t;
+        // Digital silence, measured in the time domain (the spectrum data is
+        // smoothed and would take seconds to settle). Every 8th sample is
+        // enough: silence means all of them sit exactly at 128.
+        let deviation = 0;
+        for (let k = 0; k < wave.length; k += 8) {
+          const distance = wave[k] > 128 ? wave[k] - 128 : 128 - wave[k];
+          if (distance > deviation) deviation = distance;
+        }
+        if (deviation === 0 && !audioEl.paused && !audioEl.ended) {
+          if (!quietSince) quietSince = t;
+        } else {
+          quietSince = 0;
+        }
         let bass = 0;
         for (let k = 1; k < 10; k += 1) bass += freq[k];
         const level = bass / 9 / 255;
@@ -765,6 +783,14 @@ window.CMVisualizer = (function () {
     _dropTap: () => {
       disconnectSource();
       return true;
+    },
+    // How long the analyser has been at exact digital silence while the
+    // element plays (0 = audible, or nothing analysed right now). Only
+    // trusted while the analyser is actually being read.
+    silentFor: () => {
+      const now = window.performance.now();
+      if (!quietSince || !analyserAt || now - analyserAt > 1500) return 0;
+      return Math.max(0, now - quietSince);
     },
     signal: () => {
       if (!(source || tapped) || !analyser) return null;
