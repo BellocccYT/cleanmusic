@@ -42,5 +42,11 @@ jobs:
         with:
           path: site
 
+      # GitHub meldet das frisch hochgeladene Artefakt manchmal erst kurz
+      # später; deploy-pages findet sonst 0 Artefakte (oder bei einem Re-Run
+      # mehrere). Kurz warten macht den Deploy zuverlässig.
+      - name: Kurz warten, bis das Pages-Artefakt sichtbar ist
+        run: sleep 10
+
       - id: deployment
         uses: actions/deploy-pages@v5
