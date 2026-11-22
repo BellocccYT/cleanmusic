@@ -2008,6 +2008,7 @@ function createMainWindow() {
 
           // 1.6: artist page, share link, deep link (cleanmusic://).
           const deepOk = parseDeepLink('cleanmusic://play?src=deezer&id=3135553&t=One%20More%20Time&a=Daft%20Punk');
+          const deepAdd = parseDeepLink('cleanmusic://add?src=youtube&id=dQw4w9WgXcQ&t=Never%20Gonna%20Give%20You%20Up&a=Rick%20Astley');
           const deepBad = [
             'cleanmusic://play?src=file&id=1',
             'cleanmusic://play?src=youtube&id=../../x',
@@ -2027,6 +2028,7 @@ function createMainWindow() {
           await new Promise((resolve) => setTimeout(resolve, 6000));
           v16.deepLink = await mainWindow.webContents.executeJavaScript('(window.CleanMusic.playerSnapshot().track || {}).title || ""');
           v16.deepParsed = Boolean(deepOk && deepOk.src === 'deezer');
+          v16.deepAdd = Boolean(deepAdd && deepAdd.action === 'add' && deepAdd.src === 'youtube' && deepAdd.id === 'dQw4w9WgXcQ');
           v16.deepRejected = deepBad.every((link) => link === null);
           console.log('SMOKE_V16:', JSON.stringify(v16));
 
@@ -6022,6 +6024,8 @@ function parseDeepLink(raw) {
   try {
     const url = new URL(String(raw || ''));
     if (url.protocol !== 'cleanmusic:') return null;
+    const host = (url.hostname || url.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
+    const action = host === 'add' ? 'add' : 'play';
     const src = String(url.searchParams.get('src') || '');
     if (!['deezer', 'apple', 'youtube', 'search'].includes(src)) return null;
     const id = String(url.searchParams.get('id') || '');
@@ -6030,7 +6034,7 @@ function parseDeepLink(raw) {
     const title = cleanText(url.searchParams.get('t') || '', 200).replace(/[\u0000-\u001f]+/g, ' ');
     const artist = cleanText(url.searchParams.get('a') || '', 200).replace(/[\u0000-\u001f]+/g, ' ');
     if (src === 'search' && !title) return null;
-    return { src, id: src === 'search' ? '' : id, title, artist };
+    return { action, src, id: src === 'search' ? '' : id, title, artist };
   } catch {
     return null;
   }

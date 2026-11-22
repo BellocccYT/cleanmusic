@@ -5309,6 +5309,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.18.0': [
+      'Chrome-Erweiterung „CleanMusic für YouTube“: Knopf im Player und Toolbar-Popup – Video zur Warteschlange hinzufügen oder direkt in CleanMusic abspielen.',
+      'Neue Deep-Link-Aktion cleanmusic://add: Ein Titel landet in der Warteschlange, ohne die laufende Wiedergabe zu unterbrechen.',
+    ],
     '1.17.0': [
       'Taste Engine: „Mehr davon“ und „Weniger davon“ per Rechtsklick oder +-Menü an jedem Titel – wird lokal gespeichert und für Vorschläge, Autoplay und Mixes genutzt.',
       'Fünf Smart Mixes: Dein Mix, Neu für dich, Entdecken, Nochmal und Tiefe Schnitte – auf der Startseite und in der neuen Mixes-Ansicht.',
@@ -6644,7 +6648,7 @@
   // A shared link was opened (cleanmusic://play?…): find the song and play it.
   async function openDeepLink(link) {
     if (!link || !link.src) return;
-    toast(`Geteilter Song „${link.title || 'Titel'}“ wird geladen …`);
+    toast(`${link.action === 'add' ? 'Song' : 'Geteilter Song'} „${link.title || 'Titel'}“ wird geladen …`);
     let entry = null;
     try {
       if ((link.src === 'deezer' || link.src === 'apple') && bridge.requestLink) {
@@ -6667,6 +6671,10 @@
     }
     if (!entry) {
       toast('Der geteilte Song wurde nicht gefunden.');
+      return;
+    }
+    if (link.action === 'add') {
+      enqueue([entry], 'end');
       return;
     }
     state.sharedList = [entry];

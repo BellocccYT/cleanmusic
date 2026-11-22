@@ -1,0 +1,70 @@
+:root {
+  color-scheme: dark;
+  --bg: #080a0e;
+  --panel: #111720;
+  --panel2: #171f2b;
+  --border: #283241;
+  --text: #e8ecf3;
+  --muted: #8d99ac;
+  --muted2: #657184;
+  --accent: #5b8cff;
+  --accent2: #35e0c0;
+  --on-accent: #06121a;
+}
+* { box-sizing: border-box; }
+body {
+  width: 328px;
+  margin: 0;
+  padding: 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+.head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.head img { border-radius: 8px; }
+.head div { display: flex; flex-direction: column; line-height: 1.2; }
+.head strong { font-size: 15px; letter-spacing: -0.02em; }
+.head span { color: var(--accent2); font-size: 10.5px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+.video {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.video-title { font-weight: 650; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.video-artist { margin-top: 3px; color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
+.actions { display: grid; gap: 8px; margin-top: 12px; }
+.button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+.button:disabled { opacity: 0.45; cursor: default; }
+.button.primary {
+  border: 0;
+  color: var(--on-accent);
+  background: linear-gradient(105deg, var(--accent), var(--accent2));
+}
+.button.secondary { background: var(--panel2); }
+.button:not(:disabled):hover { filter: brightness(1.08); }
+.status { min-height: 18px; margin: 10px 0 0; color: var(--accent2); font-size: 11.5px; }
+.hint { margin: 8px 0 0; color: var(--muted2); font-size: 10.5px; line-height: 1.45; }
+.hint code { color: var(--muted); }
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted2);
+  font-size: 10.5px;
+}
+footer a { color: var(--muted); text-decoration: none; font-weight: 650; }
+footer a:hover { color: var(--text); }

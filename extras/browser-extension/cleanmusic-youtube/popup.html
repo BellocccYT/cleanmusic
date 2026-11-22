@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanMusic für YouTube</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="head">
+    <img src="icon48.png" width="30" height="30" alt="" />
+    <div>
+      <strong>CleanMusic</strong>
+      <span>für YouTube</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="video">
+      <div class="video-title" id="video-title">Kein Video erkannt</div>
+      <div class="video-artist" id="video-artist">Öffne ein YouTube-Video.</div>
+    </div>
+
+    <div class="actions">
+      <button class="button primary" id="add" type="button" disabled>Zur Warteschlange</button>
+      <button class="button secondary" id="play" type="button" disabled>Jetzt abspielen</button>
+    </div>
+
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+    <p class="hint">
+      CleanMusic muss installiert sein. Beim ersten Mal fragt Chrome, ob
+      <code>cleanmusic://</code> geöffnet werden darf.
+    </p>
+  </main>
+
+  <footer>
+    <a href="https://github.com/BellocccYT/cleanmusic/releases/latest" target="_blank" rel="noopener">CleanMusic herunterladen ↗</a>
+    <span id="version"></span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

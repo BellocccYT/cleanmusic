@@ -145,6 +145,15 @@ Music bzw. YouTube Music, eine Spotify-Suche und den Download. Die Seite liegt i
 und wird per GitHub Pages veröffentlicht (`.github/workflows/pages.yml`); sie speichert
 nichts und hat keine Statistik.
 
+### Chrome-Erweiterung für YouTube
+
+Unter `extras/browser-extension/cleanmusic-youtube/` liegt eine Manifest-V3-Erweiterung:
+Auf YouTube erscheint ein Knopf in den Player-Steuerungen (und ein Toolbar-Popup) für
+**„Zur Warteschlange“** und **„Jetzt abspielen“**. Sie schickt nur Video-ID, Titel und
+Channel an die lokale App – über `cleanmusic://add` bzw. `cleanmusic://play`. Installation
+per „Entpackte Erweiterung laden“ in `chrome://extensions`; Details stehen in der
+`README.md` der Erweiterung.
+
 ### Lokale Musik nach Ordner und Stimmung
 
 *Lokale Musik* filtert nach **Stimmung** (Chill, Party, Workout, Fokus, Gaming, Traurig –
