@@ -3362,8 +3362,27 @@ body.fs-open .toast {
   object-fit: cover;
   filter: blur(80px) saturate(1.7) brightness(0.42);
   transform: scale(1.1);
-  animation: fs-drift 26s ease-in-out infinite alternate;
+  animation: none;
 }
+
+.fs-background-cover-moving .fs-bg img { animation: fs-drift 26s ease-in-out infinite alternate; }
+.fs-bg canvas {
+  position: absolute;
+  inset: -5%;
+  width: 110%;
+  height: 110%;
+  display: none;
+  filter: blur(48px) saturate(1.25) brightness(.72);
+  transform: scale(1.08);
+}
+.fs-background-live .fs-bg canvas { display: block; }
+.fs-background-live .fs-bg img,
+.fs-background-off .fs-bg img { display: none; }
+.fs-background-cover-static .fs-bg img { animation: none !important; transform: scale(1.08); }
+.fs-background-off .fs-glow { opacity: .08; }
+html.bg-still .fs-background-cover-moving .fs-bg img { animation: none !important; }
+html.bg-still .fs-glow { animation: none !important; }
+.fs-bg-select { max-width: 150px; border: 1px solid rgba(var(--border-rgb), .7); border-radius: 8px; padding: 7px 9px; background: rgba(var(--bg-rgb), .62); color: var(--text); }
 
 .fs-bg img[hidden] {
   display: none;
@@ -4922,6 +4941,28 @@ html[data-mode='light'][data-bg='stars'] #app-bg::after {
   filter: invert(1);
   opacity: 0.22;
 }
+
+html[data-bg='lava'] #app-bg,
+html[data-bg='waves'] #app-bg,
+html[data-bg='synthwave'] #app-bg,
+html[data-bg='nebula'] #app-bg,
+html[data-bg='rain'] #app-bg,
+html[data-bg='custom'] #app-bg { background: var(--bg); }
+#live-bg-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+}
+html[data-bg='lava'] #live-bg-canvas,
+html[data-bg='waves'] #live-bg-canvas,
+html[data-bg='synthwave'] #live-bg-canvas,
+html[data-bg='nebula'] #live-bg-canvas,
+html[data-bg='rain'] #live-bg-canvas,
+html[data-bg='custom'] #live-bg-canvas { display: block; }
+#live-bg-video, #live-bg-gif { display: none; }
+
 @keyframes cm-stars {
   to { transform: translate(-260px, -220px); }
 }
@@ -4929,12 +4970,35 @@ html.bg-still #app-bg::before,
 html.bg-still #app-bg::after {
   animation: none !important;
 }
+html.bg-hidden #app-bg::before,
+html.bg-hidden #app-bg::after { animation-play-state: paused !important; }
+html.bg-hidden .fs-bg img,
+html.bg-hidden .fs-glow { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   #app-bg::before,
   #app-bg::after {
     animation: none !important;
   }
+  .fs-bg img { animation: none !important; }
+  .fs-glow { animation: none !important; }
 }
+.eq-preset-row { display: grid; grid-template-columns: minmax(90px, .4fr) 1fr; align-items: center; gap: 12px; margin: 12px 0; }
+.eq-advanced { display: grid; gap: 12px; }
+#eq-curve { display: block; width: 100%; height: 128px; border: 1px solid var(--border-soft); border-radius: 10px; background: rgba(var(--bg-rgb), .22); }
+.eq-bands { display: grid; grid-template-columns: repeat(5, minmax(90px, 1fr)); gap: 10px 14px; }
+.eq-bands label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; text-align: center; }
+.eq-bands input { width: 100%; min-width: 0; accent-color: var(--accent); }
+.eq-bands output { color: var(--text); font-variant-numeric: tabular-nums; }
+.eq-panel .row { margin-top: 10px; }
+.cut-export-options { display: grid; grid-template-columns: repeat(2, minmax(160px, 1fr)); gap: 10px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+.cut-export-options > label:not(.toggle-row) { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; color: var(--muted); font-size: 12px; }
+.cut-export-options input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.cut-export-options .toggle-row { margin: 0; padding: 6px 8px; }
+.cut-export-options .is-off { opacity: .5; }
+.cut-projects-panel, .video-credits-panel { padding-bottom: 14px; border-bottom: 1px solid var(--border-soft); margin-bottom: 14px; }
+.cut-projects-panel .select-input { flex: 1; min-width: 120px; }
+.project-add { padding: 4px 8px; min-height: 30px; white-space: nowrap; }
+.review-page .page-actions #review-image-format { min-width: 145px; }
 .bg-picker {
   margin-top: 16px;
   display: grid;

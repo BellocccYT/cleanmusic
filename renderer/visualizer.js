@@ -26,13 +26,15 @@ window.CMVisualizer = (function () {
   let captureAddTrackHandler = null;
   let tapped = false; // analyser hangs on the engine source instead
   let engine = null; // { source, level, makeup, gain, limiter }
-  const output = { gain: 1, normalize: false, bass: 0, treble: 0 };
+  const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  const output = { gain: 1, normalize: false, bass: 0, treble: 0, eqEnabled: false, eq: Array(10).fill(0) };
   let freq = null;
   let wave = null;
   let enabled = false;
   let raf = 0;
   let lastDraw = 0;
   let energy = 0;
+  let bassLevel = 0;
   let peak = 0;
   let colorA = [91, 140, 255];
   let colorB = [53, 224, 192];
@@ -168,14 +170,27 @@ window.CMVisualizer = (function () {
       const treble = ctx.createBiquadFilter();
       treble.type = 'highshelf';
       treble.frequency.value = 7500;
+      const eqFilters = EQ_FREQUENCIES.map((frequency) => {
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'peaking';
+        filter.frequency.value = frequency;
+        filter.Q.value = 1.1;
+        filter.gain.value = 0;
+        return filter;
+      });
       src.connect(bass);
       bass.connect(treble);
-      treble.connect(level);
+      let previous = treble;
+      eqFilters.forEach((filter) => {
+        previous.connect(filter);
+        previous = filter;
+      });
+      previous.connect(level);
       level.connect(makeup);
       makeup.connect(gain);
       gain.connect(limiter);
       limiter.connect(ctx.destination);
-      engine = { source: src, bass, treble, level, makeup, gain, limiter };
+      engine = { source: src, bass, treble, eqFilters, level, makeup, gain, limiter };
     } catch {
       engine = null;
       return null;
@@ -191,6 +206,9 @@ window.CMVisualizer = (function () {
     const now = ctx.currentTime;
     engine.bass.gain.setTargetAtTime(output.bass, now, 0.05);
     engine.treble.gain.setTargetAtTime(output.treble, now, 0.05);
+    engine.eqFilters.forEach((filter, index) => {
+      filter.gain.setTargetAtTime(output.eqEnabled ? output.eq[index] : 0, now, 0.04);
+    });
     engine.gain.gain.setTargetAtTime(output.gain, now, 0.02);
     const { level, makeup } = engine;
     if (output.normalize) {
@@ -220,7 +238,24 @@ window.CMVisualizer = (function () {
     if (typeof options.normalize === 'boolean') output.normalize = options.normalize;
     if (Number.isFinite(options.bass)) output.bass = Math.max(-12, Math.min(12, options.bass));
     if (Number.isFinite(options.treble)) output.treble = Math.max(-12, Math.min(12, options.treble));
+    if (typeof options.eqEnabled === 'boolean') output.eqEnabled = options.eqEnabled;
+    if (Array.isArray(options.eq)) output.eq = normalizeEq(options.eq);
     if (options.want && !engine) buildEngine();
+    applyOutput();
+    return Boolean(engine);
+  }
+
+  function normalizeEq(gains) {
+    return EQ_FREQUENCIES.map((_frequency, index) => {
+      const value = Number(gains[index]);
+      return Number.isFinite(value) ? Math.max(-12, Math.min(12, value)) : 0;
+    });
+  }
+
+  function setEq(gains) {
+    if (!Array.isArray(gains) || gains.length !== EQ_FREQUENCIES.length) return false;
+    output.eq = normalizeEq(gains);
+    if (output.eqEnabled && !engine) buildEngine();
     applyOutput();
     return Boolean(engine);
   }
@@ -570,11 +605,13 @@ window.CMVisualizer = (function () {
         let bass = 0;
         for (let k = 1; k < 10; k += 1) bass += freq[k];
         const level = bass / 9 / 255;
+        bassLevel += (level - bassLevel) * (level > bassLevel ? 0.24 : 0.08);
         peak = Math.max(level, peak * 0.96);
         const beat = peak > 0 ? Math.max(0, (level - peak * 0.72) / (peak * 0.28 + 0.001)) : 0;
         energy += (Math.min(1, beat) - energy) * 0.35;
       } else {
         energy *= 0.9;
+        bassLevel *= 0.9;
       }
       watchdog(t);
 
@@ -611,6 +648,8 @@ window.CMVisualizer = (function () {
     isEnabled: () => enabled,
     isAnalysing: () => Boolean(source) || tapped,
     setOutput,
+    setEq,
+    eqFrequencies: () => EQ_FREQUENCIES.slice(),
     hasEngine: () => Boolean(engine),
     engineState: () =>
       engine
@@ -620,6 +659,7 @@ window.CMVisualizer = (function () {
             normalize: output.normalize,
             bass: Number(engine.bass.gain.value.toFixed(1)),
             treble: Number(engine.treble.gain.value.toFixed(1)),
+            eq: engine.eqFilters.map((filter) => Number(filter.gain.value.toFixed(1))),
           }
         : null,
     register,
@@ -628,6 +668,7 @@ window.CMVisualizer = (function () {
     onFrame,
     wake,
     energy: () => energy,
+    level: () => bassLevel,
     // RMS of what the analyser hears right now (null = nothing connected).
     // Test only: drop the analyser tap as a lost device/stream would.
     _dropTap: () => {

@@ -22,6 +22,12 @@
 - Optional: Discord Rich Presence über den lokalen Discord-Client.
 - Favoriten und Playlists sind reine lokale Listen (Metadaten + Links), es
   werden keine Audiodaten gespeichert.
+- Rückblick-Bilder werden lokal aus Statistik, Text und Theme-Farben erstellt und enthalten
+  keine Cover. Optionale automatische Backups schreiben ein JSON ausschließlich in den von dir
+  ausgewählten Ordner und behalten dort höchstens fünf CleanMusic-Backup-Dateien.
+- Eigene Live-Hintergründe bleiben am ausgewählten Speicherort. Videos laufen stumm und werden
+  nicht in die Musik-Wiedergabe oder Audio-Kette geleitet; du bist für die Rechte an eigenen
+  Hintergrunddateien verantwortlich.
 - **Optional:** ein Plugin-Lader. CleanMusic bringt **keine** Plugins mit; ein
   Plugin ist eine Datei, die der Nutzer selbst in den Plugin-Ordner legt und
   bewusst aktiviert (siehe Abschnitt „Plugins“).
@@ -187,6 +193,20 @@ Quellen-Plugin – in CleanMusic.
   Personen im selben WLAN können Netzwerkverkehr beobachten; der Link ist wie ein Passwort zu
   behandeln. Keine Cloud, Telemetrie oder lokalen Dateipfade: die Fernbedienung sucht nur im
   öffentlichen Vorschau-Katalog und lädt keine Streams herunter.
+
+## Creator-Projekte, Rückblick-Bilder und Live-Hintergründe (ab 1.13)
+
+- Cutting-Projekte und deren Credits sind lokale Metadaten. Projekt-Credits werden nur als `.txt`
+  unter `_Projekte` im ausgewählten Cutting-Ordner gespeichert. Die bisherigen Download- und
+  Lizenzprüfungen bleiben unverändert.
+- Optionale automatische Backups enthalten dieselben lokalen Metadaten wie das manuelle Backup.
+  Sie werden nur in den selbst gewählten Ordner geschrieben; CleanMusic lädt sie nicht hoch und
+  löscht dort nur eigene `cleanmusic-backup-*.json`-Dateien, höchstens bis auf fünf.
+- Rückblick-Bilder werden lokal aus Hör-Statistik und Theme-Farben erzeugt. Es werden keine Cover
+  eingefügt.
+- Ein eigenes Hintergrundvideo/GIF bleibt am ursprünglichen Speicherort. Die Wiedergabe ist
+  stumm und wird nicht an den Audio-Player, eine Audio-Kette oder einen Streaming-Dienst geleitet.
+  Für die Rechte an selbst gewählten Dateien bist du verantwortlich.
 
 ## YouTube-Download nur für Creative Commons (ab 1.5)
 

@@ -1752,7 +1752,7 @@ function createMainWindow() {
               }
               const done = ob.state();
               cm.setTheme('nacht');
-               const shown = cm.whatsNew('1.12.0');
+               const shown = cm.whatsNew('1.13.0');
               const card = !document.querySelector('#whatsnew-card').hidden;
               document.querySelector('#whatsnew-card [data-whatsnew="ok"]').click();
               const cardClosed = document.querySelector('#whatsnew-card').hidden;
@@ -1933,6 +1933,101 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_V18:', JSON.stringify(v18));
+
+          const liveBg = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const ids = ['lava', 'waves', 'synthwave', 'nebula', 'rain'];
+              const pixels = {};
+              for (const id of ids) {
+                cm.setBackground(id);
+                const image = window.CMLiveBackground.renderTestFrame(id);
+                let count = 0;
+                if (image) for (let i = 3; i < image.data.length; i += 4) if (image.data[i] > 0) count += 1;
+                pixels[id] = count;
+              }
+              cm.setBackground('lava');
+              cm.setBgMotion(true);
+              cm.setBgPulse(true);
+              const audio = document.querySelector('#audio');
+              if (audio.src && audio.paused) await audio.play().catch(() => {});
+              const beatBefore = Number(getComputedStyle(document.documentElement).getPropertyValue('--beat')) || 0;
+              await new Promise((resolve) => setTimeout(resolve, 450));
+              const beatAfter = Number(getComputedStyle(document.documentElement).getPropertyValue('--beat')) || 0;
+              const beatChanged = beatAfter > 0 || beatAfter !== beatBefore;
+              window.CMLiveBackground.setVisibilityForTest(true);
+              const hiddenPaused = window.CMLiveBackground.state().paused && !window.CMLiveBackground.state().running;
+              window.CMLiveBackground.setVisibilityForTest(false);
+              await new Promise((resolve) => setTimeout(resolve, 160));
+              const frameIntervalMs = window.CMLiveBackground.state().lastFrameDelta;
+              cm.setBgMotion(false);
+              const motionOffPaused = window.CMLiveBackground.state().paused && !window.CMLiveBackground.state().running;
+              cm.setBgMotion(true);
+              cm.openFullscreen();
+              const fullscreen = {};
+              for (const mode of ['cover-static', 'cover-moving', 'live', 'off']) {
+                cm.setFsBackground(mode);
+                fullscreen[mode] = document.querySelector('#fullscreen').classList.contains('fs-background-' + mode);
+              }
+              cm.closeFullscreen();
+              cm.setFsBackground('cover-moving');
+              cm.setBgPulse(false);
+              cm.setBackground('none');
+              return {
+                pixels,
+                allRendered: ids.every((id) => pixels[id] > 0),
+                beat: { before: beatBefore, after: beatAfter, changed: beatChanged },
+                hiddenPaused,
+                motionOffPaused,
+                fullscreen,
+                videoMuted: window.CMLiveBackground.state().videoMuted && window.CMLiveBackground.state().videoVolume === 0,
+                fpsAtMost30: frameIntervalMs === 0 || frameIntervalMs >= 1000 / 30 - 0.5,
+                frameIntervalMs,
+              };
+            })()
+          `);
+          console.log('SMOKE_LIVEBG:', JSON.stringify(liveBg));
+
+          const v113Ui = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const eq = await cm.equalizerTest();
+              const wav = cm.wavEffectsTest();
+              const project = cm.cutProjectSmoke();
+              const story = await cm.reviewImageTest('story');
+              const post = await cm.reviewImageTest('post');
+              return {
+                eq,
+                wav,
+                project: { count: project.count, deduped: project.deduped },
+                images: { story: story.startsWith('data:image/png;base64,'), post: post.startsWith('data:image/png;base64,'), storyBytes: Math.floor(story.length * 0.75), postBytes: Math.floor(post.length * 0.75) },
+              };
+            })()
+          `);
+          const v113Dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'cleanmusic-smoke-113-'));
+          let autoBackupSmoke = null;
+          let projectSaveSmoke = null;
+          try {
+            fs.writeFileSync(path.join(v113Dir, 'keep.txt'), 'keep');
+            for (let index = 0; index < 6; index += 1) {
+              const file = path.join(v113Dir, `cleanmusic-backup-20200101-00000${index}.json`);
+              fs.writeFileSync(file, '{}');
+              fs.utimesSync(file, new Date(2020, 0, index + 1), new Date(2020, 0, index + 1));
+            }
+            const result = await mainWindow.webContents.executeJavaScript(`
+              (async () => ({
+                backup: await window.cm.backupAutoSave({ folder: ${JSON.stringify(v113Dir)}, text: JSON.stringify({ app: 'CleanMusic', kind: 'backup', format: 1 }) }),
+                project: await window.cm.projectCreditsSave({ folder: ${JSON.stringify(v113Dir)}, name: 'Smoke Video', text: ${JSON.stringify(v113Ui.project && v113Ui.project.text || 'Smoke credits')} }),
+              }))()
+            `);
+            const backups = fs.readdirSync(v113Dir).filter((name) => /^cleanmusic-backup-.*\.json$/i.test(name));
+            autoBackupSmoke = { ok: Boolean(result.backup && result.backup.ok), kept: backups.length, keptOtherFile: fs.existsSync(path.join(v113Dir, 'keep.txt')) };
+            const savedProject = result.project && result.project.path;
+            projectSaveSmoke = { ok: Boolean(result.project && result.project.ok), withinFolder: Boolean(savedProject && path.relative(v113Dir, savedProject).startsWith(`_Projekte${path.sep}`)), txt: Boolean(savedProject && path.extname(savedProject) === '.txt') };
+          } finally {
+            fs.rmSync(v113Dir, { recursive: true, force: true });
+          }
+          console.log('SMOKE_1_13:', JSON.stringify({ ...v113Ui, autoBackup: autoBackupSmoke, projectSave: projectSaveSmoke }));
         } catch (error) {
           console.error('SMOKE_EXTRAS_FAIL:', error.message);
         }
@@ -2179,6 +2274,45 @@ ipcMain.handle('pick-folder', async () => {
   const files = await walkAudio(folder, [], 0);
 
   return { folder, files };
+});
+
+const LIVE_BG_EXTENSIONS = new Set(['.mp4', '.webm', '.gif']);
+const LIVE_BG_MAX_BYTES = 300 * 1024 * 1024;
+
+ipcMain.handle('live-bg-pick', async (event) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return { error: 'Nicht verfügbar.' };
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Eigenes Hintergrundvideo auswählen',
+    properties: ['openFile'],
+    filters: [{ name: 'Video oder GIF', extensions: ['mp4', 'webm', 'gif'] }],
+  });
+  if (result.canceled || !result.filePaths.length) return { canceled: true };
+  const file = path.resolve(result.filePaths[0]);
+  const extension = path.extname(file).toLowerCase();
+  try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || !LIVE_BG_EXTENSIONS.has(extension)) return { error: 'Nur MP4, WebM oder GIF sind erlaubt.' };
+    if (stat.size > LIVE_BG_MAX_BYTES) return { error: 'Die Hintergrunddatei darf höchstens 300 MB groß sein.' };
+    writeConfig({ liveBgPath: file });
+    return { ok: true, url: pathToFileURL(file).href, kind: extension === '.gif' ? 'gif' : 'video' };
+  } catch (error) {
+    return { error: cleanText(error && error.message, 180) || 'Datei konnte nicht gelesen werden.' };
+  }
+});
+
+ipcMain.handle('live-bg-get', (event) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return null;
+  const file = String(readConfig().liveBgPath || '');
+  if (!file) return { url: '', kind: '', missing: false };
+  const extension = path.extname(file).toLowerCase();
+  try {
+    const stat = fs.statSync(file);
+    if (!path.isAbsolute(file) || !stat.isFile() || stat.size > LIVE_BG_MAX_BYTES || !LIVE_BG_EXTENSIONS.has(extension)) throw new Error('invalid');
+    return { url: pathToFileURL(file).href, kind: extension === '.gif' ? 'gif' : 'video', missing: false };
+  } catch {
+    writeConfig({ liveBgPath: '' });
+    return { url: '', kind: '', missing: true };
+  }
 });
 
 ipcMain.handle('open-external', async (_event, url) => {
@@ -2785,6 +2919,26 @@ function allowedDownloadHost(url) {
 
 ipcMain.handle('cutting-default-folder', () => defaultDownloadDir());
 
+ipcMain.handle('project-credits-save', (_event, input) => {
+  const project = input && typeof input === 'object' ? input : {};
+  const text = typeof project.text === 'string' ? project.text : '';
+  if (!text.trim() || Buffer.byteLength(text, 'utf8') > 1024 * 1024) return { error: 'Keine Credits oder Datei größer als 1 MB.' };
+  const base = path.resolve(downloadBase(project.folder));
+  const name = safeName(project.name, 'Projekt');
+  const destination = path.resolve(base, '_Projekte', `${name}.txt`);
+  const relative = path.relative(base, destination);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) || path.extname(destination).toLowerCase() !== '.txt') {
+    return { error: 'Das Ziel muss als .txt im Cutting-Ordner bleiben.' };
+  }
+  try {
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, text.replace(/\r?\n/g, '\r\n'), 'utf8');
+    return { ok: true, name: path.basename(destination), path: destination };
+  } catch (error) {
+    return { error: cleanText(error && error.message, 200) || 'Credits konnten nicht gespeichert werden.' };
+  }
+});
+
 ipcMain.handle('cutting-download', async (_event, input) => {
   const item = input && typeof input === 'object' ? input : {};
   const url = cleanUrl(item.url);
@@ -3080,6 +3234,78 @@ ipcMain.handle('backup-open', async () => {
   } catch (error) {
     return { error: `Backup nicht lesbar: ${error.message}` };
   }
+});
+
+ipcMain.handle('backup-folder-pick', async (event) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Ordner für automatische Backups auswählen',
+    defaultPath: app.getPath('documents'),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+});
+
+ipcMain.handle('backup-auto-save', async (_event, input) => {
+  const rawFolder = input && typeof input.folder === 'string' ? input.folder : '';
+  const folder = rawFolder && path.isAbsolute(rawFolder) ? path.resolve(rawFolder) : '';
+  const text = input && typeof input.text === 'string' ? input.text : '';
+  if (!folder || !path.isAbsolute(folder) || !text || Buffer.byteLength(text, 'utf8') > 30 * 1024 * 1024) {
+    return { error: 'Ungültige Backup-Daten oder Ordner.' };
+  }
+  try {
+    if (!fs.statSync(folder).isDirectory()) return { error: 'Der Backup-Pfad ist kein Ordner.' };
+    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    const name = `cleanmusic-backup-${stamp}.json`;
+    const destination = path.join(folder, name);
+    fs.writeFileSync(destination, text, { encoding: 'utf8', flag: 'wx' });
+    const own = fs.readdirSync(folder, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^cleanmusic-backup-.*\.json$/i.test(entry.name))
+      .map((entry) => {
+        const full = path.join(folder, entry.name);
+        return { full, at: fs.statSync(full).mtimeMs };
+      })
+      .sort((a, b) => b.at - a.at);
+    own.slice(5).forEach((entry) => fs.rmSync(entry.full, { force: true }));
+    return { ok: true, name, path: destination };
+  } catch (error) {
+    return { error: cleanText(error && error.message, 200) || 'Backup konnte nicht gespeichert werden.' };
+  }
+});
+
+function decodePngDataUrl(value) {
+  if (typeof value !== 'string' || !value.startsWith('data:image/png;base64,') || value.length > 21 * 1024 * 1024) return null;
+  const encoded = value.slice('data:image/png;base64,'.length);
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) return null;
+  const bytes = Buffer.from(encoded, 'base64');
+  if (bytes.length < 8 || bytes.length > 15 * 1024 * 1024 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return null;
+  const image = nativeImage.createFromBuffer(bytes);
+  return image.isEmpty() ? null : { bytes, image };
+}
+
+ipcMain.handle('save-png', async (_event, dataUrl) => {
+  const image = decodePngDataUrl(dataUrl);
+  if (!image) return { error: 'Ungültiges PNG oder Datei größer als 15 MB.' };
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Rückblick als Bild speichern',
+    defaultPath: path.join(app.getPath('pictures'), `CleanMusic-Rueckblick-${new Date().toISOString().slice(0, 10)}.png`),
+    filters: [{ name: 'PNG-Bild', extensions: ['png'] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  try {
+    const destination = path.extname(result.filePath).toLowerCase() === '.png' ? result.filePath : `${result.filePath}.png`;
+    fs.writeFileSync(destination, image.bytes);
+    return { ok: true, path: destination };
+  } catch (error) {
+    return { error: cleanText(error && error.message, 200) || 'PNG konnte nicht gespeichert werden.' };
+  }
+});
+
+ipcMain.handle('copy-png', (_event, dataUrl) => {
+  const image = decodePngDataUrl(dataUrl);
+  if (!image) return false;
+  clipboard.writeImage(image.image);
+  return true;
 });
 
 ipcMain.handle('copy-text', (_event, text) => {
@@ -5350,6 +5576,7 @@ ipcMain.handle('cut-save', async (_event, input) => {
       `Lizenz: ${license}${item.licenseUrl ? ` (${cleanUrl(item.licenseUrl)})` : ''}`,
       item.link ? `Quelle: ${cleanUrl(item.link)}` : '',
       `Ausschnitt: ${stamp(from).replace('-', ':')} bis ${stamp(to).replace('-', ':')} (gekürzt)`,
+      item.changes ? `Änderungen: ${cleanText(item.changes, 240)}` : '',
       '',
       'Credit für deine Videobeschreibung:',
       cleanText(item.credit || '', 800) || `"${title}" – ${artist} (${license})`,

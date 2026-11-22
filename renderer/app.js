@@ -108,6 +108,9 @@
     stats: 'cleanmusic.stats.v1', // { months: { "YYYY-MM": { secs, plays, hours, tracks, artists, sources } } }
     bpm: 'cleanmusic.bpm.v1', // { entryId: bpm }
     history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
+    eq: 'cleanmusic.eq.v1',
+    cutProjects: 'cleanmusic.cutprojects.v1',
+    autoBackup: 'cleanmusic.autobackup.v1',
   };
 
   const FIRST_RUN = (() => {
@@ -191,6 +194,13 @@
     diagnosticCopy: async () => '',
     diagnosticError: () => {},
     diagnosticState: () => {},
+    backupFolderPick: async () => null,
+    backupAutoSave: async () => ({ error: 'Nur in der Desktop-App verfügbar.' }),
+    projectCreditsSave: async () => ({ error: 'Nur in der Desktop-App verfügbar.' }),
+    savePng: async () => ({ error: 'Nur in der Desktop-App verfügbar.' }),
+    copyPng: async () => false,
+    liveBgPick: async () => ({ canceled: true }),
+    liveBgGet: async () => ({ url: '', kind: '', missing: false }),
   };
 
   const supportsWebview = bridge.isElectron === true;
@@ -259,6 +269,9 @@
         markAi: true, // "KI?" badge on labelled AI songs
         background: 'none',
         bgMotion: true,
+        bgPulse: false,
+        bgBatteryStop: true,
+        fsBackground: 'cover-moving',
         streamSafe: false,
         lyrics: false,
         transition: 'off', // off | gapless | crossfade
@@ -995,6 +1008,7 @@
         ${lengthBadge(entry)}
         <div class="song-actions">
           ${downloadButton(entry)}
+          ${listKey === 'creator' ? '<button class="btn ghost small project-add" data-act="project" title="Zum aktiven Cutting-Projekt hinzufügen">Zum Projekt</button>' : ''}
           ${
             entry.credit
               ? `<button class="icon-btn credit-btn" data-act="credit" title="Credit kopieren & in Video-Credits sammeln">${ICONS.copy}</button>`
@@ -3906,6 +3920,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.13.0': [
+      '10-Band-Equalizer mit neun Presets und bis zu zehn eigenen Presets; Bass und Höhen bleiben erhalten.',
+      'Cutter-Projekte sammeln Musik-Credits; WAV-Ausschnitte können Fades, Normalisierung und Loop-Übergang enthalten.',
+      'Dein Rückblick lässt sich als Story/Post-Bild ohne Cover speichern oder kopieren; wöchentliche Backups sind optional.',
+      'Neue Live-Hintergründe, eigenes stummes Video/GIF und bewegte Vollbild-Hintergründe mit Leistungs- und Akku-Optionen.',
+    ],
     '1.12.0': [
       'Handy-Fernbedienung im privaten WLAN: Wiedergabe, Lautstärke, Warteschlange und Vorschau-Suche – standardmäßig aus, mit Schlüssel und QR-Code.',
       'Mini-Player, Windows-Taskleistenknöpfe und Fortschritt, optionale globale Tastenkürzel sowie Start mit Windows.',
@@ -4256,9 +4276,39 @@
     { id: 'mesh', label: 'Farbwolken' },
     { id: 'cover', label: 'Cover' },
     { id: 'stars', label: 'Sternenhimmel' },
+    { id: 'lava', label: 'Lava-Lampe', live: true },
+    { id: 'waves', label: 'Wellen', live: true },
+    { id: 'synthwave', label: 'Synthwave-Gitter', live: true },
+    { id: 'nebula', label: 'Partikel-Nebel', live: true },
+    { id: 'rain', label: 'Regen auf Glas', live: true },
+    { id: 'custom', label: 'Eigenes Video …', live: true, custom: true },
   ];
 
   let bgCoverUrl = '';
+
+  let customBg = { url: '', kind: '' };
+
+  function syncLiveBackground() {
+    const live = window.CMLiveBackground;
+    if (!live || typeof live.configure !== 'function') return;
+    live.configure({
+      id: state.settings.background || 'none',
+      motion: state.settings.bgMotion !== false,
+      pulse: Boolean(state.settings.bgPulse),
+      batteryStop: state.settings.bgBatteryStop !== false,
+      fsMode: state.fullscreen ? (state.settings.fsBackground || 'cover-moving') : 'cover-moving',
+      fsLiveId: state.settings.background || 'none',
+      mediaUrl: state.settings.background === 'custom' ? customBg.url : '',
+      mediaKind: state.settings.background === 'custom' ? customBg.kind : '',
+      onError: (message) => {
+        state.settings.background = 'none';
+        saveSettings();
+        applyBackground();
+        renderSettings();
+        toast(message || 'Hintergrundvideo konnte nicht geladen werden.');
+      },
+    });
+  }
 
   function applyBackground() {
     const id = BACKGROUNDS.some((bg) => bg.id === state.settings.background) ? state.settings.background : 'none';
@@ -4268,6 +4318,7 @@
     root.classList.toggle('bg-still', state.settings.bgMotion === false);
     bgCoverUrl = '';
     updateBackgroundCover();
+    syncLiveBackground();
   }
 
   function updateBackgroundCover() {
@@ -4282,6 +4333,7 @@
   }
 
   function setBackground(id) {
+    if (id === 'custom') { chooseCustomBackground(); return; }
     state.settings.background = id;
     saveSettings();
     applyBackground();
@@ -4297,12 +4349,28 @@
             (bg) => `<button class="radio-tag ${bg.id === active ? 'active' : ''}" data-bg-id="${bg.id}">${esc(bg.label)}</button>`
           ).join('')}</div>
         </div>
-        <label class="toggle-row" style="margin-top:10px">
+        <label class="toggle-row advanced-only" style="margin-top:10px">
           <span>
             <strong>Hintergrund bewegen</strong>
             <small>Langsame Animation. Aus = ruhiges Standbild, spart Leistung.</small>
           </span>
           <input type="checkbox" id="opt-bg-motion" ${state.settings.bgMotion !== false ? 'checked' : ''} />
+        </label>
+        <label class="toggle-row advanced-only" style="margin-top:10px">
+          <span><strong>Mit der Musik pulsieren</strong><small>Leichter Zoom oder Helligkeitsimpuls aus geglätteter Bass-Energie, ohne den Ton umzuleiten.</small></span>
+          <input type="checkbox" id="opt-bg-pulse" ${state.settings.bgPulse ? 'checked' : ''} />
+        </label>
+        <label class="toggle-row advanced-only" style="margin-top:10px">
+          <span><strong>Im Akkubetrieb anhalten</strong><small>Pausiert Live-Animation, wenn das Gerät nicht lädt (falls die Browser-API verfügbar ist).</small></span>
+          <input type="checkbox" id="opt-bg-battery" ${state.settings.bgBatteryStop !== false ? 'checked' : ''} />
+        </label>
+        <label class="toggle-row advanced-only" style="margin-top:10px"><span><strong>Vollbild-Hintergrund</strong><small>Cover, Live-Hintergrund oder dunkle Fläche.</small></span>
+          <select id="opt-fs-background" class="select-input">
+            <option value="cover-static" ${state.settings.fsBackground === 'cover-static' ? 'selected' : ''}>Cover ruhig</option>
+            <option value="cover-moving" ${(!state.settings.fsBackground || state.settings.fsBackground === 'cover-moving') ? 'selected' : ''}>Cover bewegt</option>
+            <option value="live" ${state.settings.fsBackground === 'live' ? 'selected' : ''}>Live-Hintergrund</option>
+            <option value="off" ${state.settings.fsBackground === 'off' ? 'selected' : ''}>Aus</option>
+          </select>
         </label>`;
   }
 
@@ -5482,7 +5550,7 @@
             <div class="radio-tags">${periods
               .map(([id, label]) => `<button class="radio-tag ${reviewPeriod === id ? 'active' : ''}" data-review-period="${id}">${esc(label)}</button>`)
               .join('')}</div>
-            ${empty ? '' : '<button class="btn ghost small" data-review-action="copy">Zusammenfassung kopieren</button>'}
+            ${empty ? '' : `<select id="review-image-format" class="select-input" aria-label="Bildformat"><option value="story">Story · 1080 × 1920</option><option value="post">Post · 1080 × 1080</option></select><button class="btn ghost small" data-review-action="share-image">Als Bild speichern</button><button class="btn ghost small" data-review-action="copy-image">In Zwischenablage</button><button class="btn ghost small" data-review-action="copy">Zusammenfassung kopieren</button>`}
           </div>
         </div>
         ${
@@ -5537,6 +5605,106 @@
     }${track ? ` · Top-Titel: „${track.e.title}“${track.e.artist ? ` von ${track.e.artist}` : ''}` : ''}`;
     const ok = await bridge.copyText(text);
     toast(ok ? 'Zusammenfassung kopiert' : 'Kopieren nicht möglich');
+  }
+
+  async function reviewImageDataUrl(format = 'story') {
+    const data = reviewData(reviewPeriod);
+    if (!data.secs && !data.plays) return '';
+    const story = format !== 'post';
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = story ? 1920 : 1080;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    const root = getComputedStyle(document.documentElement);
+    const bg = root.getPropertyValue('--bg').trim();
+    const panel = root.getPropertyValue('--panel-2').trim();
+    const text = root.getPropertyValue('--text').trim();
+    const muted = root.getPropertyValue('--muted').trim();
+    const accent = root.getPropertyValue('--accent').trim();
+    const accentRgb = root.getPropertyValue('--accent-rgb').trim();
+    const accent2Rgb = root.getPropertyValue('--accent-2-rgb').trim();
+    const height = canvas.height;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, height);
+    ctx.fillStyle = `rgba(${accentRgb}, .17)`;
+    ctx.beginPath(); ctx.ellipse(920, story ? 230 : 90, 340, 270, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(${accent2Rgb}, .13)`;
+    ctx.beginPath(); ctx.ellipse(120, height - 80, 350, 260, 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = text;
+    ctx.textBaseline = 'alphabetic';
+    let logo = null;
+    try {
+      logo = new Image();
+      logo.src = new URL('assets/logo.svg', location.href).href;
+      await new Promise((resolve, reject) => { logo.onload = resolve; logo.onerror = reject; });
+      ctx.drawImage(logo, 72, 68, 70, 70);
+    } catch { logo = null; }
+    ctx.font = '700 32px Segoe UI, sans-serif';
+    ctx.fillText('CleanMusic', logo ? 160 : 72, 116);
+    ctx.font = '600 26px Segoe UI, sans-serif';
+    ctx.fillStyle = muted;
+    ctx.fillText('DEIN MUSIK-RÜCKBLICK', 72, story ? 252 : 205);
+    ctx.fillStyle = text;
+    ctx.font = '700 52px Segoe UI, sans-serif';
+    const yearTitle = reviewPeriod === 'month' ? 'Dein Monat' : reviewPeriod === 'year' ? `Dein Jahr ${new Date().getFullYear()}` : 'Alles bisher';
+    ctx.fillText(yearTitle, 72, story ? 330 : 275);
+    ctx.fillStyle = panel;
+    const summaryY = story ? 390 : 315;
+    const summaryH = story ? 260 : 190;
+    ctx.beginPath(); ctx.roundRect(72, summaryY, 936, summaryH, 28); ctx.fill();
+    ctx.fillStyle = accent;
+    ctx.font = '700 88px Segoe UI, sans-serif';
+    ctx.fillText(minutes(data.secs), 112, summaryY + (story ? 128 : 115));
+    ctx.fillStyle = text;
+    ctx.font = '600 28px Segoe UI, sans-serif';
+    ctx.fillText('Minuten gehört', 116, summaryY + (story ? 174 : 154));
+    ctx.fillStyle = muted;
+    ctx.font = '500 24px Segoe UI, sans-serif';
+    ctx.fillText(`${data.plays.toLocaleString('de-DE')} Titel · ${data.topSource ? `Lieblingsquelle: ${data.topSource[0]}` : 'Lieblingsquelle: –'}`, 116, summaryY + (story ? 220 : 170));
+
+    const section = (title, rows, y, rowGap, maxRows) => {
+      ctx.fillStyle = text;
+      ctx.font = '700 30px Segoe UI, sans-serif';
+      ctx.fillText(title, 80, y);
+      rows.slice(0, maxRows).forEach((row, index) => {
+        const label = Array.isArray(row) ? row[0] : row.title || '';
+        const sub = Array.isArray(row) ? `${minutes(row[1].s)} Min. gehört` : row.artist || '';
+        const rowY = y + 52 + index * rowGap;
+        ctx.fillStyle = `rgba(${accentRgb}, .15)`;
+        ctx.beginPath(); ctx.roundRect(72, rowY - 31, 936, rowGap - 5, 14); ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.font = '700 22px Segoe UI, sans-serif';
+        ctx.fillText(String(index + 1).padStart(2, '0'), 92, rowY + 1);
+        ctx.fillStyle = text;
+        ctx.font = '600 22px Segoe UI, sans-serif';
+        ctx.fillText(String(label).slice(0, story ? 48 : 50), 150, rowY + 1);
+        ctx.fillStyle = muted;
+        ctx.font = '400 17px Segoe UI, sans-serif';
+        ctx.fillText(String(sub).slice(0, 58), 150, rowY + 24);
+      });
+    };
+    if (story) {
+      section('TOP-KÜNSTLER', data.topArtists.slice(0, 5), 735, 66, 5);
+      section('TOP-TITEL', data.topTracks.slice(0, 5).map((row) => row.e), 1200, 72, 5);
+    } else {
+      section('TOP-KÜNSTLER', data.topArtists.slice(0, 5), 570, 47, 5);
+      section('TOP-TITEL', data.topTracks.slice(0, 5).map((row) => row.e), 820, 43, 5);
+    }
+    ctx.fillStyle = muted;
+    ctx.font = '400 20px Segoe UI, sans-serif';
+    ctx.fillText('Lokal erstellt · CleanMusic', 72, height - 42);
+    try { return canvas.toDataURL('image/png'); } catch { return ''; }
+  }
+
+  async function shareReviewImage(copy = false) {
+    const format = $('#review-image-format')?.value || 'story';
+    const dataUrl = await reviewImageDataUrl(format);
+    if (!dataUrl) { toast('Das Rückblick-Bild konnte nicht erstellt werden.'); return; }
+    const result = copy ? await bridge.copyPng(dataUrl) : await bridge.savePng(dataUrl);
+    if (copy) toast(result ? 'Rückblick-Bild in die Zwischenablage kopiert.' : 'Kopieren fehlgeschlagen.');
+    else if (result && result.ok) toast(`Rückblick-Bild gespeichert: ${result.path}`);
+    else if (result && result.error) toast(result.error);
   }
 
   /* --- Cutter: BPM + waveform ------------------------------------------ */
@@ -5690,7 +5858,7 @@
   }
 
   // Waveform + cut markers for the creator title that is playing.
-  const cut = { id: null, peaks: null, duration: 0, in: 0, out: 0, loop: false, loading: false, error: null };
+  const cut = { id: null, peaks: null, duration: 0, in: 0, out: 0, loop: false, exportOptions: { fadeIn: 0, fadeOut: 0, normalize: false, loop: false, loopMs: 150 }, loading: false, error: null };
 
   function cutEntry() {
     const item = currentItem();
@@ -5705,6 +5873,7 @@
     cut.in = 0;
     cut.out = 0;
     cut.loop = false;
+    cut.exportOptions = { fadeIn: 0, fadeOut: 0, normalize: false, loop: false, loopMs: 150 };
     renderCutPanel();
     try {
       const buffer = await decodeEntry(entry, { full: true });
@@ -5780,6 +5949,13 @@
           <button class="btn ghost small" data-cut="copy" title="Zeitmarken für dein Schnittprogramm kopieren">Marken kopieren</button>
           ${canExportCut(entry) ? '<button class="btn ghost small" data-cut="save" title="Ausschnitt als WAV mit Credit-.txt in den Cutting-Ordner">Als WAV speichern</button>' : ''}
         </div>
+        ${canExportCut(entry) ? `<div class="cut-export-options">
+          <label>Fade-in <output id="cut-fade-in-label">${Number(cut.exportOptions.fadeIn).toFixed(1)} s</output><input type="range" min="0" max="5" step="0.1" id="cut-fade-in" value="${cut.exportOptions.fadeIn}" /></label>
+          <label>Fade-out <output id="cut-fade-out-label">${Number(cut.exportOptions.fadeOut).toFixed(1)} s</output><input type="range" min="0" max="5" step="0.1" id="cut-fade-out" value="${cut.exportOptions.fadeOut}" /></label>
+          <label class="toggle-row"><span><strong>Normalisieren</strong><small>Spitze auf −1 dBFS.</small></span><input type="checkbox" id="cut-normalize" ${cut.exportOptions.normalize ? 'checked' : ''} /></label>
+          <label class="toggle-row"><span><strong>Loop-tauglich</strong><small>Übergang Ende → Anfang.</small></span><input type="checkbox" id="cut-loopable" ${cut.exportOptions.loop ? 'checked' : ''} /></label>
+          <label class="${cut.exportOptions.loop ? '' : 'is-off'}">Loop-Übergang <output id="cut-loop-ms-label">${cut.exportOptions.loopMs} ms</output><input type="range" min="50" max="500" step="50" id="cut-loop-ms" value="${cut.exportOptions.loopMs}" ${cut.exportOptions.loop ? '' : 'disabled'} /></label>
+        </div>` : ''}
       </div>`;
     drawWave();
   }
@@ -5847,12 +6023,44 @@
     if (state.view === 'creator') drawWave();
   }
 
-  function wavBytes(buffer, from, to) {
+  function wavBytes(buffer, from, to, options = {}) {
     const rate = buffer.sampleRate;
     const channels = Math.min(2, buffer.numberOfChannels);
     const start = Math.max(0, Math.floor(from * rate));
     const end = Math.min(buffer.length, Math.floor(to * rate));
     const frames = Math.max(0, end - start);
+    if (!frames) return new Uint8Array(0);
+    const audioData = Array.from({ length: channels }, (_value, channel) => Float32Array.from(buffer.getChannelData(channel).subarray(start, end)));
+    const fadeInFrames = Math.min(frames, Math.round(Math.max(0, Math.min(5, Number(options.fadeIn) || 0)) * rate));
+    const fadeOutFrames = Math.min(frames, Math.round(Math.max(0, Math.min(5, Number(options.fadeOut) || 0)) * rate));
+    for (let frame = 0; frame < frames; frame += 1) {
+      let envelope = 1;
+      if (fadeInFrames > 1 && frame < fadeInFrames) envelope *= frame / (fadeInFrames - 1);
+      if (fadeOutFrames > 1 && frame >= frames - fadeOutFrames) envelope *= (frames - 1 - frame) / (fadeOutFrames - 1);
+      for (let channel = 0; channel < channels; channel += 1) audioData[channel][frame] *= Math.max(0, envelope);
+    }
+    const loopFrames = options.loop
+      ? Math.min(Math.round(Math.max(50, Math.min(500, Number(options.loopMs) || 150)) * rate / 1000), Math.floor(frames / 2))
+      : 0;
+    if (loopFrames > 1) {
+      for (let i = 0; i < loopFrames; i += 1) {
+        const phase = i / (loopFrames - 1);
+        const outgoing = Math.cos(phase * Math.PI / 2);
+        const incoming = Math.sin(phase * Math.PI / 2);
+        for (let channel = 0; channel < channels; channel += 1) {
+          const tail = frames - loopFrames + i;
+          audioData[channel][tail] = audioData[channel][tail] * outgoing + audioData[channel][i] * incoming;
+        }
+      }
+    }
+    if (options.normalize) {
+      let peak = 0;
+      audioData.forEach((channel) => channel.forEach((sample) => { peak = Math.max(peak, Math.abs(sample)); }));
+      if (peak > 0) {
+        const scale = Math.pow(10, -1 / 20) / peak;
+        audioData.forEach((channel) => { for (let i = 0; i < channel.length; i += 1) channel[i] *= scale; });
+      }
+    }
     const out = new DataView(new ArrayBuffer(44 + frames * channels * 2));
     const write = (offset, textValue) => [...textValue].forEach((char, index) => out.setUint8(offset + index, char.charCodeAt(0)));
     write(0, 'RIFF');
@@ -5868,11 +6076,10 @@
     out.setUint16(34, 16, true);
     write(36, 'data');
     out.setUint32(40, frames * channels * 2, true);
-    const data = Array.from({ length: channels }, (_value, channel) => buffer.getChannelData(channel));
     let offset = 44;
     for (let frame = start; frame < end; frame += 1) {
       for (let channel = 0; channel < channels; channel += 1) {
-        const sample = Math.max(-1, Math.min(1, data[channel][frame]));
+        const sample = Math.max(-1, Math.min(1, audioData[channel][frame - start]));
         out.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
         offset += 2;
       }
@@ -5890,7 +6097,15 @@
     toast('Ausschnitt wird gespeichert …');
     try {
       const buffer = await decodeEntry(entry, { full: true, rate: 44100 });
-      const bytes = wavBytes(buffer, cut.in, cut.out);
+      const options = Object.assign({}, cut.exportOptions);
+      const bytes = wavBytes(buffer, cut.in, cut.out, options);
+      const changes = [
+        'Ausschnitt',
+        options.fadeIn ? `Fade-in ${Number(options.fadeIn).toFixed(1)} s` : '',
+        options.fadeOut ? `Fade-out ${Number(options.fadeOut).toFixed(1)} s` : '',
+        options.normalize ? 'normalisiert auf −1 dBFS' : '',
+        options.loop ? `Loop-Übergang ${Math.max(50, Math.min(500, Number(options.loopMs) || 150))} ms` : '',
+      ].filter(Boolean).join(', ');
       const result = await bridge.cutSave({
         bytes,
         title: entry.title,
@@ -5901,6 +6116,7 @@
         link: entry.link,
         from: cut.in,
         to: cut.out,
+        changes,
         folder: state.settings.downloadDir,
       });
       toast(result && result.ok ? `Gespeichert: ${result.name} – zum Schnittprogramm ziehen` : (result && result.error) || 'Speichern fehlgeschlagen');
@@ -5964,6 +6180,23 @@
           drawWave();
         }
       });
+      view.addEventListener('input', (event) => {
+        const ids = { 'cut-fade-in': 'fadeIn', 'cut-fade-out': 'fadeOut', 'cut-loop-ms': 'loopMs' };
+        const key = ids[event.target.id];
+        if (!key) return;
+        cut.exportOptions[key] = Number(event.target.value) || 0;
+        const label = $(`#${event.target.id}-label`);
+        if (label) label.textContent = key === 'loopMs' ? `${cut.exportOptions[key]} ms` : `${cut.exportOptions[key].toFixed(1)} s`;
+      });
+      view.addEventListener('change', (event) => {
+        if (event.target.id === 'cut-normalize') cut.exportOptions.normalize = event.target.checked;
+        else if (event.target.id === 'cut-loopable') {
+          cut.exportOptions.loop = event.target.checked;
+          renderCutPanel();
+        } else if (event.target.id === 'cut-fade-in') cut.exportOptions.fadeIn = Number(event.target.value) || 0;
+        else if (event.target.id === 'cut-fade-out') cut.exportOptions.fadeOut = Number(event.target.value) || 0;
+        else if (event.target.id === 'cut-loop-ms') cut.exportOptions.loopMs = Number(event.target.value) || 150;
+      });
     }
     document.addEventListener('keydown', (event) => {
       if (state.view !== 'creator' || event.ctrlKey || event.metaKey || event.altKey) return;
@@ -5987,6 +6220,8 @@
         if (!action) return;
         if (action.dataset.reviewAction === 'copy') copyReview();
         if (action.dataset.reviewAction === 'play') playList('review', 0);
+        if (action.dataset.reviewAction === 'share-image') shareReviewImage(false);
+        if (action.dataset.reviewAction === 'copy-image') shareReviewImage(true);
       });
     }
     window.addEventListener('beforeunload', () => {
@@ -6689,6 +6924,159 @@
 
   const vol = { level: 0.92, muted: false };
 
+  const EQ_BANDS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  const EQ_PRESETS = [
+    { id: 'neutral', label: 'Neutral', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    { id: 'bass', label: 'Bass-Boost', gains: [6, 6, 4, 2, 0, 0, -1, -1, 1, 1] },
+    { id: 'voice', label: 'Stimme/Podcast', gains: [0, 0, -2, 0, 3, 4, 3, 1, -1, -2] },
+    { id: 'bright', label: 'Hell', gains: [0, 0, 0, -1, 0, 1, 3, 5, 4, 2] },
+    { id: 'warm', label: 'Warm', gains: [3, 3, 2, 1, 0, -1, -1, -2, -2, -2] },
+    { id: 'laptop', label: 'Laptop-Lautsprecher', gains: [5, 5, 3, 0, -1, 1, 3, 2, 0, -1] },
+    { id: 'headphones', label: 'Kopfhörer', gains: [3, 2, 0, -1, 0, 1, 2, 2, 1, 0] },
+    { id: 'electronic', label: 'Elektronisch', gains: [4, 3, 1, -1, -2, 1, 2, 3, 3, 2] },
+    { id: 'acoustic', label: 'Akustik', gains: [1, 1, 0, 0, 2, 3, 3, 2, 1, 0] },
+  ];
+
+  function eqGains(values) {
+    return EQ_BANDS.map((_frequency, index) => {
+      const value = Number(values && values[index]);
+      return Number.isFinite(value) ? Math.max(-12, Math.min(12, Math.round(value))) : 0;
+    });
+  }
+
+  function loadEqualizer() {
+    const saved = readJSON(STORAGE.eq, {}) || {};
+    const custom = (Array.isArray(saved.custom) ? saved.custom : [])
+      .map((preset) => ({ name: String(preset && preset.name || '').trim().slice(0, 40), gains: eqGains(preset && preset.gains) }))
+      .filter((preset, index, all) => preset.name && all.findIndex((entry) => entry.name.toLowerCase() === preset.name.toLowerCase()) === index)
+      .slice(0, 10);
+    const preset = String(saved.preset || 'neutral');
+    const known = EQ_PRESETS.some((entry) => entry.id === preset) || (preset.startsWith('custom:') && custom.some((entry) => entry.name === preset.slice(7)));
+    return { enabled: Boolean(saved.enabled), preset: known ? preset : 'neutral', gains: eqGains(saved.gains), custom };
+  }
+
+  let eqState = loadEqualizer();
+
+  function persistEq() {
+    writeJSON(STORAGE.eq, { enabled: Boolean(eqState.enabled), preset: eqState.preset, gains: eqGains(eqState.gains), custom: eqState.custom.slice(0, 10) });
+  }
+
+  function selectEqPreset(id) {
+    const builtIn = EQ_PRESETS.find((entry) => entry.id === id);
+    const custom = id.startsWith('custom:') ? eqState.custom.find((entry) => entry.name === id.slice(7)) : null;
+    if (!builtIn && !custom && id !== 'custom') return;
+    eqState.preset = id;
+    if (builtIn) eqState.gains = builtIn.gains.slice();
+    else if (custom) eqState.gains = custom.gains.slice();
+    persistEq();
+    applyVolume();
+    drawEqCurve();
+    renderSettings();
+  }
+
+  async function chooseCustomBackground() {
+    const result = await bridge.liveBgPick();
+    if (!result || result.canceled) return;
+    if (result.error || !result.url) { toast(result.error || 'Hintergrunddatei konnte nicht geladen werden.'); return; }
+    customBg = { url: result.url, kind: result.kind === 'gif' ? 'gif' : 'video' };
+    state.settings.background = 'custom';
+    saveSettings();
+    applyBackground();
+    renderSettings();
+    toast('Eigenes Hintergrundvideo geladen.');
+  }
+
+  function setFullscreenBackground(mode) {
+    state.settings.fsBackground = ['cover-static', 'cover-moving', 'live', 'off'].includes(mode) ? mode : 'cover-moving';
+    saveSettings();
+    syncLiveBackground();
+    syncFullscreen();
+    renderSettings();
+  }
+
+  async function saveCustomEq() {
+    const answer = await askText({ title: 'Equalizer-Preset speichern', message: 'Name für dieses Preset (max. 40 Zeichen):', value: 'Mein Preset', confirm: 'Speichern' });
+    const name = String(answer || '').trim().replace(/[\r\n\0]/g, '').slice(0, 40);
+    if (!name) return;
+    const index = eqState.custom.findIndex((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    if (index < 0 && eqState.custom.length >= 10) {
+      toast('Es sind bereits 10 eigene Presets gespeichert.');
+      return;
+    }
+    const preset = { name, gains: eqGains(eqState.gains) };
+    if (index < 0) eqState.custom.push(preset);
+    else eqState.custom[index] = preset;
+    eqState.preset = `custom:${name}`;
+    persistEq();
+    renderSettings();
+    toast(`Equalizer-Preset „${name}“ gespeichert.`);
+  }
+
+  async function deleteCustomEq() {
+    if (!eqState.preset.startsWith('custom:')) return;
+    const name = eqState.preset.slice(7);
+    if (!(await askConfirm({ title: 'Eigenes Preset löschen?', message: `„${name}“ wird gelöscht.`, confirm: 'Löschen', danger: true }))) return;
+    eqState.custom = eqState.custom.filter((entry) => entry.name !== name);
+    eqState.preset = 'neutral';
+    eqState.gains = EQ_PRESETS[0].gains.slice();
+    persistEq();
+    applyVolume();
+    renderSettings();
+  }
+
+  function equalizerPanelHtml() {
+    const customSelected = eqState.preset.startsWith('custom:');
+    return `
+      <div class="panel eq-panel" id="eq-panel">
+        <h3>10-Band-Equalizer</h3>
+        <p class="muted small">Peaking-Filter mit Q 1,1 · ±12 dB. Die Filter verwenden dieselbe dauerhafte Audio-Kette wie Bass/Höhen.</p>
+        <label class="toggle-row">
+          <span><strong>Equalizer einschalten</strong><small>Schaltet die Web-Audio-Kette ein, ohne den Ton umzuleiten oder den AudioContext später zu pausieren.</small></span>
+          <input type="checkbox" id="opt-eq-enabled" ${eqState.enabled ? 'checked' : ''} />
+        </label>
+        <label class="eq-preset-row"><strong>Preset</strong><select id="opt-eq-preset" class="select-input">
+          ${EQ_PRESETS.map((preset) => `<option value="${preset.id}" ${eqState.preset === preset.id ? 'selected' : ''}>${esc(preset.label)}</option>`).join('')}
+          <option value="custom" ${eqState.preset === 'custom' ? 'selected' : ''}>Eigene Einstellung</option>
+          ${eqState.custom.map((preset) => `<option value="custom:${esc(preset.name)}" ${eqState.preset === `custom:${preset.name}` ? 'selected' : ''}>${esc(preset.name)}</option>`).join('')}
+        </select></label>
+        <div class="eq-advanced advanced-only">
+          <canvas id="eq-curve" height="128" aria-label="Equalizer-Kurve"></canvas>
+          <div class="eq-bands">${EQ_BANDS.map((frequency, index) => `<label><span>${frequency >= 1000 ? `${frequency / 1000}k` : frequency} Hz</span><input type="range" min="-12" max="12" step="1" data-eq-band="${index}" value="${eqState.gains[index]}" aria-label="Equalizer ${frequency} Hertz" /><output data-eq-value="${index}">${eqState.gains[index]} dB</output></label>`).join('')}</div>
+          <div class="row"><button class="btn ghost small" data-eq-action="save">Eigenes Preset speichern</button>${customSelected ? '<button class="btn ghost small danger" data-eq-action="delete">Preset löschen</button>' : ''}</div>
+        </div>
+      </div>`;
+  }
+
+  function drawEqCurve() {
+    const canvas = $('#eq-curve');
+    if (!canvas) return;
+    const width = Math.max(300, canvas.clientWidth || 600);
+    const height = 128;
+    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+    const ctx = canvas.getContext('2d');
+    const styles = getComputedStyle(document.documentElement);
+    const accent = styles.getPropertyValue('--accent').trim();
+    const muted = styles.getPropertyValue('--muted-2').trim();
+    ctx.clearRect(0, 0, width, height);
+    ctx.strokeStyle = muted;
+    ctx.globalAlpha = 0.35;
+    [-12, -6, 0, 6, 12].forEach((db) => {
+      const y = height / 2 - (db / 24) * (height - 18);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+    const xOf = (frequency) => ((Math.log(frequency) - Math.log(EQ_BANDS[0])) / (Math.log(EQ_BANDS[9]) - Math.log(EQ_BANDS[0]))) * width;
+    ctx.beginPath();
+    eqState.gains.forEach((gain, index) => {
+      const x = xOf(EQ_BANDS[index]);
+      const y = height / 2 - (gain / 24) * (height - 18);
+      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
   function loadVolume() {
     const stored = readJSON(STORAGE.level, null);
     if (stored && Number.isFinite(Number(stored.level))) {
@@ -6739,14 +7127,17 @@
             normalize: Boolean(state.settings.normalize),
             bass: Number(state.settings.bass) || 0,
             treble: Number(state.settings.treble) || 0,
+            eqEnabled: Boolean(eqState.enabled),
             want: Boolean(
               state.settings.normalize ||
                 state.settings.volumeBoost ||
                 Number(state.settings.bass) ||
-                Number(state.settings.treble)
+                Number(state.settings.treble) ||
+                eqState.enabled
             ),
           })
         : false;
+    if (viz && viz.setEq) viz.setEq(eqState.gains);
     if (engine) {
       // The engine applies the gain – the element itself stays at full level.
       audio.volume = 1;
@@ -7016,6 +7407,7 @@
     if (result && result.ok) {
       downloads[entry.id] = { path: result.path, at: Date.now() };
       writeJSON(STORAGE.downloads, downloads);
+      if (state.settings.downloads === 'cutting') addEntryToCutProject(entry, true);
       if (state.view === 'downloads') loadDownloads();
       toast(`${result.existed ? 'Schon vorhanden' : 'Gespeichert'}: ${result.name} – zum Schnittprogramm ziehen`);
     } else {
@@ -7096,6 +7488,96 @@
    * ---------------------------------------------------------------- */
 
   const CREATOR = window.CM_CREATOR || { tabs: [] };
+  const cutProjectData = readJSON(STORAGE.cutProjects, {}) || {};
+  const cutProjects = {
+    active: typeof cutProjectData.active === 'string' ? cutProjectData.active : null,
+    projects: (Array.isArray(cutProjectData.projects) ? cutProjectData.projects : []).filter((project) => project && typeof project.id === 'string').slice(0, 100).map((project) => ({
+      id: String(project.id).slice(0, 80),
+      name: String(project.name || 'Projekt').slice(0, 80),
+      created: Number(project.created) || Date.now(),
+      items: (Array.isArray(project.items) ? project.items : []).filter((item) => item && typeof item.key === 'string' && typeof item.credit === 'string').slice(0, 2000).map((item) => ({
+        key: String(item.key).slice(0, 240), title: String(item.title || '').slice(0, 200), artist: String(item.artist || '').slice(0, 200),
+        license: String(item.license || '').slice(0, 80), licenseUrl: String(item.licenseUrl || '').slice(0, 1000), credit: String(item.credit || '').slice(0, 2000),
+        source: String(item.source || '').slice(0, 80), url: String(item.url || '').slice(0, 1000),
+      })),
+    })),
+  };
+  if (cutProjects.active && !cutProjects.projects.some((project) => project.id === cutProjects.active)) cutProjects.active = null;
+
+  function persistCutProjects() {
+    writeJSON(STORAGE.cutProjects, cutProjects);
+  }
+
+  function activeCutProject() {
+    return cutProjects.projects.find((project) => project.id === cutProjects.active) || null;
+  }
+
+  function addEntryToCutProject(entry, silent = false) {
+    const project = activeCutProject();
+    if (!project || !entry) {
+      if (!silent && !project) toast('Wähle zuerst ein Cutting-Projekt.');
+      return false;
+    }
+    const key = String(entry.id || entry.url || `${entry.title}|${entry.artist}`);
+    if (project.items.some((item) => item.key === key)) {
+      if (!silent) toast('Dieser Titel ist schon im Projekt.');
+      return false;
+    }
+    project.items.push({
+      key,
+      title: String(entry.title || '').slice(0, 200),
+      artist: String(entry.artist || '').slice(0, 200),
+      license: String(entry.license || '').slice(0, 80),
+      licenseUrl: String(entry.licenseUrl || '').slice(0, 1000),
+      credit: String(entry.credit || '').slice(0, 2000),
+      source: String(entry.sourceLabel || entry.source || '').slice(0, 80),
+      url: String(entry.link || entry.url || '').slice(0, 1000),
+    });
+    persistCutProjects();
+    if (state.view === 'creator') renderCredits();
+    if (!silent) toast(`„${entry.title}“ zum Projekt „${project.name}“ hinzugefügt.`);
+    return true;
+  }
+
+  async function createCutProject() {
+    const answer = await askText({ title: 'Neues Cutting-Projekt', message: 'Name für dein Video-Projekt:', value: 'Mein Video-Projekt', confirm: 'Erstellen' });
+    const name = String(answer || '').trim().slice(0, 80);
+    if (!name) return;
+    const project = { id: uid(), name, created: Date.now(), items: [] };
+    cutProjects.projects.unshift(project);
+    cutProjects.active = project.id;
+    persistCutProjects();
+    renderCredits();
+  }
+
+  function projectCreditsText(project) {
+    if (!project) return '';
+    const groups = new Map();
+    const seen = new Set();
+    project.items.forEach((item) => {
+      const license = item.license || 'Lizenz nicht angegeben';
+      const credit = item.credit.trim() || `„${item.title}“${item.artist ? ` von ${item.artist}` : ''}${item.source ? ` (${item.source})` : ''}`;
+      const key = credit.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      if (!groups.has(license)) groups.set(license, []);
+      groups.get(license).push(credit);
+    });
+    return [
+      `Musik & Sounds – ${project.name}`,
+      '',
+      ...Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, 'de')).flatMap((license) => [license, ...groups.get(license), '']),
+      'Zusammengestellt mit CleanMusic',
+    ].join('\n').trim();
+  }
+
+  async function saveCutProjectCredits() {
+    const project = activeCutProject();
+    if (!project || !project.items.length || !bridge.projectCreditsSave) return;
+    const result = await bridge.projectCreditsSave({ name: project.name, folder: state.settings.downloadDir || state.downloadDefault || '', text: projectCreditsText(project) });
+    if (result && result.ok) toast(`Projekt-Credits gespeichert: ${result.name}`);
+    else toast(result && result.error || 'Credits konnten nicht gespeichert werden.');
+  }
 
   function creatorTabs() {
     return CREATOR.tabs.filter((tab) => tab.kind !== 'plugin' || searchPlugin());
@@ -7527,12 +8009,34 @@
     toast(ok ? `${state.credits.length} Credits kopiert – ab in die Videobeschreibung` : 'Kopieren fehlgeschlagen');
   }
 
+  function cutProjectPanelHtml() {
+    const project = activeCutProject();
+    const projects = cutProjects.projects;
+    return `
+      <section class="cut-projects-panel">
+        <div class="credits-head"><h3>Cutting-Projekte</h3><span class="credits-count">${projects.length}</span></div>
+        <div class="row">
+          <select id="cut-project-select" class="select-input" aria-label="Aktives Cutting-Projekt">
+            <option value="">Kein Projekt</option>
+            ${projects.map((entry) => `<option value="${esc(entry.id)}" ${entry.id === cutProjects.active ? 'selected' : ''}>${esc(entry.name)}</option>`).join('')}
+          </select>
+          <button class="btn ghost small" data-project-action="new">Neues Projekt</button>
+        </div>
+        ${project ? `<p class="muted small">${project.items.length} Titel/Sounds im Projekt · erfolgreiche „Nur Cutting“-Downloads werden automatisch ergänzt.</p>
+          ${project.items.length ? `<ol class="credits-list">${project.items.map((item, index) => `<li><div><strong>${esc(item.title)}</strong><span>${esc([item.artist, item.license].filter(Boolean).join(' · '))}</span></div><button class="icon-btn" data-project-remove="${index}" title="Aus Projekt entfernen">${ICONS.close}</button></li>`).join('')}</ol>
+            <div class="row"><button class="btn primary small" data-project-action="copy">Credits kopieren</button><button class="btn ghost small" data-project-action="save">Credits als .txt speichern</button><button class="btn ghost small danger" data-project-action="delete">Projekt löschen</button></div>`
+            : `<p class="credits-empty">Füge Titel im Cutter mit „Zum Projekt“ hinzu.</p><button class="btn ghost small danger" data-project-action="delete">Projekt löschen</button>`}`
+          : '<p class="credits-empty">Lege ein Projekt an, um Musik und Sounds für ein Video zu sammeln.</p>'}
+      </section>`;
+  }
+
   function renderCredits() {
     const host = $('#creator-credits');
     if (!host) return;
 
     const items = state.credits;
-    host.innerHTML = `
+    host.innerHTML = `${cutProjectPanelHtml()}
+      <section class="video-credits-panel">
       <div class="credits-head">
         <h3>Video-Credits</h3>
         <span class="credits-count">${items.length}</span>
@@ -7564,7 +8068,7 @@
             </div>`
           : '<p class="credits-empty">Noch leer.</p>'
       }
-      ${creatorDownloadsHtml()}`;
+      ${creatorDownloadsHtml()}</section>`;
   }
 
   /* ---------------------------------------------------------------- *
@@ -7582,6 +8086,7 @@
     if (!root || state.fullscreen) return;
 
     state.fullscreen = true;
+    syncLiveBackground();
     root.hidden = false;
     document.body.classList.add('fs-open');
     hideMenus();
@@ -7599,6 +8104,7 @@
   function closeFullscreen() {
     if (!state.fullscreen) return;
     state.fullscreen = false;
+    syncLiveBackground();
     $('#fullscreen').hidden = true;
     $('#fullscreen').classList.remove('idle');
     document.body.classList.remove('fs-open');
@@ -7685,6 +8191,12 @@
   function syncFullscreen() {
     if (!state.fullscreen) return;
 
+    const mode = ['cover-static', 'cover-moving', 'live', 'off'].includes(state.settings.fsBackground) ? state.settings.fsBackground : 'cover-moving';
+    const fullscreenRoot = $('#fullscreen');
+    ['cover-static', 'cover-moving', 'live', 'off'].forEach((name) => fullscreenRoot.classList.toggle(`fs-background-${name}`, name === mode));
+    const modeSelect = $('#fs-background-mode');
+    if (modeSelect) modeSelect.value = mode;
+
     const item = currentItem();
     $('#fs-title').textContent = item ? item.title : 'Nichts ausgewählt';
     $('#fs-artist').textContent = item ? item.artist || item.sourceLabel || '' : 'Wähl einen Titel, Sender oder Sound';
@@ -7698,12 +8210,19 @@
     const image = $('#fs-cover-img');
     const letter = $('#fs-cover-letter');
     const background = $('#fs-bg-img');
+    if (mode !== 'cover-moving' || !state.settings.bgMotion) background.style.filter = '';
+    const showCoverBackground = mode === 'cover-static' || mode === 'cover-moving';
     if (item && item.artwork) {
       image.src = item.artwork;
       image.hidden = false;
       letter.hidden = true;
-      background.src = item.artwork;
-      background.hidden = false;
+      if (showCoverBackground) {
+        background.src = item.artwork;
+        background.hidden = false;
+      } else {
+        background.removeAttribute('src');
+        background.hidden = true;
+      }
     } else {
       image.removeAttribute('src');
       image.hidden = true;
@@ -7864,8 +8383,15 @@
   function setVisualizerEnabled(enabled) {
     state.settings.visualizer = Boolean(enabled);
     saveSettings();
-    window.CMVisualizer.setEnabled(state.settings.visualizer);
+    syncVisualizerEngine();
     applyVisualizerVisibility();
+  }
+
+  function syncVisualizerEngine() {
+    const viz = window.CMVisualizer;
+    const motionAllowed = state.settings.bgMotion !== false && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const pulseAnalyzer = Boolean(state.settings.bgPulse && motionAllowed && !document.hidden);
+    if (viz && viz.setEnabled) viz.setEnabled(Boolean(state.settings.visualizer || pulseAnalyzer));
   }
 
   function applyVisualizerVisibility() {
@@ -8385,23 +8911,53 @@
     'systemBrowser',
   ];
 
+  let autoBackup = Object.assign({ enabled: false, folder: '', lastAt: 0, status: '' }, readJSON(STORAGE.autoBackup, {}) || {});
+  if (autoBackup.lastAt && !autoBackup.status) autoBackup.status = `Letztes Backup: ${new Date(autoBackup.lastAt).toLocaleString('de-DE')}`;
+  let autoBackupBusy = false;
+  let autoBackupTimer = null;
+
+  function backupPayload() {
+    const settings = {};
+    BACKUP_SETTINGS.forEach((key) => { settings[key] = state.settings[key]; });
+    return {
+      app: 'CleanMusic', kind: 'backup', format: 1,
+      version: (state.info && state.info.version) || '', exportedAt: new Date().toISOString(),
+      collection: state.collection, credits: state.credits, history, settings,
+    };
+  }
+
+  function persistAutoBackup() {
+    writeJSON(STORAGE.autoBackup, { enabled: Boolean(autoBackup.enabled), folder: String(autoBackup.folder || ''), lastAt: Number(autoBackup.lastAt) || 0 });
+  }
+
+  async function runAutoBackupIfDue(force = false) {
+    if (autoBackupBusy || !autoBackup.enabled || !autoBackup.folder || (state.info && state.info.smoke)) return;
+    if (!force && autoBackup.lastAt && Date.now() - autoBackup.lastAt < 7 * 24 * 60 * 60 * 1000) return;
+    autoBackupBusy = true;
+    try {
+      const result = await bridge.backupAutoSave({ folder: autoBackup.folder, text: JSON.stringify(backupPayload(), null, 2) });
+      if (result && result.ok) {
+        autoBackup.lastAt = Date.now();
+        autoBackup.status = `Letztes Backup: ${new Date(autoBackup.lastAt).toLocaleString('de-DE')}`;
+        persistAutoBackup();
+      } else autoBackup.status = result && result.error || 'Automatisches Backup fehlgeschlagen.';
+    } catch (error) {
+      autoBackup.status = error.message || 'Automatisches Backup fehlgeschlagen.';
+    } finally {
+      autoBackupBusy = false;
+      if (state.view === 'settings') renderSettings();
+    }
+  }
+
+  function startAutoBackupSchedule() {
+    clearInterval(autoBackupTimer);
+    autoBackupTimer = setInterval(() => runAutoBackupIfDue(), 6 * 60 * 60 * 1000);
+    runAutoBackupIfDue();
+  }
+
   async function exportBackup() {
     if (!bridge.backupSave) return;
-    const settings = {};
-    BACKUP_SETTINGS.forEach((key) => {
-      settings[key] = state.settings[key];
-    });
-    const data = {
-      app: 'CleanMusic',
-      kind: 'backup',
-      format: 1,
-      version: (state.info && state.info.version) || '',
-      exportedAt: new Date().toISOString(),
-      collection: state.collection,
-      credits: state.credits,
-      history,
-      settings,
-    };
+    const data = backupPayload();
     const result = await bridge.backupSave(JSON.stringify(data, null, 2));
     if (result && result.ok) toast('Gesichert: ' + result.path);
     else if (result && result.error) toast('Sichern fehlgeschlagen: ' + result.error);
@@ -9432,6 +9988,7 @@
               <button class="radio-tag" data-tone-preset="4,3">Laptop-Lautsprecher</button>
             </div>
           </div>
+          ${equalizerPanelHtml()}
         </div>
 
         ${themePanel()}
@@ -9512,6 +10069,15 @@ ${updatePanel()}
             <button class="btn primary small" data-backup="export">Daten sichern …</button>
             <button class="btn ghost small" data-backup="import">Backup wiederherstellen …</button>
           </div>
+          <label class="toggle-row" style="margin-top:14px">
+            <span><strong>Backup automatisch speichern</strong><small>Wöchentlich ein JSON im gewählten Ordner; maximal die letzten fünf CleanMusic-Backups bleiben erhalten.</small></span>
+            <input type="checkbox" id="opt-auto-backup" ${autoBackup.enabled ? 'checked' : ''} />
+          </label>
+          <div class="row" style="margin-top:8px">
+            <span class="muted small">${esc(autoBackup.folder || 'Kein Ordner gewählt')}</span>
+            <button class="btn ghost small" data-backup="folder">Ordner wählen …</button>
+          </div>
+          ${autoBackup.status ? `<p class="muted small">${esc(autoBackup.status)}</p>` : ''}
         </div>
 
         <div class="panel">
@@ -9533,6 +10099,7 @@ ${updatePanel()}
           eine Freigabe.
         </div>
       </div>`;
+    drawEqCurve();
   }
 
   /* ---------------------------------------------------------------- *
@@ -9814,6 +10381,9 @@ ${updatePanel()}
         return;
       case 'credit':
         collectCredit(entry);
+        return;
+      case 'project':
+        addEntryToCutProject(entry);
         return;
       case 'download':
         downloadEntry(entry);
@@ -10156,6 +10726,13 @@ ${updatePanel()}
     });
 
     $('#view-settings').addEventListener('click', async (event) => {
+      const eqAction = event.target.closest('[data-eq-action]');
+      if (eqAction) {
+        if (eqAction.dataset.eqAction === 'save') await saveCustomEq();
+        else if (eqAction.dataset.eqAction === 'delete') await deleteCustomEq();
+        return;
+      }
+
       if (event.target.closest('#btn-musickit')) {
         bridge.openMusickit();
         return;
@@ -10246,7 +10823,17 @@ ${updatePanel()}
       const backup = event.target.closest('[data-backup]');
       if (backup) {
         if (backup.dataset.backup === 'export') exportBackup();
-        else importBackup();
+        else if (backup.dataset.backup === 'import') importBackup();
+        else if (backup.dataset.backup === 'folder') {
+          const folder = await bridge.backupFolderPick();
+          if (folder) {
+            autoBackup.folder = folder;
+            autoBackup.lastAt = 0;
+            persistAutoBackup();
+            renderSettings();
+            if (autoBackup.enabled) runAutoBackupIfDue();
+          }
+        }
         return;
       }
 
@@ -10350,6 +10937,17 @@ ${updatePanel()}
     $('#view-settings').addEventListener('input', (event) => {
       if (event.target.id === 'opt-bass') setTone(Number(event.target.value), undefined);
       else if (event.target.id === 'opt-treble') setTone(undefined, Number(event.target.value));
+      const band = event.target.closest('[data-eq-band]');
+      if (band) {
+        const index = Number(band.dataset.eqBand);
+        eqState.gains[index] = Math.max(-12, Math.min(12, Number(band.value) || 0));
+        if (EQ_PRESETS.some((preset) => preset.id === eqState.preset)) eqState.preset = 'custom';
+        const label = $(`[data-eq-value="${index}"]`);
+        if (label) label.textContent = `${eqState.gains[index]} dB`;
+        persistEq();
+        applyVolume();
+        drawEqCurve();
+      }
     });
 
     $('#view-settings').addEventListener('change', async (event) => {
@@ -10358,6 +10956,37 @@ ${updatePanel()}
         saveSettings();
         updateStatusChips();
         toast(event.target.checked ? 'Dienste öffnen im System-Browser' : 'Dienste öffnen eingebettet');
+        return;
+      }
+
+      if (event.target.id === 'opt-eq-enabled') {
+        eqState.enabled = event.target.checked;
+        persistEq();
+        applyVolume();
+        syncDiagnosticState();
+        toast(eqState.enabled ? '10-Band-Equalizer eingeschaltet.' : 'Equalizer ausgeschaltet.');
+        renderSettings();
+        return;
+      }
+
+      if (event.target.id === 'opt-auto-backup') {
+        autoBackup.enabled = event.target.checked;
+        persistAutoBackup();
+        if (autoBackup.enabled && !autoBackup.folder) {
+          event.target.checked = false;
+          autoBackup.enabled = false;
+          persistAutoBackup();
+          toast('Wähle zuerst einen Backup-Ordner.');
+        } else if (autoBackup.enabled) {
+          runAutoBackupIfDue(true);
+          toast('Wöchentliches Backup eingeschaltet.');
+        } else toast('Automatisches Backup ausgeschaltet.');
+        renderSettings();
+        return;
+      }
+
+      if (event.target.id === 'opt-eq-preset') {
+        selectEqPreset(event.target.value);
         return;
       }
 
@@ -10398,7 +11027,50 @@ ${updatePanel()}
       if (event.target.id === 'opt-bg-motion') {
         state.settings.bgMotion = event.target.checked;
         saveSettings();
+        syncVisualizerEngine();
         applyBackground();
+        return;
+      }
+
+      if (event.target.id === 'opt-bg-pulse') {
+        state.settings.bgPulse = event.target.checked;
+        saveSettings();
+        syncVisualizerEngine();
+        syncLiveBackground();
+        if (!state.settings.bgPulse && window.CMLiveBackground) window.CMLiveBackground.setBeat(0);
+        return;
+      }
+
+      if (event.target.id === 'opt-bg-battery') {
+        state.settings.bgBatteryStop = event.target.checked;
+        saveSettings();
+        syncLiveBackground();
+        return;
+      }
+
+      if (event.target.id === 'opt-fs-background') {
+        setFullscreenBackground(event.target.value);
+        return;
+      }
+
+      if (event.target.id === 'opt-bg-pulse') {
+        state.settings.bgPulse = event.target.checked;
+        saveSettings();
+        syncVisualizerEngine();
+        syncLiveBackground();
+        if (!state.settings.bgPulse && window.CMLiveBackground) window.CMLiveBackground.setBeat(0);
+        return;
+      }
+
+      if (event.target.id === 'opt-bg-battery') {
+        state.settings.bgBatteryStop = event.target.checked;
+        saveSettings();
+        syncLiveBackground();
+        return;
+      }
+
+      if (event.target.id === 'opt-fs-background') {
+        setFullscreenBackground(event.target.value);
         return;
       }
 
@@ -10585,7 +11257,39 @@ ${updatePanel()}
     });
 
     // Cutter mode
-    $('#view-creator').addEventListener('click', (event) => {
+    $('#view-creator').addEventListener('click', async (event) => {
+      const projectRemove = event.target.closest('[data-project-remove]');
+      if (projectRemove) {
+        const project = activeCutProject();
+        if (project) {
+          project.items.splice(Number(projectRemove.dataset.projectRemove), 1);
+          persistCutProjects();
+          renderCredits();
+        }
+        return;
+      }
+      const projectAction = event.target.closest('[data-project-action]');
+      if (projectAction) {
+        const project = activeCutProject();
+        switch (projectAction.dataset.projectAction) {
+          case 'new': await createCutProject(); return;
+          case 'copy': {
+            if (!project) return;
+            const ok = await bridge.copyText(projectCreditsText(project));
+            toast(ok ? 'Projekt-Credits kopiert.' : 'Kopieren fehlgeschlagen.');
+            return;
+          }
+          case 'save': await saveCutProjectCredits(); return;
+          case 'delete':
+            if (!project || !(await askConfirm({ title: 'Projekt löschen?', message: `„${project.name}“ und seine gesammelten Credits werden entfernt.`, confirm: 'Löschen', danger: true }))) return;
+            cutProjects.projects = cutProjects.projects.filter((entry) => entry.id !== project.id);
+            cutProjects.active = null;
+            persistCutProjects();
+            renderCredits();
+            return;
+          default: return;
+        }
+      }
       const creatorService = event.target.closest('[data-creator-service]');
       if (creatorService) {
         openService(creatorService.dataset.creatorService);
@@ -10670,12 +11374,22 @@ ${updatePanel()}
       }
     });
 
+    $('#view-creator').addEventListener('change', (event) => {
+      if (event.target.id !== 'cut-project-select') return;
+      cutProjects.active = event.target.value || null;
+      persistCutProjects();
+      renderCredits();
+    });
+
     // Fullscreen player
     $('#btn-fullscreen').addEventListener('click', () => toggleFullscreen());
     $('#np-art').addEventListener('dblclick', () => openFullscreen());
 
     const fullscreen = $('#fullscreen');
     fullscreen.addEventListener('mousemove', fsActivity);
+    fullscreen.addEventListener('change', (event) => {
+      if (event.target.id === 'fs-background-mode') setFullscreenBackground(event.target.value);
+    });
     fullscreen.addEventListener('click', (event) => {
       fsActivity();
 
@@ -10862,11 +11576,25 @@ ${updatePanel()}
     viz.attach(audio);
     viz.register($('#mini-viz'), { mini: true });
     viz.register($('#fs-viz'), { style: state.settings.vizStyle, anchor: $('#fs-cover') });
+    let lastBackgroundPulse = 0;
     viz.onFrame((energy) => {
-      if (!state.fullscreen) return;
-      $('#fs-cover').style.setProperty('--beat', energy.toFixed(3));
+      const motionAllowed = state.settings.bgMotion !== false && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (state.fullscreen) {
+        $('#fs-cover').style.setProperty('--beat', motionAllowed ? energy.toFixed(3) : '0');
+        const backdrop = $('#fs-bg-img');
+        if (backdrop && state.settings.fsBackground === 'cover-moving' && motionAllowed) {
+          const pulse = Math.max(0, Math.min(1, energy));
+          backdrop.style.filter = `blur(80px) saturate(${1.7 + pulse * 0.12}) brightness(${0.42 + pulse * 0.06}) hue-rotate(${pulse * 8}deg)`;
+        } else if (backdrop) backdrop.style.filter = '';
+      }
+      const now = performance.now();
+      if (now - lastBackgroundPulse < 1000 / 30) return;
+      lastBackgroundPulse = now;
+      const beat = motionAllowed && state.settings.bgPulse && !audio.paused && viz.level ? viz.level() : 0;
+      if (window.CMLiveBackground) window.CMLiveBackground.setBeat(beat);
     });
-    viz.setEnabled(state.settings.visualizer);
+    syncVisualizerEngine();
+    document.addEventListener('visibilitychange', syncVisualizerEngine);
     applyVisualizerVisibility();
     applyVolume();
     syncDiagnosticState();
@@ -10913,11 +11641,21 @@ ${updatePanel()}
       bridge.taskbarGet().catch(() => null),
       bridge.shortcutsGet().catch(() => null),
       bridge.loginGet().catch(() => null),
-    ]).then(([remote, taskbar, shortcuts, login]) => {
+      bridge.liveBgGet().catch(() => null),
+    ]).then(([remote, taskbar, shortcuts, login, liveBg]) => {
       if (remote) state.remote = remote;
       if (taskbar) state.taskbarProgress = Boolean(taskbar.progress);
       if (shortcuts) state.globalShortcuts = Object.assign(state.globalShortcuts, shortcuts);
       if (login) state.startOnLogin = Boolean(login.enabled);
+      if (liveBg) {
+        customBg = { url: liveBg.url || '', kind: liveBg.kind || '' };
+        if (liveBg.missing && state.settings.background === 'custom') {
+          state.settings.background = 'none';
+          saveSettings();
+          applyBackground();
+          toast('Das gespeicherte Hintergrundvideo fehlt. Hintergrund auf „Keiner“ zurückgesetzt.');
+        } else if (state.settings.background === 'custom') applyBackground();
+      }
       renderSettings();
     });
 
@@ -10953,6 +11691,7 @@ ${updatePanel()}
         renderSettings();
         updateStatusChips();
         startupGuide();
+        startAutoBackupSchedule();
       })
       .catch(() => {});
 
@@ -11237,6 +11976,29 @@ ${updatePanel()}
         expected: 44 + 11025 * 2 * 2,
       };
     },
+    wavEffectsTest: () => {
+      const buffer = new AudioBuffer({ length: 44100, sampleRate: 44100, numberOfChannels: 1 });
+      const samples = buffer.getChannelData(0);
+      for (let index = 0; index < samples.length; index += 1) samples[index] = 0.2 + 0.3 * Math.sin(index / 29);
+      const bytes = wavBytes(buffer, 0, 1, { fadeIn: 0.1, fadeOut: 0.1, normalize: true, loop: true, loopMs: 200 });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      let peak = 0;
+      for (let offset = 44; offset < bytes.length; offset += 2) peak = Math.max(peak, Math.abs(view.getInt16(offset, true)) / 32768);
+      return { riff: String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF', bytes: bytes.length, fadeStart: view.getInt16(44, true), fadeEnd: view.getInt16(bytes.length - 2, true), peak: Number(peak.toFixed(3)) };
+    },
+    equalizerState: () => ({ enabled: eqState.enabled, preset: eqState.preset, gains: eqState.gains.slice(), custom: eqState.custom.length }),
+    cutProjectSmoke: () => {
+      const before = JSON.parse(JSON.stringify(cutProjects));
+      cutProjects.projects = [{ id: 'smoke-project', name: 'Smoke Video', created: Date.now(), items: [] }];
+      cutProjects.active = 'smoke-project';
+      addEntryToCutProject({ id: 'smoke-a', title: 'Smoke Song', artist: 'Smoke Artist', license: 'CC BY 4.0', credit: 'Smoke Artist – Smoke Song (CC BY 4.0)' }, true);
+      addEntryToCutProject({ id: 'smoke-b', title: 'Smoke Song', artist: 'Smoke Artist', license: 'CC BY 4.0', credit: 'Smoke Artist – Smoke Song (CC BY 4.0)' }, true);
+      const project = activeCutProject();
+      const text = projectCreditsText(project);
+      cutProjects.active = before.active;
+      cutProjects.projects = before.projects;
+      return { count: project.items.length, deduped: (text.match(/Smoke Artist – Smoke Song/g) || []).length === 1, text };
+    },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),
     artistPage: () => {
@@ -11251,6 +12013,31 @@ ${updatePanel()}
       };
     },
     setBackground: (id) => setBackground(id),
+    setFsBackground: (mode) => setFullscreenBackground(mode),
+    liveBg: () => window.CMLiveBackground ? window.CMLiveBackground.state() : null,
+    liveBgRenderTest: (id) => window.CMLiveBackground ? window.CMLiveBackground.renderTestFrame(id) : null,
+    setBgMotion: (on) => { state.settings.bgMotion = Boolean(on); saveSettings(); syncVisualizerEngine(); applyBackground(); },
+    setBgPulse: (on) => { state.settings.bgPulse = Boolean(on); saveSettings(); syncVisualizerEngine(); syncLiveBackground(); },
+    setBgBatteryStop: (on) => { state.settings.bgBatteryStop = Boolean(on); saveSettings(); syncLiveBackground(); },
+    reviewImageTest: (format) => reviewImageDataUrl(format || 'story'),
+    equalizerTest: async () => {
+      const previous = { enabled: eqState.enabled, preset: eqState.preset, gains: eqState.gains.slice() };
+      const gains = [5, 4, 3, 2, 1, 0, -1, -2, -3, -4];
+      eqState.enabled = true;
+      eqState.gains = gains.slice();
+      applyVolume();
+      if (window.CMVisualizer.setEq) window.CMVisualizer.setEq(gains);
+      await new Promise((resolve) => setTimeout(resolve, 140));
+      const actual = window.CMVisualizer.engineState();
+      eqState.enabled = previous.enabled;
+      eqState.preset = previous.preset;
+      eqState.gains = previous.gains;
+      applyVolume();
+      return { enabled: Boolean(actual), bands: actual && actual.eq ? actual.eq.length : 0, matches: Boolean(actual && actual.eq && actual.eq.length === 10 && Math.abs(actual.eq[0] - 5) < 0.2 && Math.abs(actual.eq[9] + 4) < 0.2) };
+    },
+    projectState: () => ({ active: activeCutProject() ? activeCutProject().name : null, projects: cutProjects.projects.length, items: activeCutProject() ? activeCutProject().items.length : 0 }),
+    projectText: (project) => projectCreditsText(project || activeCutProject()),
+    reviewImageTest: (format) => reviewImageDataUrl(format || 'story'),
     setStreamSafe: (on) => setStreamSafe(on),
     creatorForYou: (filter) => creatorForYou(filter || 'mix'),
     guessMood: (entry) => guessMood(entry || {}),

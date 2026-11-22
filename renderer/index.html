@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' file: https: http:; connect-src 'self'; object-src 'none';"
+    content="default-src 'self'; img-src 'self' data: https: file:; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' file: https: http:; connect-src 'self'; object-src 'none';"
   />
   <title>CleanMusic</title>
   <link rel="icon" href="assets/logo-small.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="app-bg" aria-hidden="true"></div>
+  <div id="app-bg" aria-hidden="true"><canvas id="live-bg-canvas"></canvas><video id="live-bg-video" muted loop playsinline disablepictureinpicture></video><img id="live-bg-gif" alt="" /></div>
   <div id="app">
     <header id="topbar">
       <div class="brand">
@@ -226,6 +226,7 @@
 
   <div id="fullscreen" class="fs" hidden>
     <div class="fs-bg" aria-hidden="true">
+      <canvas id="fs-live-bg-canvas"></canvas>
       <img id="fs-bg-img" alt="" hidden />
       <div class="fs-glow"></div>
     </div>
@@ -234,6 +235,12 @@
     <header class="fs-top">
       <div class="fs-brand"><img class="logo" src="assets/logo-small.svg" alt="" draggable="false" /> CleanMusic</div>
       <div class="fs-top-actions">
+        <select id="fs-background-mode" class="fs-bg-select" aria-label="Vollbild-Hintergrund">
+          <option value="cover-static">Cover ruhig</option>
+          <option value="cover-moving">Cover bewegt</option>
+          <option value="live">Live-Hintergrund</option>
+          <option value="off">Hintergrund aus</option>
+        </select>
         <div class="fs-styles" id="fs-styles">
           <button data-fs-style="radial">Kreis</button>
           <button data-fs-style="bars">Balken</button>
@@ -341,6 +348,7 @@
   <script src="themes.js"></script>
   <script src="creator-data.js"></script>
   <script src="visualizer.js"></script>
+  <script src="live-bg.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

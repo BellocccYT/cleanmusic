@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.12.0**
+**Version 1.13.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -381,6 +381,26 @@ Unter **Radio** findest du tausende öffentliche Sender über die
 - Cover, Artist und Quellen-Badge im „Now Playing" (z. B. *30 s Vorschau*,
   *Voll · Quelle des Plugins*, *Radio · LIVE*)
 - ♥ und + für den laufenden Titel direkt im Player
+
+## Neu in 1.13: Klang, Creator & Live-Hintergründe
+
+- **10-Band-Equalizer** mit Neutral, Bass-Boost, Stimme/Podcast, Hell, Warm, Laptop,
+  Kopfhörer, Elektronisch und Akustik sowie bis zu zehn eigenen Presets. Die vorhandenen
+  Bass-/Höhen-Regler bleiben erhalten.
+- **Cutter-Projekte** sammeln Titel und Credits für ein Video. Erfolgreiche „Nur Cutting“-Downloads
+  werden dem aktiven Projekt hinzugefügt; Credits lassen sich nach Lizenz sortiert kopieren oder
+  als `.txt` im Unterordner `_Projekte` des Cutting-Ordners speichern.
+- **WAV-Ausschnitte** können Fade-in/Fade-out, Normalisierung auf −1 dBFS und einen Loop-Übergang
+  erhalten. Bei CC BY nennt die Credit-Datei die gewählten Änderungen.
+- **Dein Rückblick als Bild:** Story (1080×1920) oder Post (1080×1080), speichern oder kopieren.
+  Das Bild enthält Theme-Farben und Top-Listen, aber keine Cover.
+- **Wöchentliche automatische Backups** sind optional und gehen in einen selbst gewählten Ordner.
+  CleanMusic behält dort höchstens fünf eigene `cleanmusic-backup-*.json`-Dateien; kein Konto,
+  keine Cloud-Synchronisierung.
+- **Live-Hintergründe:** Lava-Lampe, Wellen, Synthwave-Gitter, Partikel-Nebel und Regen auf Glas.
+  Optional ein eigenes MP4/WebM/GIF (max. 300 MB); es bleibt am ursprünglichen Speicherort, wird
+  stumm abgespielt und nie in die Musik-Audio-Kette geleitet. Animationen pausieren im Hintergrund,
+  bei „Bewegung aus“, `prefers-reduced-motion` und optional im Akkubetrieb.
 
 ### Handy-Fernbedienung, Mini-Player & Windows
 
