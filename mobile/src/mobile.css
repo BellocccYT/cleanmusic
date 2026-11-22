@@ -1,0 +1,310 @@
+/* ------------------------------------------------------------------ *
+ * CleanMusic Mobile – Android-Prototyp (Phase 1, Etappe 1)
+ * Wird nur in mobile/www eingesetzt. Desktop-Dateien bleiben unberührt.
+ * ------------------------------------------------------------------ */
+
+html[data-mobile] {
+  --topbar-h: 52px;
+  --player-h: 108px;
+  --sidebar-w: 0px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html[data-mobile] body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Keine Desktop-Bereiche auf dem Handy ------------------------------ */
+
+html[data-mobile] [data-view="creator"],
+html[data-mobile] [data-view="downloads"],
+html[data-mobile] [data-view="local"],
+html[data-mobile] #creator-nav,
+html[data-mobile] .creator-label,
+html[data-mobile] #service-nav,
+html[data-mobile] #btn-mini,
+html[data-mobile] #btn-open-external,
+html[data-mobile] #btn-spotify-import,
+html[data-mobile] #update-card,
+html[data-mobile] #whatsnew-card,
+html[data-mobile] #status-row,
+html[data-mobile] #service-host,
+html[data-mobile] #service-banner,
+html[data-mobile] #plugins-panel,
+html[data-mobile] #downloads-panel,
+html[data-mobile] #discord-panel,
+html[data-mobile] #remote-panel,
+html[data-mobile] #update-panel,
+html[data-mobile] #backup-panel,
+html[data-mobile] #btn-musickit-search,
+html[data-mobile] #view-search .page > .panel {
+  display: none !important;
+}
+
+/* Leere Desktop-Startbereiche (Charts/Vorschläge) auf dem Handy ausblenden. */
+html[data-mobile] #view-home .home-section:has(#home-recs),
+html[data-mobile] #view-home .home-section:has(#home-charts),
+html[data-mobile] #home-rediscover-section {
+  display: none !important;
+}
+
+html[data-mobile] #view-home [data-home-action="creator"],
+html[data-mobile] #view-home [data-home-action="add-folder"],
+html[data-mobile] #view-home [data-home-action="musickit"],
+html[data-mobile] #view-home kbd {
+  display: none !important;
+}
+
+/* Nur Desktop: System-Browser, Infobereich, Taskleiste, MusicKit,
+   globale Kürzel und Desktop-Assistent. */
+html[data-mobile] #view-settings .panel:has(#btn-musickit),
+html[data-mobile] #view-settings label:has(#opt-system),
+html[data-mobile] #view-settings label:has(#opt-tray),
+html[data-mobile] #view-settings label:has(#opt-taskbar),
+html[data-mobile] #view-settings label:has(#opt-global-shortcuts),
+html[data-mobile] #view-settings [data-onboarding="open"],
+html[data-mobile] #view-settings [data-shortcuts="open"] {
+  display: none !important;
+}
+
+/* Grundraster: oben Kopf, darunter Navigation, Inhalt, Player --------- */
+
+html[data-mobile] #app {
+  height: 100dvh;
+  min-height: 100dvh;
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  padding-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "topbar"
+    "sidebar"
+    "content"
+    "player";
+}
+
+html[data-mobile] #topbar {
+  padding: 0 12px;
+  gap: 10px;
+  min-height: 52px;
+  -webkit-app-region: no-drag;
+}
+
+html[data-mobile] .brand-sub,
+html[data-mobile] .search-wrap kbd,
+html[data-mobile] #topbar .topbar-actions {
+  display: none;
+}
+
+html[data-mobile] .brand-name {
+  font-size: 14px;
+}
+
+html[data-mobile] .search-wrap {
+  height: 38px;
+  max-width: none;
+  margin: 0;
+  border-radius: 12px;
+}
+
+html[data-mobile] #global-search {
+  font-size: 16px; /* verhindert Auto-Zoom in mobilen WebViews */
+}
+
+/* Navigation als waagerechte Leiste -------------------------------- */
+
+html[data-mobile] #sidebar {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-right: 0;
+  border-bottom: 1px solid var(--border-soft);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+html[data-mobile] #sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+html[data-mobile] #sidebar .nav-group {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+html[data-mobile] #sidebar .nav-group.grow {
+  flex: 0 0 auto;
+}
+
+html[data-mobile] #sidebar .nav-label,
+html[data-mobile] #sidebar .legal {
+  display: none;
+}
+
+html[data-mobile] #sidebar .nav-item {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  min-height: 38px;
+  white-space: nowrap;
+  border-radius: 10px;
+}
+
+html[data-mobile] #sidebar .nav-item .svc-name {
+  max-width: 150px;
+}
+
+html[data-mobile] #sidebar .sidebar-footer {
+  flex-direction: row;
+  padding: 0;
+  border-top: 0;
+  margin-left: 0;
+}
+
+/* Einstellungen direkt nach Start, vor der langen Bibliotheksliste. */
+html[data-mobile] #sidebar > .nav-group:first-child { order: 1; }
+html[data-mobile] #sidebar .sidebar-footer { order: 2; }
+html[data-mobile] #sidebar > .nav-group:nth-child(2) { order: 3; }
+html[data-mobile] #sidebar > .nav-group.grow { order: 4; }
+
+html[data-mobile] #playlist-nav {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+}
+
+/* Inhalt ------------------------------------------------------------ */
+
+html[data-mobile] .view {
+  padding: 14px 12px 18px;
+  -webkit-overflow-scrolling: touch;
+}
+
+html[data-mobile] .page {
+  gap: 16px;
+}
+
+html[data-mobile] .page-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+html[data-mobile] .page-head h2,
+html[data-mobile] .hero h1 {
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+html[data-mobile] .page-head p,
+html[data-mobile] .hero p {
+  font-size: 13px;
+}
+
+html[data-mobile] .page-actions,
+html[data-mobile] .row {
+  flex-wrap: wrap;
+}
+
+html[data-mobile] .btn,
+html[data-mobile] .radio-tag,
+html[data-mobile] .link-btn {
+  min-height: 36px;
+}
+
+html[data-mobile] .radio-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+/* Player-Leiste: kompakt und fingerfreundlich ----------------------- */
+
+html[data-mobile] #playerbar {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 8px 12px calc(8px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  border-top: 1px solid var(--border);
+  background: rgba(var(--bg-rgb), 0.97);
+}
+
+html[data-mobile] #playerbar .np {
+  width: 100%;
+}
+
+html[data-mobile] #playerbar .np-art {
+  width: 40px;
+  height: 40px;
+}
+
+html[data-mobile] #playerbar .controls {
+  width: 100%;
+  gap: 2px;
+}
+
+html[data-mobile] #playerbar .right-controls,
+html[data-mobile] #playerbar #btn-shuffle,
+html[data-mobile] #playerbar #btn-repeat {
+  display: none;
+}
+
+html[data-mobile] #playerbar .buttons {
+  gap: 14px;
+}
+
+html[data-mobile] #playerbar .buttons .icon-btn {
+  width: 38px;
+  height: 38px;
+}
+
+html[data-mobile] #playerbar .buttons .icon-btn.play {
+  width: 46px;
+  height: 46px;
+}
+
+html[data-mobile] #playerbar .seek-row {
+  width: 100%;
+}
+
+html[data-mobile] #playerbar .np-actions {
+  gap: 2px;
+}
+
+/* Vollbild-Player: etwas mehr Rand, große Ziele ---------------------- */
+
+html[data-mobile] .fs-top {
+  padding: 12px 14px;
+}
+
+html[data-mobile] .fs-controls .buttons {
+  gap: 16px;
+}
+
+html[data-mobile] .fs-lyrics {
+  font-size: 20px;
+}
+
+/* Einstellungen: Panels und Formulare ohne Überlauf ------------------ */
+
+html[data-mobile] .panel {
+  padding: 14px;
+}
+
+html[data-mobile] .setting-line,
+html[data-mobile] .toggle-row {
+  gap: 10px;
+}
+
+html[data-mobile] input[type="text"],
+html[data-mobile] input[type="search"],
+html[data-mobile] select,
+html[data-mobile] .select-input {
+  font-size: 16px;
+}
+
+html[data-mobile] .eq-bands {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}

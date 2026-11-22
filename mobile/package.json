@@ -1,0 +1,20 @@
+{
+  "name": "cleanmusic-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CleanMusic für Android – Prototyp (Phase 1, Etappe 1)",
+  "license": "MIT",
+  "scripts": {
+    "build:web": "node scripts/build-web.js",
+    "sync": "npm run build:web && cap sync android",
+    "build:apk": "npm run sync && cd android && gradlew.bat assembleDebug",
+    "clean": "node scripts/clean.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2"
+  }
+}

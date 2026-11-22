@@ -25,6 +25,8 @@ und der Mini-Visualizer-Fix für die optionale Audio-Kette. Englisch liegt auf 1
 
 1.13.1: Leistungsprofil im Vollbild (`PERFORMANCE_PROFILES` in `renderer/app.js`: Sparmodus 15 fps / Ausgewogen 24 fps Standard / Qualität max. 30 fps), `html[data-perf]` drosselt CSS-Blur/Blend, `CMVisualizer.setPerformance()` begrenzt Zeichenrate, interne Auflösung, Partikel und Schatten, `renderer/live-bg.js` übernimmt fps/Auflösung/Detail. `fsVisualizer` schaltet nur den großen Visualizer ab; Mini-Visualizer bleibt separat. Smoke `SMOKE_PERF`. Keine Änderung an Audio-Kette, `setOutput` oder `audio.volume`.
 
+Mobile-Prototyp (Phase 1, Etappe 1, eigenes Projekt außerhalb der Desktop-Releases): `mobile/` ist ein Capacitor-Projekt für Android (`de.cleanmusic.mobile`, `mobile-1.0.0`). Der Build kopiert `renderer/` nach `mobile/www`; `mobile/src/native.js` ergänzt `window.cm` mit Katalogsuche (Apple/Deezer-Vorschauen) und Radio über `CapacitorHttp` und denselben Allowlists wie `main.js` (`itunes.apple.com/search`, `api.deezer.com/search`, `de1.api.radio-browser.info/json/stations/search`). Hintergrund-Wiedergabe: `BackgroundAudioPlugin`/`BackgroundAudioService` (MediaSession + Foreground-Service, Benachrichtigung/Sperrbildschirm), Ton bleibt im WebView. Keine Plugins, kein Cutter, keine Downloads, kein yt-dlp; Desktop-Dateien bleiben unverändert. APK: `cd mobile && npm run build:apk` → `mobile/android/app/build/outputs/apk/debug/app-debug.apk`. Anleitung: `mobile/README.md`. Signierschlüssel nie ins Repo.
+
 ## Aufbau
 
 - `main.js` – Hauptprozess: Fenster, IPC, Widevine, Katalog/Charts/Radio, Vorschläge, Cutter-Quellen (Deezer-Playlisten, Openverse), Plugin-Lader, Discord-Steuerung, Smoke-Test.
@@ -36,6 +38,7 @@ und der Mini-Visualizer-Fix für die optionale Audio-Kette. Englisch liegt auf 1
 - `renderer/app.js` – gesamte UI und Player-Logik (groß, in Abschnitte gegliedert).
 - `renderer/creator-data.js` – Cutter-Kategorien; `renderer/visualizer.js` – Web-Audio-Visualizer (Analyse über `captureStream()`, ohne die Wiedergabe umzuleiten) und die optionale Audio-Kette für Angleichen/Boost. Ist die Kette einmal gebaut (`createMediaElementSource`), trägt sie den Ton bis zum Neustart: AudioContext dann nie suspendieren, Lautstärke über `setOutput` statt `audio.volume`.
 - `renderer/themes.js` – Theme-Paletten; `app.js` setzt daraus CSS-Variablen (auch `--*-rgb`-Tripel für Transparenzen). Neue Farben im Stylesheet immer über Variablen, nie fest (Ausnahme: Vollbild-Player, Markenfarben).
+- `mobile/` – eigenes Capacitor-Projekt für Android (Phase 1, Etappe 1). `mobile/src/native.js` ist die Mobile-Brücke, `mobile/src/mobile.css` die Handy-Oberfläche; `mobile/www` wird beim Build aus `renderer/` erzeugt. Anleitung: `mobile/README.md`.
 - `extras/plugins/` – optionale Plugins im Repository (nicht im Build, nie automatisch geladen). `tools/make-icons.js` erzeugt Logo und Icons (`npm.cmd run icons`).
 - `docs/PLUGIN-API.md` – allgemeine Plugin-API-Dokumentation. Plugins lassen sich in den Einstellungen per Dateidialog oder Drag & Drop hinzufügen und bleiben danach ausgeschaltet.
 - `plugins/` – lokale Plugin-Dateien; durch `.gitignore` nicht im Repository und nicht Teil der Builds.
