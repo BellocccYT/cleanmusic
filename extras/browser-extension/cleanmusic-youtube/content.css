@@ -27,6 +27,48 @@
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
+/* Action row under the title (like / share / save …) */
+.cm-yt-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--yt-spec-badge-chip-background, rgba(128, 128, 128, 0.16));
+  color: var(--yt-spec-text-primary, inherit);
+  font: 500 14px/1 "Roboto", "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+}
+.cm-yt-action:hover {
+  background: var(--yt-spec-badge-chip-background-hover, rgba(128, 128, 128, 0.26));
+}
+.cm-yt-action-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cm-yt-action svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.cm-yt-action-label {
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .cm-yt-action {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  .cm-yt-action-label {
+    display: none;
+  }
+}
+
 .cm-yt-float {
   position: fixed;
   right: 22px;

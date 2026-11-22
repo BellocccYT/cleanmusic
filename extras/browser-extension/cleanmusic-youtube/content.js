@@ -14,6 +14,7 @@
 
   const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
   const BTN_CLASS = 'cm-yt-add';
+  const ACTION_CLASS = 'cm-yt-action';
   const FLOAT_CLASS = 'cm-yt-float';
   const TOAST_CLASS = 'cm-yt-toast';
   const ICON = `
@@ -171,6 +172,29 @@
     return true;
   }
 
+  function injectActionButton() {
+    if (isMusic() || isShorts()) return false;
+    const host = document.querySelector(
+      'ytd-watch-metadata #top-level-buttons-computed, #top-level-buttons-computed'
+    );
+    if (!host) return false;
+    if (host.querySelector(`.${ACTION_CLASS}`)) return true;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = ACTION_CLASS;
+    button.title = 'Zu CleanMusic hinzufügen';
+    button.setAttribute('aria-label', 'Zu CleanMusic hinzufügen');
+    button.innerHTML = `<span class="cm-yt-action-ic">${ICON}</span><span class="cm-yt-action-label">CleanMusic</span>`;
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      launch('add');
+    });
+    host.appendChild(button);
+    return true;
+  }
+
   function injectFloating() {
     if (document.querySelector(`.${FLOAT_CLASS}`)) return;
     if (!currentVideo()) return;
@@ -178,7 +202,7 @@
   }
 
   function removeControls() {
-    document.querySelectorAll(`.${BTN_CLASS}, .${FLOAT_CLASS}`).forEach((el) => el.remove());
+    document.querySelectorAll(`.${BTN_CLASS}, .${ACTION_CLASS}, .${FLOAT_CLASS}`).forEach((el) => el.remove());
   }
 
   function ensure() {
@@ -188,10 +212,12 @@
     }
     if (isMusic() || isShorts()) {
       document.querySelector(`.${BTN_CLASS}`)?.remove();
+      document.querySelector(`.${ACTION_CLASS}`)?.remove();
       injectFloating();
     } else {
       document.querySelector(`.${FLOAT_CLASS}`)?.remove();
       injectPlayerButton();
+      injectActionButton();
     }
   }
 

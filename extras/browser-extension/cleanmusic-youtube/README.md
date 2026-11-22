@@ -19,8 +19,9 @@ veröffentlicht werden; das ist hier nicht enthalten.
 
 ## Benutzen
 
-- Auf einem YouTube-Video erscheint links in den Player-Steuerungen ein
-  **CleanMusic-Knopf** (Note mit Plus). Klick = **zur Warteschlange**.
+- Auf einem YouTube-Video erscheint in der **Aktionsleiste unter dem Titel**
+  (Like / Teilen / Speichern) ein **CleanMusic-Knopf** und links in den
+  Player-Steuerungen ein kleines Noten-Symbol. Klick = **zur Warteschlange**.
 - Auf YouTube Music und bei Shorts erscheint ein schwebender runder Knopf.
 - Oder das Toolbar-Symbol öffnen: Dort gibt es **Zur Warteschlange** und
   **Jetzt abspielen**.
@@ -48,7 +49,7 @@ keine Telemetrie.
 | Datei | Zweck |
 | --- | --- |
 | `manifest.json` | Manifest V3, Berechtigungen nur für YouTube |
-| `content.js` / `content.css` | Knopf im Player, Video-Infos, kleiner Toasts |
+| `content.js` / `content.css` | Knopf in der Aktionsleiste und den Player-Steuerungen, Video-Infos, kleine Toasts |
 | `background.js` | öffnet den `cleanmusic://`-Link |
 | `popup.html` / `popup.css` / `popup.js` | Toolbar-Popup mit beiden Aktionen |
 | `icon*.png` | CleanMusic-Icon in 16/32/48/128 px |
