@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>CleanMusic Fernbedienung</title>
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #10141c; color: #f2f5fb; --panel: #1a2230; --muted: #a7b2c4; --accent: #87a3ff; }
+    :root[data-theme="light"] { color-scheme: light; background: #f0f3f9; color: #18202d; --panel: white; --muted: #596579; --accent: #365ddd; }
+    * { box-sizing: border-box; }
+    body { margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) 14px max(20px, env(safe-area-inset-bottom)); max-width: 600px; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    h1 { font-size:18px; margin:0; } h2 { font-size:16px; margin:0 0 10px; }
+    .card { border-radius:16px; background:var(--panel); padding:16px; margin:12px 0; box-shadow:0 8px 30px #0002; }
+    .now { display:flex; gap:12px; align-items:center; min-height:76px; }
+    .cover { width:72px; height:72px; flex:none; border-radius:12px; background:#303b50; display:grid; place-items:center; overflow:hidden; font-size:30px; }
+    .cover img { width:100%; height:100%; object-fit:cover; }
+    .meta { min-width:0; } .title,.artist { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; } .title { font-weight:700; } .artist,.muted { color:var(--muted); font-size:14px; margin-top:5px; }
+    button,input { font:inherit; } button { min-height:48px; border:0; border-radius:12px; padding:10px 14px; background:#34435c; color:inherit; cursor:pointer; touch-action:manipulation; }
+    button:active { transform:scale(.98); } button.primary { background:var(--accent); color:#08101e; font-weight:700; }
+    .transport { display:grid; grid-template-columns:1fr 1.3fr 1fr; gap:9px; margin-top:14px; }
+    .transport button { font-size:20px; } .sliders { display:grid; grid-template-columns:40px 1fr 48px; gap:8px; align-items:center; margin-top:14px; color:var(--muted); font-size:12px; }
+    input[type=range] { width:100%; accent-color:var(--accent); min-height:34px; }
+    .lyric { min-height:20px; line-height:1.4; } .queue { list-style:none; padding:0; margin:0; } .queue li { padding:9px 0; border-top:1px solid #7a879622; }
+    .search { display:grid; grid-template-columns:1fr auto; gap:8px; } .search input { min-width:0; border:1px solid #8490a344; border-radius:12px; background:transparent; color:inherit; padding:10px 12px; }
+    .result { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid #7a879622; } .result .meta { flex:1; }
+    .result button { min-height:40px; padding:8px 10px; font-size:13px; }
+    .toolbar { display:flex; gap:8px; } .toolbar button { min-height:38px; padding:6px 10px; font-size:13px; }
+    .status { text-align:center; font-size:12px; color:var(--muted); min-height:18px; }
+    @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { color-scheme:light; background:#f0f3f9; color:#18202d; --panel:white; --muted:#596579; --accent:#365ddd; } }
+  </style>
+</head>
+<body>
+  <header><h1>CleanMusic · Fernbedienung</h1><div class="toolbar"><button id="theme" type="button">Hell / dunkel</button></div></header>
+  <main>
+    <section class="card" aria-label="Wiedergabe">
+      <div class="now"><div id="cover" class="cover">♪</div><div class="meta"><div id="title" class="title">Verbinde …</div><div id="artist" class="artist"></div></div></div>
+      <div class="transport">
+        <button data-cmd="prev" aria-label="Zurück">|◀</button>
+        <button class="primary" data-cmd="toggle" id="toggle" aria-label="Wiedergabe">▶ / Ⅱ</button>
+        <button data-cmd="next" aria-label="Weiter">▶|</button>
+      </div>
+      <div class="sliders"><span id="position">0:00</span><input id="seek" type="range" min="0" max="0" value="0" step="1" aria-label="Position" /><span id="duration">0:00</span></div>
+      <div class="sliders"><span>Ton</span><input id="volume" type="range" min="0" max="1.5" step="0.01" value="1" aria-label="Lautstärke" /><span id="volume-label">100 %</span></div>
+      <p id="lyric" class="lyric muted"></p>
+    </section>
+    <section class="card"><h2>Suche · Vorschauen</h2><form id="search" class="search"><input id="query" type="search" maxlength="120" placeholder="Titel oder Künstler" autocomplete="off" /><button class="primary">Suchen</button></form><div id="results"></div></section>
+    <section class="card"><h2>Als Nächstes</h2><ol id="queue" class="queue"><li class="muted">Noch keine Titel</li></ol></section>
+    <p id="status" class="status" role="status"></p>
+  </main>
+  <script>
+    (() => {
+      const key = new URLSearchParams(location.search).get('k') || '';
+      const $ = (selector) => document.querySelector(selector);
+      const status = (text) => { $('#status').textContent = text || ''; };
+      const api = async (path, options = {}) => {
+        const response = await fetch(path, { ...options, headers: { 'X-CM-Key': key, ...(options.headers || {}) } });
+        if (!response.ok) throw new Error(response.status === 401 ? 'Schlüssel ungültig. Neuen Link in CleanMusic erzeugen.' : `HTTP ${response.status}`);
+        return response.json();
+      };
+      const fmt = (seconds) => { const n = Math.max(0, Math.floor(Number(seconds) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
+      const send = async (cmd, value) => { try { await api('/api/cmd', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cmd, value }) }); } catch (error) { status(error.message); } };
+      const paint = (state) => {
+        $('#title').textContent = state.track ? state.track.title : 'Nichts ausgewählt';
+        $('#artist').textContent = state.track ? state.track.artist : 'Starte die Wiedergabe in CleanMusic.';
+        const cover = $('#cover'); cover.replaceChildren();
+        if (state.track && state.track.cover) { const img = document.createElement('img'); img.src = state.track.cover; img.alt = ''; cover.append(img); } else cover.textContent = '♪';
+        $('#toggle').textContent = state.playing ? 'Ⅱ Pause' : '▶ Abspielen';
+        $('#seek').max = String(Math.max(0, Number(state.duration) || 0));
+        if (document.activeElement !== $('#seek')) $('#seek').value = String(Math.max(0, Number(state.position) || 0));
+        $('#position').textContent = fmt(state.position); $('#duration').textContent = fmt(state.duration);
+        $('#volume').value = String(Math.max(0, Math.min(1.5, Number(state.volume) || 0)));
+        $('#volume-label').textContent = `${Math.round(Number(state.volume || 0) * 100)} %`;
+        $('#lyric').textContent = state.lyric || '';
+        const queue = $('#queue'); queue.replaceChildren();
+        if (!state.queue || !state.queue.length) { const li = document.createElement('li'); li.className = 'muted'; li.textContent = 'Noch keine Titel'; queue.append(li); }
+        else state.queue.slice(0, 10).forEach((item) => { const li = document.createElement('li'); li.textContent = [item.title, item.artist].filter(Boolean).join(' · '); queue.append(li); });
+        status('Verbunden');
+      };
+      const loadState = async () => { try { paint(await api('/api/state')); } catch (error) { status(error.message); } };
+      document.querySelectorAll('[data-cmd]').forEach((button) => button.addEventListener('click', () => send(button.dataset.cmd)));
+      $('#seek').addEventListener('change', (event) => send('seek', Number(event.target.value)));
+      $('#volume').addEventListener('input', (event) => { $('#volume-label').textContent = `${Math.round(Number(event.target.value) * 100)} %`; send('volume', Number(event.target.value)); });
+      $('#theme').addEventListener('click', () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; });
+      $('#search').addEventListener('submit', async (event) => {
+        event.preventDefault(); const query = $('#query').value.trim(); if (!query) return;
+        $('#results').textContent = 'Suche …';
+        try {
+          const data = await api(`/api/search?q=${encodeURIComponent(query)}`); const host = $('#results'); host.replaceChildren();
+          if (!data.tracks.length) { host.textContent = 'Keine Vorschauen gefunden.'; return; }
+          data.tracks.forEach((track) => {
+            const row = document.createElement('div'); row.className = 'result';
+            const meta = document.createElement('div'); meta.className = 'meta';
+            const title = document.createElement('div'); title.className = 'title'; title.textContent = track.title;
+            const artist = document.createElement('div'); artist.className = 'artist'; artist.textContent = `${track.artist || ''} · ${track.source}`;
+            meta.append(title, artist); row.append(meta);
+            [['next', 'Als Nächstes'], ['end', 'Ans Ende']].forEach(([position, label]) => {
+              const button = document.createElement('button'); button.textContent = label;
+              button.addEventListener('click', async () => { try { await api('/api/queue', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: track.id, position }) }); status('Titel eingereiht'); loadState(); } catch (error) { status(error.message); } });
+              row.append(button);
+            }); host.append(row);
+          });
+        } catch (error) { $('#results').textContent = error.message; }
+      });
+      const events = new EventSource(`/api/events?k=${encodeURIComponent(key)}`);
+      let polling = null;
+      events.onopen = () => { if (polling) { clearInterval(polling); polling = null; } };
+      events.addEventListener('state', (event) => { try { paint(JSON.parse(event.data)); } catch { /* ignore invalid update */ } });
+      events.onerror = () => {
+        status('Live-Updates nicht verfügbar – aktualisiere automatisch.');
+        if (!polling) polling = setInterval(loadState, 1000);
+      };
+      loadState();
+    })();
+  </script>
+</body>
+</html>

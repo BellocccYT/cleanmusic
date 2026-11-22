@@ -1,7 +1,7 @@
 {
   "name": "cleanmusic",
   "productName": "CleanMusic",
-  "version": "1.11.2",
+  "version": "1.12.0",
   "private": true,
   "description": "CleanMusic – The Music Launcher. Alle Streaming-Dienste an einem Ort, lokale Wiedergabe, Favoriten, Playlists, Cutter-Modus, Vollbild-Player mit Visualizer, Discord Rich Presence und optionale Quellen-Plugins.",
   "author": "CleanMusic",
@@ -32,8 +32,13 @@
     "files": [
       "main.js",
       "preload.js",
+      "preload-mini.js",
       "discord-rpc.js",
       "renderer/**/*",
+      "renderer/remote/**/*",
+      "renderer/mini.html",
+      "renderer/mini.js",
+      "renderer/assets/thumbar/*.png",
       "package.json",
       "LICENSE",
       "THIRD-PARTY-NOTICES.md"
@@ -97,8 +102,14 @@
       }
     ]
   },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
   "devDependencies": {
     "electron": "^33.0.0",
     "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }

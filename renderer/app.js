@@ -178,6 +178,19 @@
     discordSet: async () => ({ config: { enabled: false, clientId: '', showArtwork: true }, status: {} }),
     discordUpdate: () => {},
     onDiscordStatus: () => {},
+    miniOpen: async () => false,
+    taskbarGet: async () => ({ progress: true }),
+    taskbarSet: async () => ({ progress: true }),
+    shortcutsGet: async () => ({ enabled: false, registered: [] }),
+    shortcutsSet: async () => ({ enabled: false, registered: [] }),
+    loginGet: async () => ({ enabled: false }),
+    loginSet: async () => ({ enabled: false, supported: false }),
+    remoteGet: async () => ({ enabled: false, port: 4790, url: '', qr: '' }),
+    remoteSet: async () => ({ enabled: false }),
+    remoteRotate: async () => ({ enabled: false }),
+    diagnosticCopy: async () => '',
+    diagnosticError: () => {},
+    diagnosticState: () => {},
   };
 
   const supportsWebview = bridge.isElectron === true;
@@ -218,6 +231,10 @@
       (item) => item && typeof item.id === 'string' && typeof item.credit === 'string'
     ),
     discord: { config: { enabled: false, clientId: '', showArtwork: true }, status: {} },
+    remote: { enabled: false, port: 4790, requestedPort: 4790, url: '', qr: '', ip: '', error: null },
+    globalShortcuts: { enabled: false, registered: [], conflict: null },
+    taskbarProgress: true,
+    startOnLogin: false,
     fullscreen: false,
     collection: loadCollection(),
     matches: readJSON(STORAGE.matches, {}) || {},
@@ -387,6 +404,16 @@
 
   function saveSettings() {
     writeJSON(STORAGE.settings, state.settings);
+    syncDiagnosticState();
+  }
+
+  function syncDiagnosticState() {
+    if (!bridge.diagnosticState) return;
+    const viz = window.CMVisualizer;
+    bridge.diagnosticState({
+      audioChain: Boolean(viz && typeof viz.hasEngine === 'function' && viz.hasEngine()),
+      layout: state.settings.layout,
+    });
   }
 
   function pluginById(id) {
@@ -1109,6 +1136,10 @@
     ['N / P', 'Nächster/vorheriger Titel (im Vollbild)'],
     ['Esc', 'Vollbild, Menü oder Dialog schließen'],
     ['Medientasten', 'Play/Pause, Weiter, Zurück – auch im Hintergrund'],
+    ['Global: Strg + Alt + P', 'Play/Pause (wenn aktiviert)'],
+    ['Global: Strg + Alt + → / ←', 'Weiter / Zurück (wenn aktiviert)'],
+    ['Global: Strg + Alt + ↑ / ↓', 'Lauter / Leiser (wenn aktiviert)'],
+    ['Global: Strg + Alt + M', 'Mini-Player (wenn aktiviert)'],
     ['?', 'Diese Übersicht'],
   ];
 
@@ -3696,6 +3727,10 @@
       stepQueue(-1);
     });
     $('#btn-next').addEventListener('click', () => stepQueue(1));
+    $('#btn-mini').addEventListener('click', async () => {
+      const opened = await bridge.miniOpen();
+      if (!opened) toast('Mini-Player konnte nicht geöffnet werden.');
+    });
 
     $('#btn-shuffle').addEventListener('click', () => {
       state.playback.shuffle = !state.playback.shuffle;
@@ -3871,6 +3906,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.12.0': [
+      'Handy-Fernbedienung im privaten WLAN: Wiedergabe, Lautstärke, Warteschlange und Vorschau-Suche – standardmäßig aus, mit Schlüssel und QR-Code.',
+      'Mini-Player, Windows-Taskleistenknöpfe und Fortschritt, optionale globale Tastenkürzel sowie Start mit Windows.',
+      'Windows zeigt neue Versionen sofort als Systembenachrichtigung, auch wenn CleanMusic im Infobereich minimiert ist.',
+      '„Diagnose kopieren“ für Fehlerberichte; der Text bleibt im Arbeitsspeicher und ersetzt den Benutzerordner durch ~.',
+    ],
     '1.11.2': [
       'Plugin-Einstellungen: neuer Knopf „Speichern“ übernimmt alle Felder auf einmal – Änderungen gehen nicht mehr verloren, wenn man direkt ins nächste Feld klickt.',
     ],
@@ -8773,23 +8814,72 @@
       case 'removeRequest':
         answerPlayerCall(callId, () => removeSongRequest(value));
         break;
+      case 'remoteQueue':
+        answerPlayerCall(callId, () => {
+          const track = value && value.track;
+          if (!track || !['apple', 'deezer'].includes(track.source) || !/^https:\/\//i.test(track.preview || '')) {
+            return { ok: false, reason: 'invalid' };
+          }
+          enqueue(previewEntry(track), value.mode === 'next' ? 'next' : 'end');
+          return { ok: true };
+        });
+        break;
       case 'play':
-        if (audio.paused) $('#btn-play').click();
+        answerPlayerCall(callId, () => {
+          if (audio.paused) $('#btn-play').click();
+          return { ok: true };
+        });
         break;
       case 'pause':
-        if (!audio.paused) $('#btn-play').click();
+        answerPlayerCall(callId, () => {
+          if (!audio.paused) $('#btn-play').click();
+          return { ok: true };
+        });
         break;
       case 'toggle':
-        $('#btn-play').click();
+        answerPlayerCall(callId, () => {
+          $('#btn-play').click();
+          return { ok: true };
+        });
         break;
       case 'next':
-        stepQueue(1);
+        answerPlayerCall(callId, () => {
+          stepQueue(1);
+          return { ok: true };
+        });
         break;
       case 'previous':
-        $('#btn-prev').click();
+        answerPlayerCall(callId, () => {
+          $('#btn-prev').click();
+          return { ok: true };
+        });
         break;
       case 'volume':
-        setVolume(Number(value));
+        answerPlayerCall(callId, () => {
+          const level = Number(value);
+          if (!Number.isFinite(level) || level < 0 || level > 1.5) return { ok: false, reason: 'invalid' };
+          setVolume(level);
+          return { ok: true };
+        });
+        break;
+      case 'seek':
+        answerPlayerCall(callId, () => {
+          const position = Number(value);
+          if (!Number.isFinite(position) || position < 0 || position > audio.duration || !Number.isFinite(audio.duration)) {
+            return { ok: false, reason: 'invalid' };
+          }
+          audio.currentTime = position;
+          pushPlayerState(true);
+          return { ok: true };
+        });
+        break;
+      case 'like':
+        answerPlayerCall(callId, () => {
+          const item = currentItem();
+          if (!item) return { ok: false, reason: 'no-track' };
+          toggleFavorite(item);
+          return { ok: true };
+        });
         break;
       case 'mute':
         setMuted(Boolean(value));
@@ -9301,6 +9391,13 @@
           </label>
           <label class="toggle-row">
             <span>
+              <strong>Fortschritt in der Taskleiste</strong>
+              <small>${info.platform === 'win32' ? 'Zeigt Titel-Fortschritt und Play/Pause-Knöpfe in der Windows-Taskleiste.' : 'Nur unter Windows verfügbar.'}</small>
+            </span>
+            <input type="checkbox" id="opt-taskbar" ${state.taskbarProgress ? 'checked' : ''} ${info.platform === 'win32' ? '' : 'disabled'} />
+          </label>
+          <label class="toggle-row">
+            <span>
               <strong>Lautstärke angleichen</strong>
               <small>Gleicht laute und leise Titel sanft an, damit du nicht ständig nachregeln musst.</small>
             </span>
@@ -9347,6 +9444,23 @@
 
         ${discordPanel()}
 
+        <div class="panel" id="remote-panel">
+          <h3>Handy-Fernbedienung</h3>
+          <p>Steuere CleanMusic im selben privaten WLAN über eine kleine Webseite. Standardmäßig aus. Jede Anfrage braucht den geheimen Link-Schlüssel; nur Loopback und private IPv4-Netze werden angenommen.</p>
+          <label class="toggle-row">
+            <span><strong>Fernbedienung einschalten</strong><small>Startet den lokalen HTTP-Server auf Port 4790. Beim ersten Windows-Dialog nur „Private Netzwerke“ zulassen.</small></span>
+            <input type="checkbox" id="opt-remote" ${state.remote.enabled ? 'checked' : ''} />
+          </label>
+          <div class="row" style="margin-top:12px">
+            <label class="muted small" for="opt-remote-port">Port</label>
+            <input id="opt-remote-port" type="number" min="1024" max="65535" value="${Number(state.remote.requestedPort || state.remote.port) || 4790}" style="width:110px" />
+            <button class="btn ghost small" data-remote-action="port">Port speichern</button>
+            ${state.remote.enabled ? '<button class="btn ghost small danger" data-remote-action="rotate">Neuen Link erzeugen</button>' : ''}
+          </div>
+          ${state.remote.error ? `<p class="muted small">${esc(state.remote.error)}</p>` : ''}
+          ${state.remote.enabled && state.remote.url ? `<div class="row" style="align-items:flex-start;margin-top:14px"><img src="${esc(state.remote.qr)}" alt="QR-Code für die Fernbedienung" width="150" height="150" style="border-radius:10px;background:white;padding:5px" /><div><strong>Auf dem Handy öffnen</strong><p class="small"><a href="${esc(state.remote.url)}" id="remote-link">${esc(state.remote.url)}</a></p><p class="muted small">Der Schlüssel steckt im Link. Teile ihn nur mit Geräten, denen du vertraust. Ein neuer Link widerruft den alten sofort.</p></div></div>` : ''}
+        </div>
+
         <div class="panel">
           <h3>Apple Music · MusicKit</h3>
           <p>
@@ -9372,7 +9486,17 @@
           <div class="row" style="margin-top:12px">
             <button class="btn ghost small" data-onboarding="open">Erste Schritte erneut zeigen</button>
             <button class="btn ghost small" data-shortcuts="open">Tastenkürzel</button>
+            <label class="toggle-row" style="flex:1;min-width:240px;margin:0">
+              <span><strong>Globale Tastenkürzel</strong><small>Standardmäßig aus. Steuern CleanMusic auch im Hintergrund.</small></span>
+              <input type="checkbox" id="opt-global-shortcuts" ${state.globalShortcuts.enabled ? 'checked' : ''} />
+            </label>
           </div>
+          ${state.globalShortcuts.conflict ? `<p class="muted small">Kürzel ist schon belegt: ${esc(state.globalShortcuts.conflict)}</p>` : ''}
+          ${info.platform === 'win32' ? `<label class="toggle-row" style="margin-top:14px"><span><strong>Mit Windows starten</strong><small>${state.closeToTray ? 'Startet im Infobereich; andernfalls minimiert.' : 'Startet minimiert.'} Portable Builds werden bei Updates auf den neuen Dateipfad gesetzt.</small></span><input type="checkbox" id="opt-login" ${state.startOnLogin ? 'checked' : ''} /></label>` : ''}
+          <label class="toggle-row" style="margin-top:14px">
+            <span><strong>Hilfe</strong><small>Diagnose bleibt im Arbeitsspeicher. Es werden keine Dateien oder Telemetrie angelegt.</small></span>
+            <span class="row"><button class="btn ghost small" data-diagnostic="copy">Diagnose kopieren</button><button class="btn ghost small" data-diagnostic="issue">Fehler melden</button></span>
+          </label>
         </div>
 
 ${updatePanel()}
@@ -10037,6 +10161,39 @@ ${updatePanel()}
         return;
       }
 
+      const remoteAction = event.target.closest('[data-remote-action]');
+      if (remoteAction) {
+        if (remoteAction.dataset.remoteAction === 'rotate') {
+          const confirmed = await askConfirm({
+            title: 'Neuen Fernbedienungs-Link erzeugen?',
+            message: 'Der bisherige Link und QR-Code werden sofort ungültig.',
+            confirm: 'Neuen Link erzeugen',
+          });
+          if (!confirmed) return;
+          state.remote = await bridge.remoteRotate();
+        } else {
+          const portInput = $('#opt-remote-port');
+          const port = Math.max(1024, Math.min(65535, Math.round(Number(portInput && portInput.value) || 4790)));
+          state.remote = await bridge.remoteSet({ enabled: state.remote.enabled, port });
+        }
+        renderSettings();
+        if (state.remote.error) toast(state.remote.error);
+        else if (remoteAction.dataset.remoteAction === 'rotate') toast('Neuer Link erstellt – der alte ist ungültig.');
+        return;
+      }
+
+      const diagnostic = event.target.closest('[data-diagnostic]');
+      if (diagnostic) {
+        if (diagnostic.dataset.diagnostic === 'issue') {
+          bridge.openExternal('https://github.com/BellocccYT/cleanmusic/issues/new');
+        } else {
+          const text = await bridge.diagnosticCopy();
+          const copied = await bridge.copyText(text);
+          toast(copied ? 'Diagnose in die Zwischenablage kopiert.' : 'Kopieren fehlgeschlagen.');
+        }
+        return;
+      }
+
       const pluginSave = event.target.closest('[data-plugin-save]');
       if (pluginSave) {
         savePluginForm(pluginSave.dataset.pluginSave);
@@ -10195,7 +10352,7 @@ ${updatePanel()}
       else if (event.target.id === 'opt-treble') setTone(undefined, Number(event.target.value));
     });
 
-    $('#view-settings').addEventListener('change', (event) => {
+    $('#view-settings').addEventListener('change', async (event) => {
       if (event.target.id === 'opt-system') {
         state.settings.systemBrowser = event.target.checked;
         saveSettings();
@@ -10319,6 +10476,37 @@ ${updatePanel()}
             toast(state.closeToTray ? 'Schließen versteckt CleanMusic im Infobereich' : 'Schließen beendet CleanMusic');
           })
           .catch(() => {});
+        return;
+      }
+
+      if (event.target.id === 'opt-taskbar') {
+        const result = await bridge.taskbarSet({ progress: event.target.checked });
+        state.taskbarProgress = Boolean(result && result.progress);
+        return;
+      }
+
+      if (event.target.id === 'opt-remote') {
+        const portInput = $('#opt-remote-port');
+        const port = Math.max(1024, Math.min(65535, Math.round(Number(portInput && portInput.value) || 4790)));
+        state.remote = await bridge.remoteSet({ enabled: event.target.checked, port });
+        renderSettings();
+        toast(state.remote.error || (state.remote.enabled ? 'Fernbedienung aktiv – nur im privaten WLAN verwenden.' : 'Fernbedienung ausgeschaltet.'));
+        return;
+      }
+
+      if (event.target.id === 'opt-global-shortcuts') {
+        state.globalShortcuts = await bridge.shortcutsSet({ enabled: event.target.checked });
+        if (state.globalShortcuts.conflict) toast(`Kürzel ist schon belegt: ${state.globalShortcuts.conflict}`);
+        else toast(state.globalShortcuts.enabled ? 'Globale Tastenkürzel eingeschaltet.' : 'Globale Tastenkürzel ausgeschaltet.');
+        renderSettings();
+        return;
+      }
+
+      if (event.target.id === 'opt-login') {
+        const result = await bridge.loginSet({ enabled: event.target.checked });
+        state.startOnLogin = Boolean(result && result.enabled);
+        if (!result || !result.supported) toast('Autostart gibt es nur in gepackten Windows-Versionen.');
+        else toast(state.startOnLogin ? 'CleanMusic startet mit Windows.' : 'Autostart ausgeschaltet.');
         return;
       }
 
@@ -10641,6 +10829,11 @@ ${updatePanel()}
     applyLayout();
     window.addEventListener('error', (event) => {
       console.error(`Renderer error: ${event.message}`);
+      bridge.diagnosticError(`window.onerror: ${event.message || 'Unbekannter Fehler'} (${event.filename || ''}:${event.lineno || 0})`);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason && (event.reason.stack || event.reason.message) || event.reason || 'Unbekannter Promise-Fehler';
+      bridge.diagnosticError(`unhandledrejection: ${String(reason)}`);
     });
 
     restoreLibrary();
@@ -10676,13 +10869,14 @@ ${updatePanel()}
     viz.setEnabled(state.settings.visualizer);
     applyVisualizerVisibility();
     applyVolume();
+    syncDiagnosticState();
 
     // Plugins (API v2): player events, commands, messages.
     ['play', 'pause', 'ended', 'seeked', 'loadedmetadata', 'emptied'].forEach((name) =>
       audio.addEventListener(name, () => pushPlayerState())
     );
     audio.addEventListener('timeupdate', () => {
-      if (Date.now() - playerStateAt > 10000) pushPlayerState();
+      if (Date.now() - playerStateAt > 900) pushPlayerState();
       trackListening();
     });
     audio.addEventListener('pause', () => {
@@ -10713,6 +10907,19 @@ ${updatePanel()}
         })
         .catch(() => {});
     }
+
+    Promise.all([
+      bridge.remoteGet().catch(() => null),
+      bridge.taskbarGet().catch(() => null),
+      bridge.shortcutsGet().catch(() => null),
+      bridge.loginGet().catch(() => null),
+    ]).then(([remote, taskbar, shortcuts, login]) => {
+      if (remote) state.remote = remote;
+      if (taskbar) state.taskbarProgress = Boolean(taskbar.progress);
+      if (shortcuts) state.globalShortcuts = Object.assign(state.globalShortcuts, shortcuts);
+      if (login) state.startOnLogin = Boolean(login.enabled);
+      renderSettings();
+    });
 
     if (bridge.cuttingDefaultFolder) {
       bridge

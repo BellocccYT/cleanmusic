@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; style-src 'unsafe-inline'; script-src 'self'; object-src 'none';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanMusic Mini-Player</title>
+  <style>
+    :root { color-scheme: dark; font: 13px "Segoe UI", sans-serif; background: #10141c; color: #edf2fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 340px; min-height: 132px; padding: 10px 12px; background: linear-gradient(135deg, #171d29, #0d1118); -webkit-app-region: drag; }
+    button, input { -webkit-app-region: no-drag; }
+    .top { display: flex; align-items: center; gap: 10px; height: 72px; }
+    .cover { width: 56px; height: 56px; border-radius: 9px; flex: none; display: grid; place-items: center; background: #242e40; overflow: hidden; font-size: 24px; }
+    .cover img { width: 100%; height: 100%; object-fit: cover; }
+    .meta { min-width: 0; flex: 1; }
+    .title, .artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .title { font-size: 14px; font-weight: 650; }
+    .artist { color: #9eaabd; margin-top: 5px; }
+    .close { align-self: flex-start; border: 0; background: transparent; color: #9eaabd; font-size: 20px; cursor: pointer; padding: 0 3px; }
+    .controls { display: grid; grid-template-columns: 30px 34px 30px 42px minmax(50px,1fr) 40px; align-items: center; gap: 7px; }
+    .controls button { border: 0; border-radius: 8px; height: 30px; color: #edf2fb; background: #242e40; cursor: pointer; font-size: 16px; }
+    .controls button:hover { background: #34435b; }
+    .controls .play { background: #5e81ff; font-size: 13px; font-weight: 700; }
+    input[type=range] { width: 100%; accent-color: #8aa7ff; }
+    .time { color: #9eaabd; font-size: 10px; text-align: center; }
+    .bottom { height: 18px; display: flex; align-items: center; justify-content: flex-end; color: #9eaabd; font-size: 10px; }
+    .bottom label { display: flex; align-items: center; gap: 5px; -webkit-app-region: no-drag; }
+    .bottom input { accent-color: #8aa7ff; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="cover" id="cover">♪</div>
+    <div class="meta"><div class="title" id="title">Nichts ausgewählt</div><div class="artist" id="artist">CleanMusic</div></div>
+    <button class="close" id="close" title="Zurück zum Hauptfenster" aria-label="Schließen">×</button>
+  </div>
+  <div class="controls">
+    <button data-command="previous" title="Zurück">|◀</button>
+    <button class="play" id="play" data-command="toggle" title="Wiedergabe">▶</button>
+    <button data-command="next" title="Weiter">▶|</button>
+    <span class="time" id="time">0:00</span>
+    <input id="seek" type="range" min="0" max="0" value="0" step="0.1" aria-label="Position" />
+    <input id="volume" type="range" min="0" max="1.5" step="0.01" value="1" aria-label="Lautstärke" />
+  </div>
+  <div class="bottom"><label><input id="topmost" type="checkbox" /> Immer im Vordergrund</label></div>
+  <script src="mini.js"></script>
+</body>
+</html>

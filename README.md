@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.11.2**
+**Version 1.12.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -382,6 +382,24 @@ Unter **Radio** findest du tausende öffentliche Sender über die
   *Voll · Quelle des Plugins*, *Radio · LIVE*)
 - ♥ und + für den laufenden Titel direkt im Player
 
+### Handy-Fernbedienung, Mini-Player & Windows
+
+- **Handy-Fernbedienung** (*Einstellungen → Handy-Fernbedienung*): schaltet einen lokalen
+  Webserver auf Port 4790 ein und zeigt Link + QR-Code. Sie funktioniert im selben privaten
+  WLAN, braucht bei jeder Anfrage den geheimen Schlüssel und akzeptiert nur Loopback bzw.
+  private IPv4-Adressen. Standardmäßig **aus**; ein neuer Link widerruft den alten.
+- Die Fernbedienung steuert Wiedergabe, Position, Lautstärke, Favorit und Warteschlange und
+  sucht ausschließlich im Vorschau-Katalog – keine lokalen Dateien und keine Stream-Downloads.
+- **Sicherheit:** Erlaube die Windows-Firewall beim ersten Dialog nur für **Private Netzwerke**.
+  Die Verbindung ist unverschlüsseltes HTTP im LAN. Verwende sie nicht in fremden/öffentlichen
+  WLANs und teile QR-Code oder Link nur mit vertrauten Geräten.
+- Der **Mini-Player** bleibt beim Wechseln ins kleine Fenster im Hintergrund mit dem Hauptfenster
+  verbunden; optional immer im Vordergrund. Die Windows-Taskleiste hat Zurück/Play-Pause/Weiter
+  und optional Fortschritt.
+- Optional: globale `Strg+Alt`-Tastenkürzel (standardmäßig aus), Start mit Windows sowie
+  *Einstellungen → System → Diagnose kopieren*. Fehler werden nur im Arbeitsspeicher gehalten;
+  der Diagnosebericht enthält keine Telemetrie und ersetzt den Benutzerordner durch `~`.
+
 ---
 
 ## Schneller laden mit dem Quellen-Plugin
@@ -399,9 +417,13 @@ Die Plugin-Karte zeigt dann „schneller Start (Python)“.
 
 ## Updates
 
-CleanMusic sucht **bei jedem Start und danach alle 2 Stunden** nach einer neuen Version (mit hörbarem Gong und Windows-Benachrichtigung) (abschaltbar unter
+CleanMusic sucht **bei jedem Start und danach alle 2 Stunden** nach einer neuen Version (abschaltbar unter
 *Einstellungen → Updates*, dort gibt es auch **Jetzt suchen**). Ist eine da,
 erscheint unten rechts ein Hinweis:
+
+Unter Windows erscheint außerdem sofort eine Systembenachrichtigung, auch wenn CleanMusic
+minimiert/im Infobereich läuft. Nach vollständigem Beenden gibt es keine Benachrichtigungen:
+CleanMusic betreibt keinen Hintergrunddienst.
 
 - **Installiert (Setup):** *Updaten* lädt den neuen Installer, prüft Größe und
   SHA-256-Prüfsumme; nach *Jetzt installieren* schließt sich CleanMusic kurz,

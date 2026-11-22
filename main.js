@@ -18,14 +18,18 @@ const {
   nativeImage,
   Tray,
   screen,
+  globalShortcut,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const crypto = require('node:crypto');
+const http = require('node:http');
+const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { DiscordPresence } = require('./discord-rpc');
+const QRCode = require('qrcode');
 
 const ROOT = __dirname;
 const isDev = process.argv.includes('--dev');
@@ -33,6 +37,8 @@ const isSmoke = process.argv.includes('--smoke');
 const isSmokePlugin = process.argv.includes('--smoke-plugin');
 const isSmokeObs = process.argv.includes('--smoke-obs');
 const isSmokeStreamerbot = process.argv.includes('--smoke-streamerbot');
+const isAutostart = process.argv.includes('--autostart');
+if (process.platform === 'win32') app.setAppUserModelId('de.cleanmusic.launcher');
 // Updater test: pretend to be 0.0.1 and download the latest release into a
 // throwaway folder (never replaces anything, never restarts).
 const UPDATE_TEST = isSmoke && process.argv.includes('--smoke-update');
@@ -823,6 +829,7 @@ function interleaveTracks(first, second) {
 
 let mainWindow = null;
 let musicKitWindow = null;
+let miniWindow = null;
 
 // Last window size/position – only reused if it is still on a connected screen.
 function savedBounds() {
@@ -854,6 +861,214 @@ function rememberBounds() {
   writeConfig({ window: Object.assign({}, bounds, { maximized }) });
 }
 
+function miniBounds() {
+  if (isSmoke) return null;
+  const stored = readConfig().miniBounds;
+  if (!stored || typeof stored !== 'object') return null;
+  const bounds = {
+    x: Math.round(Number(stored.x)),
+    y: Math.round(Number(stored.y)),
+    width: 380,
+    height: 148,
+  };
+  if (!Number.isFinite(bounds.x) || !Number.isFinite(bounds.y)) return null;
+  try {
+    const area = screen.getDisplayMatching(bounds).workArea;
+    bounds.x = Math.max(area.x, Math.min(bounds.x, area.x + area.width - bounds.width));
+    bounds.y = Math.max(area.y, Math.min(bounds.y, area.y + area.height - bounds.height));
+  } catch {
+    return null;
+  }
+  return bounds;
+}
+
+function rememberMiniBounds() {
+  if (isSmoke || !miniWindow || miniWindow.isDestroyed()) return;
+  const { x, y } = miniWindow.getBounds();
+  writeConfig({ miniBounds: { x, y } });
+}
+
+function miniSnapshot() {
+  return {
+    track: playerState.track
+      ? {
+          title: playerState.track.title,
+          artist: playerState.track.artist,
+          artwork: cleanUrl(playerState.track.artwork, /^https:\/\//i),
+        }
+      : null,
+    playing: playerState.playing,
+    position: playerState.position,
+    duration: playerState.duration,
+    volume: playerState.volume,
+    alwaysOnTop: Boolean(readConfig().miniAlwaysOnTop),
+  };
+}
+
+function sendMiniState() {
+  if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.send('mini-state', miniSnapshot());
+}
+
+function saveMiniOnTop(value) {
+  const alwaysOnTop = Boolean(value);
+  writeConfig({ miniAlwaysOnTop: alwaysOnTop });
+  if (miniWindow && !miniWindow.isDestroyed()) miniWindow.setAlwaysOnTop(alwaysOnTop);
+  sendMiniState();
+}
+
+function openMiniWindow() {
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.show();
+    miniWindow.focus();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+    return true;
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const bounds = miniBounds();
+  miniWindow = new BrowserWindow({
+    ...(bounds || { width: 380, height: 148 }),
+    minWidth: 340,
+    minHeight: 132,
+    maxWidth: 520,
+    maxHeight: 180,
+    frame: false,
+    resizable: true,
+    show: false,
+    alwaysOnTop: Boolean(readConfig().miniAlwaysOnTop),
+    backgroundColor: '#10141c',
+    icon: path.join(ROOT, 'renderer', 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(ROOT, 'preload-mini.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  miniWindow.loadFile(path.join(ROOT, 'renderer', 'mini.html'));
+  miniWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  miniWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  miniWindow.webContents.once('did-finish-load', sendMiniState);
+  miniWindow.once('ready-to-show', () => {
+    if (!miniWindow || miniWindow.isDestroyed()) return;
+    if (isSmoke) return;
+    miniWindow.show();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+  });
+  let boundsTimer = null;
+  const scheduleBounds = () => {
+    clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(rememberMiniBounds, 500);
+  };
+  miniWindow.on('move', scheduleBounds);
+  miniWindow.on('resize', scheduleBounds);
+  miniWindow.on('close', (event) => {
+    if (quitting || isSmoke) return;
+    event.preventDefault();
+    miniWindow.hide();
+    showMainWindow();
+  });
+  miniWindow.on('closed', () => {
+    clearTimeout(boundsTimer);
+    miniWindow = null;
+  });
+  return true;
+}
+
+function closeMiniWindow(restore = true) {
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    const window = miniWindow;
+    miniWindow = null;
+    window.removeAllListeners('close');
+    window.close();
+  }
+  if (restore) showMainWindow();
+}
+
+function mainPlayerPath() {
+  const portable = process.env.PORTABLE_EXECUTABLE_FILE;
+  return portable && path.isAbsolute(portable) ? portable : process.execPath;
+}
+
+function updateLoginItem() {
+  if (!app.isPackaged || process.platform !== 'win32') return;
+  const enabled = Boolean(readConfig().startOnLogin);
+  try {
+    app.setLoginItemSettings({ openAtLogin: enabled, path: mainPlayerPath(), args: ['--autostart'] });
+  } catch (error) {
+    console.error('Login item:', error.message);
+  }
+}
+
+let lastTaskbarUpdate = 0;
+let thumbarKey = '';
+const thumbarIcon = (name) => nativeImage.createFromPath(path.join(ROOT, 'renderer', 'assets', 'thumbar', `${name}.png`));
+
+function updateTaskbar(force = false) {
+  if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return;
+  const enabled = readConfig().taskbarProgress !== false;
+  const now = Date.now();
+  if (!force && now - lastTaskbarUpdate < 950) return;
+  lastTaskbarUpdate = now;
+  const hasTrack = Boolean(playerState.track);
+  const duration = Number(playerState.duration) || 0;
+  if (!enabled || !hasTrack || !duration) mainWindow.setProgressBar(-1);
+  else {
+    const value = Math.max(0, Math.min(1, Number(playerState.position) / duration));
+    mainWindow.setProgressBar(value, playerState.playing ? {} : { mode: 'paused' });
+  }
+  const key = `${hasTrack}:${playerState.playing}`;
+  if (force || key !== thumbarKey) {
+    thumbarKey = key;
+    mainWindow.setThumbarButtons([
+      { tooltip: 'Zurück', icon: thumbarIcon('previous'), flags: hasTrack ? [] : ['disabled'], click: () => sendPlayerCommand('previous') },
+      { tooltip: playerState.playing ? 'Pause' : 'Abspielen', icon: thumbarIcon(playerState.playing ? 'pause' : 'play'), flags: hasTrack ? [] : ['disabled'], click: () => sendPlayerCommand('toggle') },
+      { tooltip: 'Weiter', icon: thumbarIcon('next'), flags: hasTrack ? [] : ['disabled'], click: () => sendPlayerCommand('next') },
+    ]);
+  }
+}
+
+const GLOBAL_SHORTCUTS = [
+  ['Control+Alt+P', 'toggle'],
+  ['Control+Alt+Right', 'next'],
+  ['Control+Alt+Left', 'previous'],
+  ['Control+Alt+Up', 'volumeUp'],
+  ['Control+Alt+Down', 'volumeDown'],
+  ['Control+Alt+M', 'mini'],
+];
+let registeredShortcuts = [];
+
+function disableGlobalShortcuts() {
+  registeredShortcuts.forEach((accelerator) => globalShortcut.unregister(accelerator));
+  registeredShortcuts = [];
+}
+
+function configureGlobalShortcuts(enabled) {
+  disableGlobalShortcuts();
+  if (!enabled) {
+    writeConfig({ globalShortcuts: false });
+    return { enabled: false, registered: [], conflict: null };
+  }
+  const registered = [];
+  let conflict = null;
+  for (const [accelerator, command] of GLOBAL_SHORTCUTS) {
+    const ok = globalShortcut.register(accelerator, () => {
+      if (command === 'mini') return openMiniWindow();
+      if (command === 'volumeUp' || command === 'volumeDown') {
+        const next = Math.max(0, Math.min(1.5, playerState.volume + (command === 'volumeUp' ? 0.05 : -0.05)));
+        sendPlayerCommand('volume', next);
+        return;
+      }
+      sendPlayerCommand(command);
+    });
+    if (ok) {
+      registered.push(accelerator);
+      registeredShortcuts.push(accelerator);
+    } else if (!conflict) conflict = accelerator;
+  }
+  writeConfig({ globalShortcuts: true });
+  return { enabled: true, registered, conflict };
+}
+
 function createMainWindow() {
   const bounds = savedBounds();
   mainWindow = new BrowserWindow({
@@ -882,10 +1097,14 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(ROOT, 'renderer', 'index.html'));
   mainWindow.webContents.setBackgroundThrottling(false);
+  mainWindow.webContents.on('did-finish-load', () => updateTaskbar(true));
 
   mainWindow.once('ready-to-show', () => {
     if (bounds && bounds.maximized) mainWindow.maximize();
-    if (!isSmoke) mainWindow.show();
+    if (isSmoke) return;
+    if (isAutostart && tray && closeToTray()) mainWindow.hide();
+    else if (isAutostart) mainWindow.minimize();
+    else mainWindow.show();
   });
 
   let boundsTimer = null;
@@ -902,7 +1121,7 @@ function createMainWindow() {
   // Never stay invisible: show the window after a few seconds even if the
   // first paint takes longer (slow disk, virus scanner, many local titles).
   setTimeout(() => {
-    if (!isSmoke && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    if (!isSmoke && !isAutostart && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.show();
     }
   }, 4000);
@@ -1533,7 +1752,7 @@ function createMainWindow() {
               }
               const done = ob.state();
               cm.setTheme('nacht');
-              const shown = cm.whatsNew('0.12.0');
+               const shown = cm.whatsNew('1.12.0');
               const card = !document.querySelector('#whatsnew-card').hidden;
               document.querySelector('#whatsnew-card [data-whatsnew="ok"]').click();
               const cardClosed = document.querySelector('#whatsnew-card').hidden;
@@ -1897,6 +2116,12 @@ function createMainWindow() {
           }
         }
 
+        try {
+          console.log('SMOKE_REMOTE:', JSON.stringify(await smokeRemote()));
+        } catch (error) {
+          console.error('SMOKE_REMOTE_FAIL:', error.message);
+        }
+
         app.quit();
       }, 5000);
     });
@@ -1969,6 +2194,8 @@ ipcMain.handle('get-info', () => ({
   chrome: process.versions.chrome,
   node: process.versions.node,
   platform: process.platform,
+  windows: os.release(),
+  installType: isInstalledCopy() ? 'installiert' : 'portable',
   widevine: widevine ? { version: widevine.version, path: widevine.dir } : null,
 }));
 
@@ -3545,6 +3772,561 @@ function callRenderer(command, value, timeout = 25000) {
   });
 }
 
+/* --- Optional phone remote (LAN only, disabled until enabled) -------- */
+
+let remoteServer = null;
+let remoteKeyCache = new Map();
+const remoteSseClients = new Set();
+const remoteRate = new Map();
+
+function isPrivateIpv4(value) {
+  const parts = String(value || '').split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168);
+}
+
+function normalizedRemoteIp(value) {
+  const address = String(value || '').split('%')[0].toLowerCase();
+  if (address.startsWith('::ffff:')) return address.slice(7);
+  return address;
+}
+
+function isAllowedRemoteIp(value) {
+  const address = normalizedRemoteIp(value);
+  return address === '::1' || /^127\./.test(address) || isPrivateIpv4(address);
+}
+
+function remoteLanAddress() {
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries || []) {
+      if ((entry.family === 'IPv4' || entry.family === 4) && !entry.internal && isPrivateIpv4(entry.address)) {
+        return entry.address;
+      }
+    }
+  }
+  return '';
+}
+
+function remoteConfig() {
+  const config = readConfig();
+  return {
+    enabled: Boolean(config.remoteEnabled && remoteServer && remoteServer.listening),
+    port: Math.max(0, Math.min(65535, Number(config.remotePort) || 4790)),
+    key: typeof config.remoteKey === 'string' ? config.remoteKey : '',
+  };
+}
+
+function remotePageUrl() {
+  const config = remoteConfig();
+  const ip = isSmoke ? '127.0.0.1' : remoteLanAddress();
+  if (!config.key || !ip || !config.enabled) return null;
+  const port = remoteServer.address() && remoteServer.address().port || config.port;
+  return `http://${ip}:${port}/?k=${encodeURIComponent(config.key)}`;
+}
+
+function remoteText(value, max = 200) {
+  let text = redactDiagnostic(cleanText(value, max * 2));
+  if (/^(?:[a-z]:[\\/]|\\\\)/i.test(text.trim())) return 'Lokale Datei';
+  text = text.replace(/(?:^|\s)~[\\/][^\s]*/g, ' [lokaler Pfad]');
+  const username = String(process.env.USERNAME || '');
+  if (username.length > 1) {
+    const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), '[Benutzer]');
+  }
+  return cleanText(text, max);
+}
+
+function remoteSettingsPublic() {
+  const config = remoteConfig();
+  const url = remotePageUrl();
+  if (!url) return Promise.resolve({
+    enabled: config.enabled,
+    port: remoteServer && remoteServer.listening ? remoteServer.address().port : config.port,
+    requestedPort: config.port,
+    url: '',
+    qr: '',
+    ip: '',
+    error: null,
+  });
+  return QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, width: 220 })
+    .then((qr) => ({
+      enabled: config.enabled,
+      port: remoteServer && remoteServer.listening ? remoteServer.address().port : config.port,
+      requestedPort: config.port,
+      url: url || '',
+      qr: url ? qr : '',
+      ip: isSmoke ? '127.0.0.1' : remoteLanAddress(),
+      error: null,
+    }))
+    .catch(() => ({ enabled: config.enabled, port: config.port, requestedPort: config.port, url: url || '', qr: '', ip: '', error: 'QR-Code konnte nicht erstellt werden.' }));
+}
+
+function remoteState() {
+  return {
+    track: playerState.track
+      ? {
+          title: remoteText(playerState.track.title),
+          artist: remoteText(playerState.track.artist),
+          cover: cleanUrl(playerState.track.artwork, /^https:\/\//i),
+        }
+      : null,
+    position: playerState.position,
+    duration: playerState.duration,
+    playing: playerState.playing,
+    volume: playerState.volume,
+    queue: playerState.upNext.slice(0, 10).map(({ title, artist }) => ({ title: remoteText(title), artist: remoteText(artist) })),
+    lyric: playerState.lyric && playerState.lyric.line ? remoteText(playerState.lyric.line, 300) : '',
+  };
+}
+
+function notifyRemoteState() {
+  sendMiniState();
+  updateTaskbar();
+  if (!remoteSseClients.size) return;
+  const payload = `event: state\ndata: ${JSON.stringify(remoteState())}\n\n`;
+  for (const response of remoteSseClients) {
+    try {
+      response.write(payload);
+    } catch {
+      remoteSseClients.delete(response);
+    }
+  }
+}
+
+function remoteHostAllowed(request) {
+  const rawHost = String(request.headers.host || '');
+  const match = rawHost.match(/^([a-z0-9.-]+)(?::(\d{1,5}))?$/i);
+  if (!match || Number(match[2]) !== Number(request.socket.localPort)) return false;
+  const host = match[1].toLowerCase();
+  if (host === 'localhost') return true;
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || !isAllowedRemoteIp(host)) return false;
+  if (host === normalizedRemoteIp(request.socket.localAddress)) return true;
+  return host.startsWith('127.') && normalizedRemoteIp(request.socket.localAddress).startsWith('127.');
+}
+
+function remoteAuthorized(request, url) {
+  if (!remoteHostAllowed(request) || !isAllowedRemoteIp(request.socket.remoteAddress)) return false;
+  const expected = String(readConfig().remoteKey || '');
+  const supplied = String(request.headers['x-cm-key'] || url.searchParams.get('k') || '');
+  if (!expected || !supplied) return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(supplied);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function remoteRateAllowed(request) {
+  const ip = normalizedRemoteIp(request.socket.remoteAddress);
+  const now = Date.now();
+  let entry = remoteRate.get(ip);
+  if (!entry || now - entry.start >= 1000) {
+    entry = { start: now, count: 0 };
+    remoteRate.set(ip, entry);
+  }
+  entry.count += 1;
+  return entry.count <= 20;
+}
+
+function sendRemoteJson(response, status, data) {
+  const body = JSON.stringify(data);
+  response.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+  });
+  response.end(body);
+}
+
+function readRemoteBody(request, maxBytes = 8192) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error('body-too-large'));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch {
+        reject(new Error('bad-json'));
+      }
+    });
+    request.on('error', reject);
+  });
+}
+
+function safeRemoteTrack(track) {
+  if (!track || !['apple', 'deezer'].includes(track.source) || !track.id || !track.preview) return null;
+  let preview;
+  try {
+    preview = new URL(track.preview);
+  } catch {
+    return null;
+  }
+  if (preview.protocol !== 'https:') return null;
+  const entry = {
+    id: cleanText(track.id, 200),
+    source: track.source,
+    sourceLabel: track.sourceLabel === 'Apple Music' ? 'Apple Music' : 'Deezer',
+    title: cleanText(track.title, 200),
+    artist: cleanText(track.artist, 200),
+    album: cleanText(track.album, 200),
+    artwork: cleanUrl(track.artwork, /^https:\/\//i),
+    duration: Math.max(0, Number(track.duration) || 0),
+    preview: preview.href,
+    link: cleanUrl(track.link, /^https:\/\//i),
+    artistId: cleanText(track.artistId, 40),
+  };
+  return entry;
+}
+
+async function handleRemoteRequest(request, response) {
+  let url;
+  try {
+    url = new URL(request.url, 'http://localhost');
+  } catch {
+    sendRemoteJson(response, 400, { error: 'bad-request' });
+    return;
+  }
+  const peer = normalizedRemoteIp(request.socket.remoteAddress);
+  if (!isAllowedRemoteIp(peer)) return sendRemoteJson(response, 403, { error: 'forbidden' });
+  if (!remoteHostAllowed(request)) return sendRemoteJson(response, 403, { error: 'forbidden' });
+  if (!remoteRateAllowed(request)) return sendRemoteJson(response, 429, { error: 'rate-limit' });
+  if (!remoteAuthorized(request, url)) return sendRemoteJson(response, 401, { error: 'unauthorized' });
+
+  if (request.method === 'GET' && url.pathname === '/') {
+    let html;
+    try {
+      html = await fsp.readFile(path.join(ROOT, 'renderer', 'remote', 'index.html'));
+    } catch {
+      return sendRemoteJson(response, 500, { error: 'unavailable' });
+    }
+    response.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': html.length,
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    });
+    response.end(html);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/state') return sendRemoteJson(response, 200, remoteState());
+
+  if (request.method === 'GET' && url.pathname === '/api/events') {
+    response.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    });
+    response.write(`event: state\ndata: ${JSON.stringify(remoteState())}\n\n`);
+    remoteSseClients.add(response);
+    response.on('close', () => remoteSseClients.delete(response));
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/search') {
+    const query = String(url.searchParams.get('q') || '').trim().slice(0, 120);
+    if (!query) return sendRemoteJson(response, 200, { tracks: [] });
+    const results = await Promise.allSettled([
+      fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=30&country=DE`),
+      fetchJson(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=30`),
+    ]);
+    const tracks = [];
+    results.forEach((result, index) => {
+      if (result.status !== 'fulfilled') return;
+      const list = index === 0 ? normalizeItunes(result.value) : normalizeDeezer(result.value);
+      list.forEach((track) => {
+        const safe = safeRemoteTrack(track);
+        if (!safe || remoteKeyCache.has(safe.id)) return;
+        remoteKeyCache.set(safe.id, safe);
+        tracks.push({ id: safe.id, title: safe.title, artist: safe.artist, cover: safe.artwork, source: safe.source });
+      });
+    });
+    while (remoteKeyCache.size > 120) remoteKeyCache.delete(remoteKeyCache.keys().next().value);
+    return sendRemoteJson(response, 200, { tracks: tracks.slice(0, 30) });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/cmd') {
+    let body;
+    try { body = await readRemoteBody(request); } catch { return sendRemoteJson(response, 400, { error: 'bad-request' }); }
+    const command = String(body.cmd || '');
+    if (!['toggle', 'play', 'pause', 'next', 'prev', 'seek', 'volume', 'like'].includes(command)) {
+      return sendRemoteJson(response, 400, { error: 'bad-command' });
+    }
+    let value;
+    if (command === 'seek') {
+      value = Number(body.value);
+      if (!Number.isFinite(value) || value < 0 || value > Math.max(0, playerState.duration)) return sendRemoteJson(response, 400, { error: 'bad-value' });
+    } else if (command === 'volume') {
+      value = Number(body.value);
+      if (!Number.isFinite(value) || value < 0 || value > 1.5) return sendRemoteJson(response, 400, { error: 'bad-value' });
+    }
+    const names = { prev: 'previous' };
+    const result = await callRenderer(names[command] || command, value, 6000);
+    return sendRemoteJson(response, result && result.ok === false ? 503 : 200, { ok: !(result && result.ok === false) });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/queue') {
+    let body;
+    try { body = await readRemoteBody(request); } catch { return sendRemoteJson(response, 400, { error: 'bad-request' }); }
+    const track = remoteKeyCache.get(String(body.id || ''));
+    const mode = body.position === 'next' ? 'next' : 'end';
+    if (!track) return sendRemoteJson(response, 404, { error: 'not-found' });
+    const result = await callRenderer('remoteQueue', { track, mode }, 6000);
+    return sendRemoteJson(response, result && result.ok === false ? 503 : 200, { ok: !(result && result.ok === false) });
+  }
+
+  sendRemoteJson(response, 404, { error: 'not-found' });
+}
+
+function stopRemoteServer() {
+  if (!remoteServer) return Promise.resolve();
+  const server = remoteServer;
+  remoteServer = null;
+  remoteKeyCache.clear();
+  remoteRate.clear();
+  for (const response of remoteSseClients) response.end();
+  remoteSseClients.clear();
+  return new Promise((resolve) => {
+    try { server.close(() => resolve()); } catch { resolve(); }
+  });
+}
+
+function startRemoteServer(port, { smoke = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((request, response) => {
+      handleRemoteRequest(request, response).catch(() => {
+        if (!response.headersSent) sendRemoteJson(response, 500, { error: 'internal-error' });
+        else response.end();
+      });
+    });
+    server.headersTimeout = 5000;
+    server.requestTimeout = 10000;
+    server.keepAliveTimeout = 5000;
+    server.maxHeadersCount = 40;
+    server.on('error', reject);
+    server.listen(port, smoke ? '127.0.0.1' : '0.0.0.0', () => {
+      server.removeListener('error', reject);
+      remoteServer = server;
+      resolve(server.address().port);
+    });
+  });
+}
+
+function smokeWavDataUrl() {
+  const samples = 8000;
+  const wav = Buffer.alloc(44 + samples, 128);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write('WAVE', 8);
+  wav.write('fmt ', 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(8000, 28);
+  wav.writeUInt16LE(1, 32);
+  wav.writeUInt16LE(8, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(samples, 40);
+  return `data:audio/wav;base64,${wav.toString('base64')}`;
+}
+
+async function smokeRemote() {
+  if (!isSmoke) throw new Error('Fernbedienungs-Smoke ist nur im Smoke-Profil erlaubt.');
+  const defaultOff = !remoteServer && !readConfig().remoteEnabled;
+  const key = crypto.randomBytes(24).toString('base64url');
+  writeConfig({ remoteEnabled: true, remotePort: 4790, remoteKey: key });
+  const port = await startRemoteServer(0, { smoke: true });
+  if (!remoteServer || remoteServer.address().address !== '127.0.0.1') throw new Error('Smoke-Server hat nicht nur auf 127.0.0.1 gebunden.');
+  const base = `http://127.0.0.1:${port}`;
+  const request = (url, options = {}) => fetch(`${base}${url}`, options);
+  const noKey = await request('/api/state');
+  const wrongKey = await request('/api/state', { headers: { 'X-CM-Key': 'not-the-key' } });
+  const authorized = { 'X-CM-Key': key };
+  const pageResponse = await request(`/?k=${encodeURIComponent(key)}`);
+  const page = await pageResponse.text();
+  const stateResponse = await request('/api/state', { headers: authorized });
+  const initial = await stateResponse.json();
+  const serialized = JSON.stringify(initial);
+  const sanitized = !/(?:[A-Z]:\\Users\\|\\\\|"path"|"pluginId")/i.test(serialized);
+
+  const setup = await mainWindow.webContents.executeJavaScript(`
+    (async () => {
+      const audio = document.querySelector('#audio');
+      const before = { hadSrc: Boolean(audio.src), paused: audio.paused, loop: audio.loop };
+      audio.loop = true;
+      if (!audio.src) audio.src = ${JSON.stringify(smokeWavDataUrl())};
+      if (audio.paused) await audio.play();
+      return before;
+    })()
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const beforeToggleResponse = await request('/api/state', { headers: authorized });
+  const beforeToggle = await beforeToggleResponse.json();
+  const commandResponse = await request('/api/cmd', {
+    method: 'POST',
+    headers: { ...authorized, 'content-type': 'application/json' },
+    body: JSON.stringify({ cmd: 'toggle' }),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const afterToggleResponse = await request('/api/state', { headers: authorized });
+  const afterToggle = await afterToggleResponse.json();
+  const toggled = commandResponse.ok && beforeToggle.playing !== afterToggle.playing;
+  if (toggled) {
+    await request('/api/cmd', {
+      method: 'POST',
+      headers: { ...authorized, 'content-type': 'application/json' },
+      body: JSON.stringify({ cmd: 'toggle' }),
+    });
+  }
+  await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      const audio = document.querySelector('#audio');
+      audio.loop = ${Boolean(setup.loop)};
+      if (!${Boolean(setup.hadSrc)}) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+      else if (${Boolean(setup.paused)}) audio.pause();
+    })()
+  `);
+
+  const searchResponse = await request('/api/search?q=daft%20punk', { headers: authorized });
+  const search = await searchResponse.json();
+  const searchCount = Array.isArray(search.tracks) ? search.tracks.length : 0;
+  let queueStatus = 0;
+  if (searchCount) {
+    const queueResponse = await request('/api/queue', {
+      method: 'POST',
+      headers: { ...authorized, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: search.tracks[0].id, position: 'next' }),
+    });
+    queueStatus = queueResponse.status;
+  }
+  const remoteSettings = await remoteSettingsPublic();
+  const taskbarIcons = ['previous', 'play', 'pause', 'next'].every((name) => {
+    try { return fs.statSync(path.join(ROOT, 'renderer', 'assets', 'thumbar', `${name}.png`)).size > 0; } catch { return false; }
+  });
+  const diagnostic = diagnosticText();
+  const diagnosticsSafe = diagnostic.includes(`CleanMusic ${app.getVersion()}`) && !diagnostic.includes(os.homedir());
+  const disabledFeatures = !readConfig().globalShortcuts && !readConfig().startOnLogin && readConfig().taskbarProgress !== false;
+  let miniBridge = false;
+  if (openMiniWindow() && miniWindow && !miniWindow.isDestroyed()) {
+    const loaded = new Promise((resolve) => {
+      if (!miniWindow.webContents.isLoading()) resolve();
+      else miniWindow.webContents.once('did-finish-load', resolve);
+    });
+    await Promise.race([loaded, new Promise((resolve) => setTimeout(resolve, 5000))]);
+    miniBridge = await miniWindow.webContents.executeJavaScript(
+      'Boolean(window.mini && typeof window.mini.onState === "function" && typeof window.mini.command === "function" && !window.cm)'
+    );
+    closeMiniWindow(false);
+  }
+  await stopRemoteServer();
+  writeConfig({ remoteEnabled: false });
+  const result = {
+    defaultOff,
+    bind: '127.0.0.1',
+    port,
+    noKey: noKey.status,
+    wrongKey: wrongKey.status,
+    page: { status: pageResponse.status, csp: Boolean(pageResponse.headers.get('content-security-policy')), inlineOnly: !/<(?:script|link)[^>]+(?:src|href)=["']https?:/i.test(page) },
+    qr: /^http:\/\/127\.0\.0\.1:\d+\//.test(remoteSettings.url) && remoteSettings.qr.startsWith('data:image/png;base64,'),
+    state: stateResponse.status,
+    sanitized,
+    toggle: toggled,
+    search: { status: searchResponse.status, count: searchCount },
+    queue: queueStatus,
+    taskbarIcons,
+    miniBridge,
+    diagnosticsSafe,
+    disabledFeatures,
+    stopped: !remoteServer,
+  };
+  if (!defaultOff || noKey.status !== 401 || wrongKey.status !== 401 || pageResponse.status !== 200 || !result.page.csp || !result.page.inlineOnly || !result.qr || stateResponse.status !== 200 || !sanitized || !toggled || !searchResponse.ok || !searchCount || queueStatus !== 200 || !taskbarIcons || !miniBridge || !diagnosticsSafe || !disabledFeatures || !result.stopped) {
+    throw new Error(JSON.stringify(result));
+  }
+  return result;
+}
+
+async function setRemoteEnabled(enabled, requestedPort) {
+  const config = readConfig();
+  const port = Math.max(1024, Math.min(65535, Math.round(Number(requestedPort) || Number(config.remotePort) || 4790)));
+  if (!enabled) {
+    await stopRemoteServer();
+    writeConfig({ remoteEnabled: false, remotePort: port });
+    return remoteSettingsPublic();
+  }
+  const key = config.remoteKey || crypto.randomBytes(24).toString('base64url');
+  await stopRemoteServer();
+  writeConfig({ remoteEnabled: true, remotePort: port, remoteKey: key });
+  try {
+    await startRemoteServer(port);
+    return remoteSettingsPublic();
+  } catch (error) {
+    writeConfig({ remoteEnabled: false });
+    return { enabled: false, port, requestedPort: port, url: '', qr: '', ip: '', error: cleanText(error.message, 180) || 'Der Port konnte nicht geöffnet werden.' };
+  }
+}
+
+async function rotateRemoteKey() {
+  const key = crypto.randomBytes(24).toString('base64url');
+  writeConfig({ remoteKey: key });
+  remoteKeyCache.clear();
+  return remoteSettingsPublic();
+}
+
+async function registeredRemoteAutostart() {
+  if (isSmoke || !readConfig().remoteEnabled || remoteServer) return;
+  const config = readConfig();
+  const key = typeof config.remoteKey === 'string' && config.remoteKey.length >= 20
+    ? config.remoteKey
+    : crypto.randomBytes(24).toString('base64url');
+  writeConfig({ remoteKey: key, remotePort: Math.max(1024, Math.min(65535, Number(config.remotePort) || 4790)) });
+  try {
+    await startRemoteServer(Number(readConfig().remotePort) || 4790);
+  } catch (error) {
+    writeConfig({ remoteEnabled: false });
+    console.error('Remote server:', error.message);
+  }
+}
+
+ipcMain.handle('remote-get', (event) => event.sender === (mainWindow && mainWindow.webContents) ? remoteSettingsPublic() : null);
+ipcMain.handle('remote-set', (event, patch) => event.sender === (mainWindow && mainWindow.webContents)
+  ? setRemoteEnabled(Boolean(patch && patch.enabled), patch && patch.port)
+  : null);
+ipcMain.handle('remote-rotate', (event) => event.sender === (mainWindow && mainWindow.webContents) ? rotateRemoteKey() : null);
+
+ipcMain.on('mini-command', (event, message) => {
+  if (!miniWindow || event.sender !== miniWindow.webContents || !message) return;
+  switch (message.command) {
+    case 'toggle': case 'next': case 'previous':
+      sendPlayerCommand(message.command);
+      break;
+    case 'seek': case 'volume':
+      if (Number.isFinite(Number(message.value))) sendPlayerCommand(message.command, Number(message.value));
+      break;
+    case 'alwaysOnTop':
+      saveMiniOnTop(Boolean(message.value));
+      break;
+    case 'restore':
+      closeMiniWindow(true);
+      break;
+    default:
+  }
+});
+
 ipcMain.on('player-command-result', (event, payload) => {
   if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
   const done = rendererCalls.get(Number(payload && payload.callId));
@@ -3618,6 +4400,7 @@ ipcMain.on('player-state', (_event, raw) => {
   }));
 
   updateTray();
+  notifyRemoteState();
   if (trackChanged) emitPluginEvent('nowplaying');
   if (volumeChanged) emitPluginEvent('volume');
   emitPluginEvent('state');
@@ -3780,6 +4563,66 @@ function readyPlugin(id, capability) {
 function cleanText(value, max = 300) {
   return String(value == null ? '' : value).slice(0, max);
 }
+
+const diagnosticErrors = [];
+let rendererDiagnosticState = {};
+
+function redactDiagnostic(value) {
+  let text = String(value == null ? '' : value).slice(0, 4000);
+  for (const home of new Set([os.homedir(), process.env.USERPROFILE, process.env.HOME].filter(Boolean))) {
+    const escaped = String(home).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\\/]+/g, '[\\\\/]');
+    try { text = text.replace(new RegExp(escaped, 'gi'), '~'); } catch { /* malformed environment path */ }
+  }
+  return text
+    .replace(/([?&](?:k|token|key)=)[^&\s]+/gi, '$1[ausgeblendet]')
+    .replace(/(X-CM-Key\s*[:=]\s*)[^\s,;]+/gi, '$1[ausgeblendet]');
+}
+
+function recordDiagnosticError(source, error) {
+  const message = redactDiagnostic(error && error.stack ? error.stack : error && error.message ? error.message : error);
+  diagnosticErrors.push({ at: new Date().toISOString(), source: cleanText(source, 40), message });
+  if (diagnosticErrors.length > 30) diagnosticErrors.splice(0, diagnosticErrors.length - 30);
+}
+
+function activePluginDiagnostics() {
+  return Array.from(plugins.values())
+    .filter((plugin) => plugin.enabled && plugin.module)
+    .map((plugin) => ({
+      name: cleanText(plugin.module.name || plugin.id, 80),
+      version: cleanText(plugin.module.version || 'unbekannt', 30),
+    }));
+}
+
+function diagnosticText() {
+  const config = readConfig();
+  const lines = [
+    `CleanMusic ${app.getVersion()} (${isInstalledCopy() ? 'installiert' : 'portable'})`,
+    `Electron ${process.versions.electron} · Chrome ${process.versions.chrome} · Windows ${os.release()}`,
+    `Plugins: ${activePluginDiagnostics().map((plugin) => `${plugin.name} ${plugin.version}`).join(', ') || 'keine'}`,
+    `Audio-Kette: ${rendererDiagnosticState.audioChain ? 'an' : 'aus'} · Fernbedienung: ${config.remoteEnabled ? 'an' : 'aus'} · Layout: ${rendererDiagnosticState.layout || 'unbekannt'}`,
+    '',
+    'Letzte Fehler (maximal 30):',
+  ];
+  if (!diagnosticErrors.length) lines.push('Keine Fehler seit dem Start.');
+  else diagnosticErrors.forEach((error) => lines.push(`[${error.at}] ${error.source}: ${error.message}`));
+  return redactDiagnostic(lines.join('\n'));
+}
+
+process.on('uncaughtExceptionMonitor', (error) => recordDiagnosticError('Hauptprozess', error));
+process.on('unhandledRejection', (error) => recordDiagnosticError('Hauptprozess · Promise', error));
+
+ipcMain.on('diagnostic-error', (event, payload) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return;
+  recordDiagnosticError('Renderer', payload && payload.message);
+});
+ipcMain.on('diagnostic-state', (event, payload) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || !payload || typeof payload !== 'object') return;
+  rendererDiagnosticState = {
+    audioChain: Boolean(payload.audioChain),
+    layout: payload.layout === 'simple' ? 'Einfach' : 'Erweitert',
+  };
+});
+ipcMain.handle('diagnostic-copy', () => diagnosticText());
 
 function cleanUrl(value, pattern = /^https?:\/\//i) {
   const url = String(value || '');
@@ -4627,6 +5470,30 @@ let updateState = {
   checkedAt: 0,
 };
 let updateTask = null;
+let announcedUpdateVersion = null;
+const activeUpdateNotifications = new Set();
+
+function notifyWindowsUpdate(latest) {
+  if (process.platform !== 'win32' || isSmoke || !latest || announcedUpdateVersion === latest) return false;
+  try {
+    const { Notification } = require('electron');
+    if (!Notification.isSupported()) return false;
+    const notification = new Notification({
+      title: `CleanMusic ${latest} ist da`,
+      body: 'Klicke hier, um CleanMusic zu öffnen und das Update anzusehen.',
+      icon: path.join(ROOT, 'renderer', 'assets', 'icon.png'),
+      urgency: 'normal',
+    });
+    activeUpdateNotifications.add(notification);
+    notification.on('click', () => showMainWindow());
+    notification.on('close', () => activeUpdateNotifications.delete(notification));
+    notification.show();
+    announcedUpdateVersion = latest;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function parseVersion(value) {
   const match = String(value || '')
@@ -4765,6 +5632,7 @@ async function checkForUpdates() {
       const latest = String(release.tag_name || '').replace(/^v/i, '');
       const current = UPDATE_TEST ? '0.0.1' : app.getVersion();
       const newer = !release.draft && !release.prerelease && isNewerVersion(latest, current);
+      if (newer) notifyWindowsUpdate(latest);
       setUpdate({
         status: newer ? 'available' : 'current',
         latest: parseVersion(latest) ? latest : null,
@@ -4927,6 +5795,7 @@ function updateTray(force = false) {
     Menu.buildFromTemplate([
       { label: line ? line.slice(0, 60) : 'Nichts ausgewählt', enabled: false },
       { type: 'separator' },
+      { label: 'Mini-Player öffnen', click: () => openMiniWindow() },
       {
         label: playerState.playing ? 'Pause' : 'Abspielen',
         enabled: Boolean(track),
@@ -4969,10 +5838,39 @@ ipcMain.handle('tray-set', (_event, patch) => {
   return { closeToTray: next };
 });
 
-app.whenReady().then(() => {
+ipcMain.handle('mini-open', (event) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return false;
+  return openMiniWindow();
+});
+ipcMain.handle('taskbar-get', () => ({ progress: readConfig().taskbarProgress !== false }));
+ipcMain.handle('taskbar-set', (event, patch) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return null;
+  const progress = Boolean(patch && patch.progress);
+  writeConfig({ taskbarProgress: progress });
+  updateTaskbar(true);
+  return { progress };
+});
+ipcMain.handle('shortcuts-get', () => ({ enabled: Boolean(readConfig().globalShortcuts), registered: registeredShortcuts.slice() }));
+ipcMain.handle('shortcuts-set', (event, patch) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return null;
+  return configureGlobalShortcuts(Boolean(patch && patch.enabled));
+});
+ipcMain.handle('login-get', () => ({ enabled: Boolean(readConfig().startOnLogin) }));
+ipcMain.handle('login-set', (event, patch) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return null;
+  const enabled = Boolean(patch && patch.enabled);
+  writeConfig({ startOnLogin: enabled });
+  updateLoginItem();
+  return { enabled, supported: app.isPackaged && process.platform === 'win32' };
+});
+
+app.whenReady().then(async () => {
   if (!hasInstanceLock) return;
   Menu.setApplicationMenu(null);
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
+  updateLoginItem();
+  if (readConfig().globalShortcuts) configureGlobalShortcuts(true);
+  await registeredRemoteAutostart();
   createMainWindow();
   createTray();
   wireCreatorDownloads();
@@ -4991,27 +5889,11 @@ app.whenReady().then(() => {
   if (!isSmoke) cleanupSetupUpdate();
   if (!isSmoke && updateConfig().auto) {
     setTimeout(() => checkForUpdates().catch(() => {}), 4000);
-    // While CleanMusic stays open: look again every 2 hours. A new version
-    // also shows a Windows notification, in case the window is in the tray.
-    let announced = null;
-    setInterval(async () => {
+    // While CleanMusic stays open (including minimized to tray), recheck every 2 hours.
+    // checkForUpdates shows a Windows notification as soon as a new release is found.
+    setInterval(() => {
       if (!updateConfig().auto || updateState.status === 'downloading' || updateState.status === 'ready') return;
-      const result = await checkForUpdates().catch(() => null);
-      if (!result || result.status !== 'available' || !result.latest || announced === result.latest) return;
-      announced = result.latest;
-      try {
-        const { Notification } = require('electron');
-        if (Notification.isSupported()) {
-          const note = new Notification({
-            title: `CleanMusic ${result.latest} ist da`,
-            body: 'Klicke hier und dann auf „Updaten“.',
-          });
-          note.on('click', () => showMainWindow());
-          note.show();
-        }
-      } catch {
-        /* the card in the window is enough */
-      }
+      checkForUpdates().catch(() => {});
     }, 2 * 60 * 60 * 1000);
   }
   // Close button → tray (only if the user switched it on).
@@ -5039,4 +5921,10 @@ app.on('before-quit', () => {
   quitting = true;
   presence.shutdown();
   if (tray && !tray.isDestroyed()) tray.destroy();
+  if (miniWindow && !miniWindow.isDestroyed()) miniWindow.close();
+});
+
+app.on('will-quit', () => {
+  disableGlobalShortcuts();
+  stopRemoteServer();
 });

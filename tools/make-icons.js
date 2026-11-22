@@ -6,8 +6,7 @@
  *   npx electron tools/make-icons.js
  *
  * Writes build/icon.svg, build/icon.png (1024), build/icon.ico (16–256),
- * renderer/assets/logo.svg (full) and renderer/assets/logo-small.svg
- * (simplified for small sizes) and renderer/assets/icon.png (256).
+ * renderer/assets/logo.svg, logo-small.svg, icon.png and Windows taskbar buttons.
  */
 
 const fs = require('node:fs');
@@ -86,6 +85,16 @@ function logo({ small = false } = {}) {
 `;
 }
 
+function thumbarIcon(name) {
+  const paths = {
+    previous: '<path d="M5 3h2v10H5zM19 4 9 8l10 4z"/>',
+    play: '<path d="M7 3 20 8 7 13z"/>',
+    pause: '<path d="M5 3h4v10H5zM13 3h4v10h-4z"/>',
+    next: '<path d="M17 3h2v10h-2zM5 4l10 4-10 4z"/>',
+  };
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="24" height="16"><g fill="#e8edf5">${paths[name]}</g></svg>`;
+}
+
 /* ICO with PNG-compressed entries (Windows Vista and newer). */
 function writeIco(file, images) {
   const header = Buffer.alloc(6);
@@ -145,6 +154,12 @@ async function main() {
 
   fs.writeFileSync(path.join(ROOT, 'build', 'icon.png'), await render(full, 1024));
   fs.writeFileSync(path.join(ROOT, 'renderer', 'assets', 'icon.png'), await render(full, 256));
+
+  const thumbarDir = path.join(ROOT, 'renderer', 'assets', 'thumbar');
+  fs.mkdirSync(thumbarDir, { recursive: true });
+  for (const name of ['previous', 'play', 'pause', 'next']) {
+    fs.writeFileSync(path.join(thumbarDir, `${name}.png`), await render(thumbarIcon(name), 24));
+  }
 
   const images = [];
   for (const size of [16, 24, 32, 48, 64, 128, 256]) {

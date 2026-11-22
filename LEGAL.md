@@ -174,6 +174,20 @@ Quellen-Plugin – in CleanMusic.
   nur die passende Datei des Releases; Größe und SHA-256-Prüfsumme werden vor
   dem Start geprüft.
 
+## Handy-Fernbedienung (ab 1.12)
+
+- Standardmäßig **aus**. Wenn eingeschaltet, startet CleanMusic einen lokalen HTTP-Server für
+  die Steuerung im privaten WLAN. Er nimmt nur Loopback- und private IPv4-Absender an, prüft
+  zusätzlich den `Host`-Header und begrenzt Anfragen pro IP.
+- Jede Anfrage erfordert einen zufälligen Schlüssel; der Vergleich erfolgt zeitkonstant. Der
+  QR-Code und Link enthalten diesen Schlüssel. „Neuen Link erzeugen“ macht den vorherigen
+  Schlüssel ungültig. Schalte die Funktion aus, wenn du sie nicht verwendest.
+- Die Verbindung ist **nicht verschlüsselt**. Verwende sie nur in einem vertrauenswürdigen,
+  privaten Netzwerk und erlaube Windows-Firewall-Zugriff ausschließlich für „Private Netzwerke“.
+  Personen im selben WLAN können Netzwerkverkehr beobachten; der Link ist wie ein Passwort zu
+  behandeln. Keine Cloud, Telemetrie oder lokalen Dateipfade: die Fernbedienung sucht nur im
+  öffentlichen Vorschau-Katalog und lädt keine Streams herunter.
+
 ## YouTube-Download nur für Creative Commons (ab 1.5)
 
 Das optionale Quellen-Plugin darf im Cutter-Modus nur Videos herunterladen, die YouTube
