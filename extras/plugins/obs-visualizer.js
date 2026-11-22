@@ -35,6 +35,9 @@ function settings() {
     port: 4789,
     style: 'bars',
     sensitivity: 1.15,
+    bars: 32,
+    width: 100,
+    gap: 3,
     glow: true,
     background: false,
     showTitle: false,
@@ -70,6 +73,9 @@ function payload() {
     level: Number(visualizer.level) || 0,
     style: s.style,
     sensitivity: s.sensitivity,
+    bars: s.bars,
+    width: s.width,
+    gap: s.gap,
     glow: Boolean(s.glow),
     background: Boolean(s.background),
     showTitle: Boolean(s.showTitle),
@@ -223,9 +229,11 @@ function visualizerHtml(forcedStyle) {
   const canvas = document.getElementById('viz');
   const title = document.getElementById('title');
   const g = canvas.getContext('2d');
-  const BANDS = 32;
-  const target = new Float32Array(BANDS);
-  const current = new Float32Array(BANDS);
+  let BANDS = 32;
+  let target = new Float32Array(BANDS);
+  let current = new Float32Array(BANDS);
+  let widthPct = 100;
+  let gapPx = 3;
   let data = null;
   let style = 'bars';
   let colorA = [91, 140, 255];
@@ -246,6 +254,20 @@ function visualizerHtml(forcedStyle) {
     Math.round(a[1] + (b[1] - a[1]) * t),
     Math.round(a[2] + (b[2] - a[2]) * t),
   ];
+  const sample = (values, index, count) => {
+    if (!values.length) return 0;
+    if (values.length === 1) return Number(values[0]) || 0;
+    const pos = (index / Math.max(1, count - 1)) * (values.length - 1);
+    const low = Math.floor(pos);
+    const high = Math.min(values.length - 1, low + 1);
+    const amount = Number(values[low]) || 0;
+    const next = Number(values[high]) || 0;
+    return amount + (next - amount) * (pos - low);
+  };
+  const area = (w) => {
+    const width = w * (widthPct / 100);
+    return { left: (w - width) / 2, width };
+  };
 
   function resize() {
     dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -260,6 +282,13 @@ function visualizerHtml(forcedStyle) {
   function apply(next) {
     data = next;
     style = forced || next.style || 'bars';
+    BANDS = Math.max(8, Math.min(64, Math.round(Number(next.bars) || 32)));
+    widthPct = Math.max(30, Math.min(100, Number(next.width) || 100));
+    gapPx = Math.max(0, Math.min(20, next.gap == null ? 3 : Number(next.gap)));
+    if (target.length !== BANDS) {
+      target = new Float32Array(BANDS);
+      current = new Float32Array(BANDS);
+    }
     if (Array.isArray(next.track && next.track.colors) && next.track.colors.length === 2) {
       colorA = hex(next.track.colors[0]) || colorA;
       colorB = hex(next.track.colors[1]) || colorB;
@@ -267,7 +296,7 @@ function visualizerHtml(forcedStyle) {
     const values = Array.isArray(next.spectrum) ? next.spectrum : [];
     const gain = Math.max(0.5, Math.min(2, Number(next.sensitivity) || 1));
     for (let i = 0; i < BANDS; i += 1) {
-      const value = Math.max(0, Math.min(255, Number(values[i]) || 0)) / 255;
+      const value = Math.max(0, Math.min(255, sample(values, i, BANDS))) / 255;
       target[i] = Math.max(0, Math.min(1, value * gain));
     }
     const track = next.track;
@@ -307,53 +336,60 @@ function visualizerHtml(forcedStyle) {
   }
 
   function drawBars(w, h, levels) {
-    const gap = Math.max(2, w * 0.0025);
-    const barWidth = Math.max(2, (w - gap * (BANDS - 1)) / BANDS);
+    const box = area(w);
+    const count = levels.length;
+    const gap = Math.max(1, gapPx * dpr);
+    const barWidth = Math.max(1, (box.width - gap * (count - 1)) / count);
     const base = h * 0.90;
     const maxHeight = h * 0.76;
     const gradient = g.createLinearGradient(0, base, 0, base - maxHeight);
     gradient.addColorStop(0, rgba(colorA, 0.95));
     gradient.addColorStop(1, rgba(colorB, 0.98));
     g.fillStyle = gradient;
-    for (let i = 0; i < BANDS; i += 1) {
+    for (let i = 0; i < count; i += 1) {
       const value = levels[i];
       const height = Math.max(2 * dpr, value * maxHeight);
-      const x = i * (barWidth + gap);
+      const x = box.left + i * (barWidth + gap);
       rounded(x, base - height, barWidth, height, Math.min(barWidth / 2, 6 * dpr));
       g.fill();
     }
   }
 
   function drawMirror(w, h, levels) {
-    const gap = Math.max(2, w * 0.0025);
-    const barWidth = Math.max(2, (w - gap * (BANDS - 1)) / BANDS);
+    const box = area(w);
+    const count = levels.length;
+    const gap = Math.max(1, gapPx * dpr);
+    const barWidth = Math.max(1, (box.width - gap * (count - 1)) / count);
     const mid = h / 2;
     const maxHeight = h * 0.36;
-    for (let i = 0; i < BANDS; i += 1) {
+    for (let i = 0; i < count; i += 1) {
       const value = levels[i];
       const height = Math.max(1.5 * dpr, value * maxHeight);
-      g.fillStyle = rgba(mix(colorA, colorB, i / (BANDS - 1)), 0.95);
-      const x = i * (barWidth + gap);
+      g.fillStyle = rgba(mix(colorA, colorB, i / Math.max(1, count - 1)), 0.95);
+      const x = box.left + i * (barWidth + gap);
       rounded(x, mid - height, barWidth, height * 2, Math.min(barWidth / 2, 5 * dpr));
       g.fill();
     }
     g.fillStyle = 'rgba(255,255,255,.10)';
-    g.fillRect(0, mid - 0.5 * dpr, w, 1 * dpr);
+    g.fillRect(box.left, mid - 0.5 * dpr, box.width, 1 * dpr);
   }
 
   function drawRadial(w, h, levels) {
+    const box = area(w);
+    const count = levels.length;
     const cx = w / 2;
     const cy = h / 2;
-    const base = Math.min(w, h) * 0.19;
-    const maxHeight = Math.min(w, h) * 0.25;
-    const thickness = Math.max(3 * dpr, Math.min(w, h) * 0.018);
+    const size = Math.min(box.width, h);
+    const base = size * 0.19;
+    const maxHeight = size * 0.25;
+    const thickness = Math.max(3 * dpr, size * 0.018);
     g.lineCap = 'round';
-    for (let i = 0; i < BANDS; i += 1) {
-      const angle = (i / BANDS) * Math.PI * 2 - Math.PI / 2;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
       const value = levels[i];
       const inner = base;
       const outer = base + Math.max(1.5 * dpr, value * maxHeight);
-      g.strokeStyle = rgba(mix(colorA, colorB, i / (BANDS - 1)), 0.95);
+      g.strokeStyle = rgba(mix(colorA, colorB, i / Math.max(1, count - 1)), 0.95);
       g.lineWidth = thickness;
       g.beginPath();
       g.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
@@ -368,17 +404,22 @@ function visualizerHtml(forcedStyle) {
   }
 
   function drawWave(w, h, levels) {
+    const box = area(w);
+    const count = levels.length;
     const base = h * 0.78;
     const maxHeight = h * 0.58;
     const points = [];
-    for (let i = 0; i < BANDS; i += 1) {
-      points.push({ x: (i / (BANDS - 1)) * w, y: base - levels[i] * maxHeight });
+    for (let i = 0; i < count; i += 1) {
+      points.push({
+        x: box.left + (i / Math.max(1, count - 1)) * box.width,
+        y: base - levels[i] * maxHeight,
+      });
     }
     const gradient = g.createLinearGradient(0, base - maxHeight, 0, base);
     gradient.addColorStop(0, rgba(colorB, 0.75));
     gradient.addColorStop(1, rgba(colorA, 0.04));
     g.beginPath();
-    g.moveTo(0, base);
+    g.moveTo(box.left, base);
     g.lineTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i += 1) {
       const previous = points[i - 1];
@@ -386,7 +427,7 @@ function visualizerHtml(forcedStyle) {
       const midX = (previous.x + point.x) / 2;
       g.bezierCurveTo(midX, previous.y, midX, point.y, point.x, point.y);
     }
-    g.lineTo(w, base);
+    g.lineTo(box.left + box.width, base);
     g.closePath();
     g.fillStyle = gradient;
     g.fill();
@@ -464,14 +505,14 @@ module.exports = {
   apiVersion: 2,
   id: 'obs-visualizer',
   name: 'OBS Audio-Visualizer',
-  version: '1.0.0',
+  version: '1.1.0',
   // Asks CleanMusic for the live spectrum (32 bands) about 25 times/second.
   visualizer: true,
   description:
     'Zeigt einen echten, musikreaktiven Audio-Visualizer als transparentes Overlay in OBS (Browserquelle).',
   help:
     'In OBS: Quelle hinzufügen → Browser → die kopierte URL einfügen. Empfohlene Größe: 800 × 300 für Balken/Spiegel/Welle, ' +
-    '420 × 420 für den Kreis. Die Farben kommen aus dem Cover. ' +
+    '420 × 420 für den Kreis. Anzahl, Breite und Abstand lassen sich hier einstellen; die Farben kommen aus dem Cover. ' +
     'Der Server läuft nur auf deinem PC (127.0.0.1); andere Geräte im Netzwerk erreichen ihn nicht.',
   settings: [
     { id: 'port', type: 'number', label: 'Port', default: 4789, min: 1024, max: 65535, help: 'Nur ändern, wenn 4789 belegt ist.' },
@@ -487,6 +528,9 @@ module.exports = {
         { value: 'wave', label: 'Welle' },
       ],
     },
+    { id: 'bars', type: 'number', label: 'Anzahl Balken', default: 32, min: 8, max: 64, help: 'Gilt für Balken, Spiegel und Welle; beim Kreis die Anzahl der Strahlen.' },
+    { id: 'width', type: 'number', label: 'Breite (%)', default: 100, min: 30, max: 100, help: 'Nutzt nur diesen Teil der Browserquelle; der Rest bleibt transparent.' },
+    { id: 'gap', type: 'number', label: 'Abstand (px)', default: 3, min: 0, max: 20, help: 'Lücke zwischen Balken. 0 = direkt aneinander.' },
     { id: 'sensitivity', type: 'number', label: 'Empfindlichkeit', default: 1.15, min: 0.5, max: 2, help: '0,5 = zurückhaltend, 2 = sehr stark.' },
     { id: 'glow', type: 'toggle', label: 'Leuchten', default: true },
     { id: 'background', type: 'toggle', label: 'Dunkler Hintergrund', default: false, help: 'Aus = vollständig transparent für OBS.' },

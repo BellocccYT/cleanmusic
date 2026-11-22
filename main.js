@@ -1306,6 +1306,8 @@ function createMainWindow() {
               document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
               document.querySelector('#volume').dispatchEvent(new WheelEvent('wheel', { deltaY: -100, cancelable: true }));
               const wheel = cm.volume().level;
+              cm.openSettings('sound');
+              await wait(120);
               const boost = document.querySelector('#opt-boost');
               boost.checked = true;
               boost.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1649,6 +1651,8 @@ function createMainWindow() {
               const sleepMenu = document.querySelectorAll('#ctx-menu [data-sleep]').length;
               document.querySelector('#ctx-menu [data-sleep="off"]').click();
               const sleepOff = cm.sleep();
+              cm.openSettings('sound');
+              await new Promise((resolve) => setTimeout(resolve, 80));
               cm.setTone(4, 2);
               await new Promise((resolve) => setTimeout(resolve, 600));
               const tone = cm.volume().engine;
@@ -1783,14 +1787,36 @@ function createMainWindow() {
               const button = document.querySelector('#view-playlist [data-pl-action="extend"]');
               const buttonThere = Boolean(button);
               if (button) button.click();
+              let rows = 0;
               for (let i = 0; i < 60; i += 1) {
-                const check = document.querySelector('#view-playlist [data-pl-action="extend"]');
-                if (!check || !check.disabled) break;
+                rows = document.querySelectorAll('#dialog [data-extend-index]').length;
+                if (rows) break;
                 await wait(250);
               }
-              const playlist = cm.state().playlists.find((item) => item.name === 'Smoke Erweitern');
+              const boxes = Array.from(document.querySelectorAll('#dialog [data-extend-index]'));
+              if (boxes.length > 1) {
+                boxes[boxes.length - 1].checked = false;
+                boxes[boxes.length - 1].dispatchEvent(new Event('change', { bubbles: true }));
+              }
+              const selected = boxes.filter((box) => box.checked).length;
+              const countLabel = (document.querySelector('#dialog-ok') || {}).textContent || '';
+              if (document.querySelector('#dialog-ok')) document.querySelector('#dialog-ok').click();
+              await wait(600);
+              for (let i = 0; i < 40; i += 1) {
+                if (document.querySelector('#dialog').hidden) break;
+                await wait(150);
+              }
+              await wait(300);
+              const items = document.querySelectorAll('#view-playlist .song-row').length;
               cm.showView('home');
-              return { buttonThere, items: playlist ? playlist.items : 0 };
+              return {
+                buttonThere,
+                rows,
+                selected,
+                countLabel,
+                dialogClosed: document.querySelector('#dialog').hidden,
+                items,
+              };
             })()
           `);
           console.log('SMOKE_EXTEND:', JSON.stringify(extendSmoke));
@@ -1824,6 +1850,34 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_TASTE:', JSON.stringify(tasteSmoke));
+
+          const settingsSmoke = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              cm.showView('settings');
+              await wait(150);
+              const ids = ['playback', 'sound', 'look', 'plugins', 'connections', 'system'];
+              const panels = {};
+              for (const id of ids) {
+                const tab = document.querySelector('#view-settings [data-settings-tab="' + id + '"]');
+                if (!tab) continue;
+                tab.click();
+                await wait(80);
+                panels[id] = {
+                  panels: document.querySelectorAll('#view-settings .panel').length,
+                  title: (document.querySelector('#view-settings .page-head h2') || {}).textContent || '',
+                };
+              }
+              const active = document.querySelector('#view-settings .settings-tab.active');
+              return {
+                tabs: document.querySelectorAll('#view-settings [data-settings-tab]').length,
+                active: active ? active.dataset.settingsTab : '',
+                panels,
+              };
+            })()
+          `);
+          console.log('SMOKE_SETTINGS:', JSON.stringify(settingsSmoke));
 
           // First steps assistant + "what's new" card (0.12).
           const onboardingResult = await mainWindow.webContents.executeJavaScript(`
@@ -2101,7 +2155,7 @@ function createMainWindow() {
             (async () => {
               const cm = window.CleanMusic;
               const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-              cm.showView('settings');
+              cm.openSettings('look');
               await wait(80);
               const controls = {
                 panel: Boolean(document.querySelector('#performance-panel')),
@@ -2212,7 +2266,8 @@ function createMainWindow() {
         try {
           const pluginImportUi = await mainWindow.webContents.executeJavaScript(`
             (async () => {
-              window.CleanMusic.showView('settings');
+              window.CleanMusic.openSettings('plugins');
+              await new Promise((resolve) => setTimeout(resolve, 100));
               const syntheticDrop = await window.cm.pluginImportDropped(
                 new File(['test'], 'synthetic-plugin.js', { type: 'text/javascript' })
               );
@@ -3991,9 +4046,12 @@ async function smokeVisualizerPlugin() {
   const foreign = await get('/visualizer.json', 'evil.example');
   const events = await get('/events');
 
-  const settingsResult = await js("window.cm.pluginSettingsSet('obs-visualizer', { style: 'radial' })");
+  const settingsResult = await js(
+    "window.cm.pluginSettingsSet('obs-visualizer', { style: 'radial', bars: 48, width: 60, gap: 8 })"
+  );
   const info = (settingsResult.plugins || []).find((entry) => entry.id === 'obs-visualizer');
   const after = await get('/visualizer.json');
+  const afterData = after.status === 200 ? JSON.parse(after.body) : null;
 
   const cleanup = pluginConfig();
   cleanup.enabled = cleanup.enabled.filter((id) => id !== 'obs-visualizer');
@@ -4018,7 +4076,10 @@ async function smokeVisualizerPlugin() {
     events: events.body.startsWith('retry:') && events.body.includes('"spectrum"'),
     status: info && info.status ? info.status.text : null,
     style: info && info.settings ? info.settings.values.style : null,
-    styleServed: after.status === 200 ? JSON.parse(after.body).style : null,
+    bars: afterData ? afterData.bars : null,
+    width: afterData ? afterData.width : null,
+    gap: afterData ? afterData.gap : null,
+    styleServed: afterData ? afterData.style : null,
     closedAfterUnload: closed.status === 0,
   };
 }
@@ -5312,9 +5373,78 @@ function cleanItems(items, maxItems = 50) {
     }));
 }
 
+const pluginStreamHeaders = new Map();
+let pluginStreamHeaderHook = false;
+
+function streamHeaders(input) {
+  const source = input && typeof input === 'object' ? input : {};
+  const headers = {};
+  Object.keys(source).forEach((name) => {
+    if (!/^[a-z0-9-]{1,40}$/i.test(name)) return;
+    const value = source[name];
+    if (typeof value !== 'string' || !value.trim()) return;
+    headers[name] = value.replace(/[\r\n]+/g, ' ').slice(0, 600);
+  });
+  return headers;
+}
+
+function rememberStreamHeaders(urls, headers, expires) {
+  if (!headers || !Object.keys(headers).length) return;
+  const until = Number(expires) || Date.now() + 6 * 60 * 60 * 1000;
+  (Array.isArray(urls) ? urls : [urls]).forEach((url) => {
+    const clean = cleanUrl(url);
+    if (!clean) return;
+    pluginStreamHeaders.set(clean, { headers, until });
+  });
+  if (pluginStreamHeaders.size > 300) {
+    const now = Date.now();
+    for (const [url, entry] of pluginStreamHeaders) {
+      if (entry.until < now) pluginStreamHeaders.delete(url);
+    }
+    while (pluginStreamHeaders.size > 220) {
+      pluginStreamHeaders.delete(pluginStreamHeaders.keys().next().value);
+    }
+  }
+}
+
+// Source plugins may return request headers (e.g. a Referer/User-Agent for a
+// signed media URL). <audio> cannot set headers itself, so add them here for
+// exactly the URLs the plugin resolved – nothing else is touched.
+function installPluginStreamHeaders() {
+  if (pluginStreamHeaderHook) return;
+  pluginStreamHeaderHook = true;
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['<all_urls>'] },
+    (details, callback) => {
+      const entry = pluginStreamHeaders.get(details.url);
+      if (entry) {
+        if (entry.until < Date.now()) {
+          pluginStreamHeaders.delete(details.url);
+        } else {
+          Object.keys(entry.headers).forEach((name) => {
+            const lower = name.toLowerCase();
+            Object.keys(details.requestHeaders).forEach((known) => {
+              if (known.toLowerCase() === lower) delete details.requestHeaders[known];
+            });
+            details.requestHeaders[name] = entry.headers[name];
+          });
+        }
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+}
+
 function cleanStream(stream) {
   const url = cleanUrl(stream && stream.url);
   if (!url) throw new Error('Plugin hat keine abspielbare URL geliefert');
+  const headers = streamHeaders(stream && stream.headers);
+  const alternates = (Array.isArray(stream && stream.alternates) ? stream.alternates : [])
+    .map((item) => cleanUrl(typeof item === 'string' ? item : item && item.url))
+    .filter((item) => item && item !== url)
+    .slice(0, 3);
+  const expires = Number(stream && stream.expires) || 0;
+  rememberStreamHeaders([url, ...alternates], headers, expires);
   return {
     refId: cleanText(stream.refId || stream.id || '', 200),
     url,
@@ -5322,6 +5452,10 @@ function cleanStream(stream) {
     title: cleanText(stream.title || ''),
     artist: cleanText(stream.artist || ''),
     artwork: cleanUrl(stream.artwork, /^https:\/\//i),
+    expires,
+    format: cleanText(stream.format || '', 120),
+    headers: Object.keys(headers).length ? headers : undefined,
+    alternates: alternates.length ? alternates : undefined,
   };
 }
 
@@ -6536,6 +6670,7 @@ ipcMain.handle('login-set', (event, patch) => {
 app.whenReady().then(async () => {
   if (!hasInstanceLock) return;
   Menu.setApplicationMenu(null);
+  installPluginStreamHeaders();
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
   updateLoginItem();
   if (readConfig().globalShortcuts) configureGlobalShortcuts(true);

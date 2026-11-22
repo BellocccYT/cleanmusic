@@ -50,8 +50,10 @@ Play/Pause-Zustand. Die Farben kommen aus dem Cover.
 Stile: **Balken** (Standard), **Spiegel** (wächst von der Mittellinie),
 **Kreis** und **Welle**. In der Plugin-Karte wählbar oder pro Quelle über
 `?style=bars`, `?style=mirror`, `?style=radial` bzw. `?style=wave` an der URL.
-Weitere Einstellungen: Empfindlichkeit, Leuchten, dunkler Hintergrund,
-Titel/Künstler einblenden und „Bei Pause ausblenden“.
+Weitere Einstellungen: **Anzahl Balken** (8–64), **Breite** in Prozent (30–100,
+der Rest bleibt transparent), **Abstand** zwischen den Balken (0–20 px),
+Empfindlichkeit, Leuchten, dunkler Hintergrund, Titel/Künstler einblenden und
+„Bei Pause ausblenden“.
 
 Der Visualizer braucht ein aktives Plugin mit der Fähigkeit
 `visualizer: true` (ab CleanMusic 1.15.0). Erst dann schickt CleanMusic das

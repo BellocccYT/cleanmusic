@@ -161,7 +161,9 @@ Wunsch **nach Ordner**.
   umbenennen, löschen, abspielen und shuffeln.
 - **Erweitern:** holt zu den Künstlern, die schon in der Playlist sind, neue
   passende Titel dazu (Deezer-Artist-Radio, bei Plugin-Titeln deren verwandte
-  Titel). Doppelte Titel werden übersprungen; nichts wird umsortiert.
+  Titel). Vor dem Hinzufügen zeigt ein Dialog alle Funde mit Checkboxen – alle
+  vorausgewählt, einzeln abwählbar. Doppelte Titel werden übersprungen; nichts
+  wird umsortiert.
 - **Drag & Drop:** Titel aus jeder Liste auf *Favoriten*, eine Playlist oder
   *Neue Playlist* in der Seitenleiste ziehen. In einer Playlist per Griff
   sortieren.
@@ -275,7 +277,7 @@ den Web-Apps vorbei auf Dateien zu.
 
 ### Downloads: nur freie Dateien für Videos
 
-Unter *Einstellungen → Downloads* gibt es genau zwei Stufen: **Aus** (Standard)
+Unter *Einstellungen → System → Downloads* gibt es genau zwei Stufen: **Aus** (Standard)
 und **Nur Cutting**. Dann bekommen frei lizenzierte Titel im Cutter-Modus
 (**CC0, CC BY, Public Domain** – Kevin MacLeod, Freesound, Jamendo über
 Openverse) einen Download-Knopf. Jede Datei landet in
@@ -302,9 +304,9 @@ Taste **F**, der Knopf ⤢ in der Player-Leiste oder Doppelklick aufs Cover:
 Seit 1.5 sechzehn Themes (neu: Synthwave, Ozean, Sonnenuntergang, Terminal,
 Mitternacht Gold, Kirschblüte) und **Hintergründe**: Aurora, Verlauf, Farbwolken,
 Cover (unscharfes Cover des laufenden Titels) und Sternenhimmel – langsam animiert oder
-als ruhiges Standbild (*Einstellungen → Aussehen*).
+als ruhiges Standbild (*Einstellungen → Darstellung*).
 
-Zehn Farbschemata unter *Einstellungen → Aussehen*: **CleanMusic Nacht** (Standard),
+Zehn Farbschemata unter *Einstellungen → Darstellung*: **CleanMusic Nacht** (Standard),
 **CleanMusic Tag** (hell), **Catppuccin Mocha / Latte**, **Dracula**, **Nord**,
 **Tokyo Night**, **Rosé Pine**, **Gruvbox Dark** und **Everforest**. Die Paletten
 der Community-Themes stehen unter MIT-Lizenz (siehe
@@ -326,11 +328,11 @@ In der Seitenleiste **Downloads**: alles aus deinem Cutting-Ordner (auch YouTube
 
 ### Plattenspieler
 
-*Einstellungen → Aussehen → Plattenspieler* (oder im Vollbild-Player oben rechts): Das Cover dreht sich als Schallplatte mit Rillen, im Vollbild-Player setzt ein Tonarm beim Abspielen auf und hebt bei Pause ab. Auch in der Player-Leiste dreht sich eine kleine Platte.
+*Einstellungen → Darstellung → Plattenspieler* (oder im Vollbild-Player oben rechts): Das Cover dreht sich als Schallplatte mit Rillen, im Vollbild-Player setzt ein Tonarm beim Abspielen auf und hebt bei Pause ab. Auch in der Player-Leiste dreht sich eine kleine Platte.
 
 ### Ansicht: Einfach oder Erweitert
 
-*Einstellungen → Aussehen → Ansicht*: **Einfach** blendet Cutter-Modus, Downloads, Plugins, Discord und Profi-Schalter aus, **Erweitert** zeigt alles.
+*Einstellungen → Darstellung → Ansicht*: **Einfach** blendet Cutter-Modus, Downloads, Plugins, Discord und Profi-Schalter aus, **Erweitert** zeigt alles.
 
 ### Songtexte
 
@@ -344,11 +346,11 @@ Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. E
   Prozentanzeige und Lautsprecher-Symbol in Stufen.
 - **Mausrad** auf Regler oder Lautsprecher (mit Umschalt in 1-%-Schritten),
   **M** schaltet stumm, **+ / −** regeln überall, **↑ / ↓** im Vollbild-Player.
-- Optional unter *Einstellungen → Wiedergabe*: **Lautstärke angleichen** (sanfter
+- Optional unter *Einstellungen → Klang*: **Lautstärke angleichen** (sanfter
   Kompressor gleicht laute und leise Titel an) und **Boost bis 150 %** mit
   Limiter gegen Übersteuern. Beides ist standardmäßig aus.
 - **Klang:** Bass und Höhen (Regler und Voreinstellungen wie *Mehr Bass*, *Stimme klar*,
-  *Laptop-Lautsprecher*) unter *Einstellungen → Wiedergabe*. 0 dB = unverändert.
+  *Laptop-Lautsprecher*) unter *Einstellungen → Klang*. 0 dB = unverändert.
 
 ### Visualizer (optional)
 
@@ -358,13 +360,13 @@ per `captureStream()`), es kann also nichts stumm werden. Ist *Lautstärke
 angleichen* oder *Boost* an, läuft der Ton ohnehin über Web Audio; der
 Visualizer hört dann direkt dort mit. Ein- und ausschalten,
 Stil wählen und den **Mini-Visualizer** in der Player-Leiste gibt es unter
-*Einstellungen → Visualizer*. Bei Pause zeichnet er nur noch ~8× pro Sekunde.
+*Einstellungen → Darstellung → Visualizer*. Bei Pause zeichnet er nur noch ~8× pro Sekunde.
 Die Spektrum-Balken funktionieren auch, wenn der Ton über die optionale
 Lautstärke-/Klang-Kette läuft.
 
 ### Leistung im Vollbild (ab 1.13.1)
 
-Unter *Einstellungen → Leistung im Vollbild* lässt sich die GPU-Last regulieren:
+Unter *Einstellungen → Darstellung → Leistung im Vollbild* lässt sich die GPU-Last regulieren:
 
 - **Ausgewogen** (Standard): Visualizer mit 24 fps, volle CSS-Auflösung und deutlich
   reduzierte Blur-/Blend-Effekte.
@@ -385,7 +387,7 @@ Discord-Client (IPC), standardmäßig **aus**.
 
 1. Im [Discord Developer Portal](https://discord.com/developers/applications)
    „New Application“ anlegen, Name z. B. *CleanMusic*.
-2. Die **Application ID** unter *Einstellungen → Discord Rich Presence*
+2. Die **Application ID** unter *Einstellungen → Verbindungen → Discord Rich Presence*
    eintragen, *Speichern*, Schalter an.
 3. Optional ein Bild namens `logo` unter *Rich Presence → Art Assets*
    hochladen (wird gezeigt, wenn ein Titel kein Cover hat oder „Cover
@@ -426,6 +428,12 @@ Unter **Radio** findest du tausende öffentliche Sender über die
   *Voll · Quelle des Plugins*, *Radio · LIVE*)
 - ♥ und + für den laufenden Titel direkt im Player
 
+### Einstellungen
+
+Die Einstellungen sind in sechs Kategorien gegliedert: **Wiedergabe**, **Klang**,
+**Darstellung**, **Plugins**, **Verbindungen** und **System**. Jede Kategorie zeigt nur
+ihre eigenen Optionen; die Tab-Leiste bleibt beim Scrollen oben stehen.
+
 ## Neu in 1.13: Klang, Creator & Live-Hintergründe
 
 - **10-Band-Equalizer** mit Neutral, Bass-Boost, Stimme/Podcast, Hell, Warm, Laptop,
@@ -448,7 +456,7 @@ Unter **Radio** findest du tausende öffentliche Sender über die
 
 ### Handy-Fernbedienung, Mini-Player & Windows
 
-- **Handy-Fernbedienung** (*Einstellungen → Handy-Fernbedienung*): schaltet einen lokalen
+- **Handy-Fernbedienung** (*Einstellungen → Verbindungen → Handy-Fernbedienung*): schaltet einen lokalen
   Webserver auf Port 4790 ein und zeigt Link + QR-Code. Sie funktioniert im selben privaten
   WLAN, braucht bei jeder Anfrage den geheimen Schlüssel und akzeptiert nur Loopback bzw.
   private IPv4-Adressen. Standardmäßig **aus**; ein neuer Link widerruft den alten.
@@ -482,7 +490,7 @@ Die Plugin-Karte zeigt dann „schneller Start (Python)“.
 ## Updates
 
 CleanMusic sucht **bei jedem Start und danach alle 2 Stunden** nach einer neuen Version (abschaltbar unter
-*Einstellungen → Updates*, dort gibt es auch **Jetzt suchen**). Ist eine da,
+*Einstellungen → System → Updates*, dort gibt es auch **Jetzt suchen**). Ist eine da,
 erscheint unten rechts ein Hinweis:
 
 Unter Windows erscheint außerdem sofort eine Systembenachrichtigung, auch wenn CleanMusic
@@ -730,16 +738,16 @@ da ist, bleibt der „Im Browser öffnen"-Fallback. Details:
 - **F** öffnet den Vollbild-Player (Leertaste, Pfeiltasten, N/P, Esc).
 - **M** stumm, **+ / −** lauter/leiser, **Mausrad** auf dem Lautstärkeregler.
 - **Infobereich (Tray):** Symbol mit aktuellem Titel, Play/Pause, Weiter, Zurück.
-  Optional läuft CleanMusic beim Schließen dort weiter (*Einstellungen → Wiedergabe*).
+  Optional läuft CleanMusic beim Schließen dort weiter (*Einstellungen → System*).
 - **Schlaf-Timer** (Mond-Symbol in der Player-Leiste): Stopp nach 15–90 Minuten
   oder am Ende des Titels.
 - **Video-Credits** im Cutter-Modus kopieren oder **als .txt speichern**.
 - **Medientasten** der Tastatur und das **Windows-Medien-Overlay** (mit Titel,
   Artist und Cover) steuern CleanMusic.
-- **Einstellungen → Sichern & Wiederherstellen** → Favoriten, Playlists,
+- **Einstellungen → System → Sichern & Wiederherstellen** → Favoriten, Playlists,
   Video-Credits, Verlauf und Aussehen als JSON sichern oder auf einem anderen PC
   ergänzen (es wird nichts gelöscht).
-- **Einstellungen → Aussehen** → Theme wählen, Akzentfarbe aus dem Cover.
+- **Einstellungen → Darstellung** → Theme wählen, Akzentfarbe aus dem Cover.
 - **Strg + K** fokussiert die Suche.
 - **?** (oder **F1**) zeigt alle Tastenkürzel – auch unter *Einstellungen → System*.
 

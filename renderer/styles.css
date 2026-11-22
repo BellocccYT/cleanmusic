@@ -6170,3 +6170,158 @@ html.cover-vinyl .np-art::after {
   display: block;
   object-fit: cover;
 }
+
+/* Playlist "Erweitern": choose which suggestions to add */
+.dialog.extend-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+}
+.extend-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+.extend-links {
+  display: flex;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.extend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(55vh, 460px);
+  overflow-y: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+.extend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 7px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.extend-row:hover {
+  background: var(--panel-3);
+}
+.extend-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  background: none;
+  box-shadow: none;
+}
+.extend-art {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--panel-3);
+  color: var(--muted-2);
+}
+.extend-art img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.extend-art .ic {
+  width: 16px;
+  height: 16px;
+}
+.extend-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.extend-meta strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.extend-meta small {
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.extend-tag {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  color: var(--muted-2);
+  background: var(--panel-3);
+}
+.extend-note {
+  margin: 8px 0 0;
+  color: var(--muted-2);
+  font-size: 10.5px;
+}
+
+/* Settings tabs (1.17.0): one category at a time */
+.settings-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px;
+  margin: 0 0 14px;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.settings-tab:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+.settings-tab.active {
+  color: var(--text);
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.settings-tab .ic {
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+}
+.settings-tab.active .ic {
+  color: var(--accent);
+  opacity: 1;
+}
+.settings-page > .panel {
+  margin-top: 0;
+}

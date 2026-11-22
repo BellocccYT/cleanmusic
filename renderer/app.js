@@ -820,6 +820,84 @@
 
   const playlistExtendBusy = new Set();
 
+  function chooseExtendTracks(entries, playlist) {
+    const rows = entries
+      .map((entry, index) => {
+        const meta = [entry.artist, entry.duration ? fmtTime(entry.duration) : '', entry.sourceLabel]
+          .filter(Boolean)
+          .join(' · ');
+        const tag =
+          entry.kind === 'plugin'
+            ? '<span class="extend-tag">Plugin</span>'
+            : entry.kind === 'preview'
+              ? '<span class="extend-tag">30 s</span>'
+              : '';
+        return `
+          <label class="extend-row">
+            <input type="checkbox" data-extend-index="${index}" checked />
+            <span class="extend-art">${
+              entry.artwork ? `<img src="${esc(entry.artwork)}" alt="" loading="lazy" />` : ICONS.note
+            }</span>
+            <span class="extend-meta">
+              <strong>${esc(entry.title)}</strong>
+              <small>${esc(meta)}</small>
+            </span>
+            ${tag}
+          </label>`;
+      })
+      .join('');
+
+    const html = `
+      <div class="extend-toolbar">
+        <span>${entries.length} passende Titel für „${esc(playlist.name)}“</span>
+        <span class="extend-links">
+          <button type="button" class="link-btn" data-extend-all>Alle</button>
+          <button type="button" class="link-btn" data-extend-none>Keine</button>
+        </span>
+      </div>
+      <div class="extend-list">${rows}</div>
+      <p class="extend-note">Abgewählte Titel bleiben draußen. Doppelte Titel überspringt CleanMusic weiterhin automatisch.</p>`;
+
+    const promise = openDialog({
+      title: 'Playlist erweitern',
+      html,
+      input: false,
+      confirm: 'Hinzufügen',
+      className: 'extend-dialog',
+    });
+
+    const root = $('#dialog');
+    const ok = $('#dialog-ok');
+    const boxes = () => Array.from(root.querySelectorAll('[data-extend-index]'));
+    const update = () => {
+      const count = boxes().filter((box) => box.checked).length;
+      ok.disabled = count === 0;
+      ok.textContent = count ? `${count} hinzufügen` : 'Hinzufügen';
+    };
+    root.querySelector('[data-extend-all]')?.addEventListener('click', () => {
+      boxes().forEach((box) => {
+        box.checked = true;
+      });
+      update();
+    });
+    root.querySelector('[data-extend-none]')?.addEventListener('click', () => {
+      boxes().forEach((box) => {
+        box.checked = false;
+      });
+      update();
+    });
+    boxes().forEach((box) => box.addEventListener('change', update));
+    update();
+
+    return promise.then((accepted) => {
+      if (!accepted) return [];
+      return boxes()
+        .filter((box) => box.checked)
+        .map((box) => entries[Number(box.dataset.extendIndex)])
+        .filter(Boolean);
+    });
+  }
+
   function recommendationSeeds(entries) {
     const scores = new Map();
     entries.forEach((entry) => {
@@ -897,8 +975,14 @@
         return;
       }
 
-      addToPlaylist(id, picked, { quiet: true });
-      toast(`${picked.length} Titel ergänzt – passend zu „${playlist.name}“`);
+      const chosen = await chooseExtendTracks(picked, playlist);
+      if (!chosen.length) {
+        toast('Nichts ausgewählt – Playlist unverändert.');
+        return;
+      }
+
+      addToPlaylist(id, chosen, { quiet: true });
+      toast(`${chosen.length} Titel ergänzt – passend zu „${playlist.name}“`);
     } catch (error) {
       toast(`Erweitern fehlgeschlagen: ${error.message || error}`);
     } finally {
@@ -1225,7 +1309,7 @@
    * Dialog + popover menus
    * ---------------------------------------------------------------- */
 
-  function openDialog({ title, text = '', html = '', value = '', input = true, confirm = 'OK', danger = false, info = false }) {
+  function openDialog({ title, text = '', html = '', value = '', input = true, confirm = 'OK', danger = false, info = false, className = '' }) {
     return new Promise((resolve) => {
       const root = $('#dialog');
       const form = $('#dialog-form');
@@ -1235,6 +1319,7 @@
       const textEl = $('#dialog-text');
 
       hideMenus();
+      form.className = className ? `dialog ${className}` : 'dialog';
       $('#dialog-title').textContent = title;
       if (html) textEl.innerHTML = html;
       else textEl.textContent = text;
@@ -1244,6 +1329,7 @@
       field.hidden = !input;
       field.value = value;
       ok.textContent = confirm;
+      ok.disabled = false;
       ok.classList.toggle('danger', danger);
       root.hidden = false;
 
@@ -4550,6 +4636,16 @@
       }
       const result = await bridge.pluginResolve(plugin.id, item.refId, force);
       if (!result || !result.ok) {
+        // The plugin found no stream (or it expired): still play the catalogue
+        // preview instead of leaving the player silent.
+        const preview = await freshPreview(item, force).catch(() => null);
+        if (preview) {
+          return {
+            url: preview,
+            mode: 'preview',
+            notice: `${plugin.name}: ${(result && result.error) || 'Stream nicht verfügbar'} – 30-s-Vorschau läuft.`,
+          };
+        }
         throw new Error(`${plugin.name}: ${(result && result.error) || 'Stream nicht verfügbar'}`);
       }
       return { url: result.stream.url, mode: 'plugin', stream: result.stream, label: plugin.source.label };
@@ -4594,6 +4690,7 @@
 
     state.queue.index = index;
     state.queue.upcoming = -1;
+    state.fallbackUrls = [];
     if (!options.retry) state.retry = { id: item.id, count: 0 };
     const token = ++playToken;
 
@@ -4637,6 +4734,8 @@
     setPlayLoading(false);
     state.nowMode = source.mode;
     state.nowLabel = source.label || null;
+    state.fallbackUrls =
+      source.stream && Array.isArray(source.stream.alternates) ? source.stream.alternates.slice(0, 3) : [];
     if (source.stream && !item.duration && source.stream.duration) {
       item.duration = source.stream.duration;
     }
@@ -4894,7 +4993,7 @@
       } else if (mode === 'plugin' || mode === 'matched') {
         text = `Voll · ${state.nowLabel || item.sourceLabel || 'Plugin'}`;
         tone = 'ext';
-      } else if (item.kind === 'preview') {
+      } else if (mode === 'preview' || item.kind === 'preview') {
         text = '30 s Vorschau';
       }
     }
@@ -5063,14 +5162,26 @@
         console.warn(`Audio error ${audio.error.code} (${item.kind}): ${audio.error.message || ''}`);
       }
 
-      // Streams: 1) same URL again after a moment (some CDNs reject the
-      // first request), 2) resolve a fresh URL, 3) give up.
+      // Streams: 0) try another URL the plugin offered, 1) same URL again
+      // after a moment (some CDNs reject the first request), 2) resolve a
+      // fresh URL, 3) fall back to the catalogue preview, 4) give up.
       if (!state.retry || state.retry.id !== item.id) state.retry = { id: item.id, count: 0 };
       const retry = state.retry;
+      const streamed = state.nowMode === 'plugin' || state.nowMode === 'matched';
+
+      if (streamed && state.fallbackUrls.length) {
+        const next = state.fallbackUrls.shift();
+        const token = playToken;
+        setTimeout(() => {
+          if (token !== playToken) return;
+          audio.src = next;
+          audio.play().catch(() => {});
+        }, 300);
+        return;
+      }
 
       if (item.kind !== 'local' && item.kind !== 'radio' && retry.count < 2) {
         retry.count += 1;
-        const streamed = state.nowMode === 'plugin' || state.nowMode === 'matched';
 
         if (retry.count === 1 && streamed) {
           const src = audio.getAttribute('src');
@@ -5084,6 +5195,36 @@
         }
 
         playFromQueue(state.queue.index, { force: true, retry: true });
+        return;
+      }
+
+      // A full title that still fails after a fresh resolve: play the 30 s
+      // preview instead of leaving the queue silent.
+      if (streamed && !retry.preview) {
+        retry.preview = true;
+        const token = playToken;
+        freshPreview(item, true)
+          .then((url) => {
+            if (token !== playToken) return;
+            if (url) {
+              state.nowMode = 'preview';
+              state.nowLabel = null;
+              setNowPlaying(item);
+              audio.src = url;
+              audio.play().catch(() => {});
+              toast('Voller Titel nicht verfügbar – 30-s-Vorschau läuft.');
+              return;
+            }
+            state.nowMode = 'error';
+            setNowPlaying(item);
+            toast('Der Titel konnte nicht abgespielt werden.');
+          })
+          .catch(() => {
+            if (token !== playToken) return;
+            state.nowMode = 'error';
+            setNowPlaying(item);
+            toast('Der Titel konnte nicht abgespielt werden.');
+          });
         return;
       }
 
@@ -5168,6 +5309,10 @@
       'Taste Engine: „Mehr davon“ und „Weniger davon“ per Rechtsklick oder +-Menü an jedem Titel – wird lokal gespeichert und für Vorschläge, Autoplay und Mixes genutzt.',
       'Fünf Smart Mixes: Dein Mix, Neu für dich, Entdecken, Nochmal und Tiefe Schnitte – auf der Startseite und in der neuen Mixes-Ansicht.',
       'Mixes lassen sich als Playlist speichern, täglich neu mischen und reagieren auch auf frühe Skips. Alles bleibt auf deinem Gerät.',
+      'Einstellungen jetzt in sechs Kategorien (Wiedergabe, Klang, Darstellung, Plugins, Verbindungen, System) statt einer langen Seite.',
+      'Playlist „Erweitern“ zeigt die gefundenen Titel vorher in einem Dialog – alle vorausgewählt, einzeln abwählbar.',
+      'OBS-Visualizer: Anzahl der Balken, Breite in Prozent und Abstand sind einstellbar.',
+      'Robustere Quellen-Plugins: alternative Stream-URLs, Request-Header und automatischer Fallback auf die 30-s-Vorschau, wenn ein voller Titel nicht abspielbar ist.',
     ],
     '1.16.0': [
       'Shuffle mischt jetzt die echte Warteschlange: kein Titel kommt doppelt, bevor alle dran waren; Ausschalten stellt die alte Reihenfolge wieder her.',
@@ -10221,14 +10366,11 @@
       return;
     }
     try {
-      const fallback = new URL('assets/icon.png', location.href).href;
       session.metadata = new MediaMetadata({
         title: item.title || 'CleanMusic',
         artist: item.artist || item.sourceLabel || '',
         album: item.album || (item.kind === 'radio' ? 'Live Radio' : 'CleanMusic'),
-        artwork: item.artwork
-          ? [{ src: item.artwork, sizes: '512x512' }]
-          : [{ src: fallback, sizes: '256x256', type: 'image/png' }],
+        ...(item.artwork ? { artwork: [{ src: item.artwork, sizes: '512x512' }] } : {}),
       });
     } catch {
       /* ignore */
@@ -11443,9 +11585,31 @@
       </div>`;
   }
 
+  let settingsTab = 'playback';
+  const SETTINGS_TABS = [
+    { id: 'playback', label: 'Wiedergabe', icon: 'play', text: 'Autoplay, Songtexte, Übergänge und Web-Player.' },
+    { id: 'sound', label: 'Klang', icon: 'wave', text: 'Lautstärke, Bass, Höhen und Equalizer.' },
+    { id: 'look', label: 'Darstellung', icon: 'spark', text: 'Theme, Hintergrund, Visualizer und Leistung.' },
+    { id: 'plugins', label: 'Plugins', icon: 'plug', text: 'Quellen, OBS-Overlays und Streamer.bot.' },
+    { id: 'connections', label: 'Verbindungen', icon: 'service', text: 'Handy-Fernbedienung, Discord und MusicKit.' },
+    { id: 'system', label: 'System', icon: 'file', text: 'Updates, Backups, Downloads, Dienst-Sessions und Diagnose.' },
+  ];
+
+  function settingsMeta() {
+    return SETTINGS_TABS.find((tab) => tab.id === settingsTab) || SETTINGS_TABS[0];
+  }
+
+  function openSettings(tab) {
+    if (tab && SETTINGS_TABS.some((entry) => entry.id === tab)) settingsTab = tab;
+    showView('settings');
+    renderSettings();
+  }
+
   function renderSettings() {
     const host = $('#view-settings');
     if (!host) return;
+    if (!SETTINGS_TABS.some((tab) => tab.id === settingsTab)) settingsTab = 'playback';
+    const activeTab = settingsMeta();
 
     const info = state.info || {};
     const widevine = info.widevine;
@@ -11460,15 +11624,24 @@
     ];
 
     host.innerHTML = `
-      <div class="page narrow">
+      <div class="page narrow settings-page">
         <div class="page-head">
           <div>
             <div class="eyebrow">Einstellungen</div>
-            <h2>Einrichten</h2>
-            <p>Wiedergabe, Plugins, MusicKit und gespeicherte Dienst-Sessions.</p>
+            <h2>${activeTab.label}</h2>
+            <p>${activeTab.text}</p>
           </div>
         </div>
 
+        <div class="settings-tabs" role="tablist">
+          ${SETTINGS_TABS.map(
+            (tab) => `<button class="settings-tab ${tab.id === settingsTab ? 'active' : ''}" role="tab" aria-selected="${
+              tab.id === settingsTab
+            }" data-settings-tab="${tab.id}">${ICONS[tab.icon] || ''}<span>${tab.label}</span></button>`
+          ).join('')}
+        </div>
+
+        ${settingsTab === 'playback' ? `
         <div class="panel">
           <h3>Wiedergabe</h3>
           <label class="toggle-row">
@@ -11508,20 +11681,12 @@
           </label>
           ${lyricsSettingsHtml()}
           ${transitionSettingsHtml()}
-          <label class="toggle-row">
-            <span>
-              <strong>Beim Schließen im Infobereich weiterlaufen</strong>
-              <small>Das X versteckt CleanMusic nur, die Musik läuft weiter. Beenden über das Symbol im Infobereich.</small>
-            </span>
-            <input type="checkbox" id="opt-tray" ${state.closeToTray ? 'checked' : ''} />
-          </label>
-          <label class="toggle-row">
-            <span>
-              <strong>Fortschritt in der Taskleiste</strong>
-              <small>${info.platform === 'win32' ? 'Zeigt Titel-Fortschritt und Play/Pause-Knöpfe in der Windows-Taskleiste.' : 'Nur unter Windows verfügbar.'}</small>
-            </span>
-            <input type="checkbox" id="opt-taskbar" ${state.taskbarProgress ? 'checked' : ''} ${info.platform === 'win32' ? '' : 'disabled'} />
-          </label>
+        </div>
+        ` : ''}
+
+        ${settingsTab === 'sound' ? `
+        <div class="panel">
+          <h3>Klang &amp; Lautstärke</h3>
           <label class="toggle-row">
             <span>
               <strong>Lautstärke angleichen</strong>
@@ -11560,17 +11725,19 @@
           </div>
           ${equalizerPanelHtml()}
         </div>
+        ` : ''}
 
-        ${themePanel()}
+        ${settingsTab === 'look' ? `
+          ${themePanel()}
 
-        ${performancePanel()}
+          ${performancePanel()}
 
-        ${visualizerPanel()}
+          ${visualizerPanel()}
+        ` : ''}
 
-        ${downloadsPanel()}
+        ${settingsTab === 'plugins' ? pluginPanel() : ''}
 
-        ${pluginPanel()}
-
+        ${settingsTab === 'connections' ? `
         ${discordPanel()}
 
         <div class="panel" id="remote-panel">
@@ -11612,9 +11779,11 @@
             wenn Widevine geladen ist.
           </p>
         </div>
+        ` : ''}
 
+        ${settingsTab === 'system' ? `
         <div class="panel">
-          <h3>System</h3>
+          <h3>System &amp; Start</h3>
           <dl class="facts">
             ${facts.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('')}
           </dl>
@@ -11627,6 +11796,20 @@
             </label>
           </div>
           ${state.globalShortcuts.conflict ? `<p class="muted small">Kürzel ist schon belegt: ${esc(state.globalShortcuts.conflict)}</p>` : ''}
+          <label class="toggle-row" style="margin-top:14px">
+            <span>
+              <strong>Beim Schließen im Infobereich weiterlaufen</strong>
+              <small>Das X versteckt CleanMusic nur, die Musik läuft weiter. Beenden über das Symbol im Infobereich.</small>
+            </span>
+            <input type="checkbox" id="opt-tray" ${state.closeToTray ? 'checked' : ''} />
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>Fortschritt in der Taskleiste</strong>
+              <small>${info.platform === 'win32' ? 'Zeigt Titel-Fortschritt und Play/Pause-Knöpfe in der Windows-Taskleiste.' : 'Nur unter Windows verfügbar.'}</small>
+            </span>
+            <input type="checkbox" id="opt-taskbar" ${state.taskbarProgress ? 'checked' : ''} ${info.platform === 'win32' ? '' : 'disabled'} />
+          </label>
           ${info.platform === 'win32' ? `<label class="toggle-row" style="margin-top:14px"><span><strong>Mit Windows starten</strong><small>${state.closeToTray ? 'Startet im Infobereich; andernfalls minimiert.' : 'Startet minimiert.'} Portable Builds werden bei Updates auf den neuen Dateipfad gesetzt.</small></span><input type="checkbox" id="opt-login" ${state.startOnLogin ? 'checked' : ''} /></label>` : ''}
           <label class="toggle-row" style="margin-top:14px">
             <span><strong>Hilfe</strong><small>Diagnose bleibt im Arbeitsspeicher. Es werden keine Dateien oder Telemetrie angelegt.</small></span>
@@ -11635,6 +11818,8 @@
         </div>
 
 ${updatePanel()}
+
+        ${downloadsPanel()}
 
         <div class="panel" id="backup-panel">
           <h3>Sichern & Wiederherstellen</h3>
@@ -11676,6 +11861,7 @@ ${updatePanel()}
           erlauben. Für die Veröffentlichung einer eigenen App brauchst du bei den meisten Diensten
           eine Freigabe.
         </div>
+        ` : ''}
       </div>`;
     drawEqCurve();
   }
@@ -12208,9 +12394,7 @@ ${updatePanel()}
       }
 
       if (event.target.closest('[data-search-action="plugins"]')) {
-        showView('settings');
-        const panel = $('#plugins-panel');
-        if (panel) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        openSettings('plugins');
         return;
       }
 
@@ -12346,6 +12530,15 @@ ${updatePanel()}
     });
 
     $('#view-settings').addEventListener('click', async (event) => {
+      const settingsTabButton = event.target.closest('[data-settings-tab]');
+      if (settingsTabButton) {
+        settingsTab = settingsTabButton.dataset.settingsTab;
+        renderSettings();
+        const content = $('#content');
+        if (content) content.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
       const eqAction = event.target.closest('[data-eq-action]');
       if (eqAction) {
         if (eqAction.dataset.eqAction === 'save') await saveCustomEq();
@@ -13360,6 +13553,7 @@ ${updatePanel()}
   window.CleanMusic = {
     openService,
     showView,
+    openSettings,
     search: (query) => buildSearch(query),
     playList,
     openPlaylist,
