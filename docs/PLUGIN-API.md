@@ -44,6 +44,21 @@ Plugin-eigene Referenz (`refId`), `artwork` muss `https://` sein.
 **Stream:** `{ refId, url, duration, title, artist, artwork }` – `url` muss
 `http(s)://` sein und direkt im `<audio>`-Element abspielbar.
 
+Optional für schwierige Quellen (ab CleanMusic 1.17):
+
+- `headers`: Objekt mit Request-Headern (z. B. `Referer`, `User-Agent`). CleanMusic
+  setzt sie ausschließlich für genau diese Stream-URL (und ihre Alternates), weil
+  `<audio>` selbst keine Header setzen kann.
+- `alternates`: bis zu drei weitere direkte URLs, die bei einem Abspielfehler
+  nacheinander probiert werden (z. B. ein anderes Audioformat).
+- `expires`: Ablaufzeit in Millisekunden (Unix-Zeit), damit Header rechtzeitig
+  verworfen werden.
+- `format`: kurze Beschreibung für Diagnose/Anzeige, z. B. `"m4a · aac · 128 kbps"`.
+
+Scheitert ein voller Titel trotz Alternates und Neuauflösung, spielt CleanMusic
+automatisch die passende 30-Sekunden-Vorschau aus dem Katalog, statt die
+Warteschlange anzuhalten.
+
 **`ctx`** (an `setup`):
 
 | Feld | Zweck |
