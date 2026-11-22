@@ -4699,6 +4699,7 @@
     seek.disabled = live;
     seek.max = '0';
     seek.value = '0';
+    setSeekFill(seek, 0, 1);
     $('#t-cur').textContent = live ? 'LIVE' : '0:00';
     $('#t-dur').textContent = live ? 'LIVE' : item.duration ? fmtTime(item.duration) : '0:00';
 
@@ -5257,6 +5258,7 @@
 
       $('#seek').disabled = false;
       $('#seek').max = String(audio.duration);
+      setSeekFill($('#seek'), audio.currentTime, audio.duration);
       $('#t-dur').textContent = fmtTime(audio.duration);
 
       const row = $('#seek').closest('.seek-row');
@@ -5271,6 +5273,7 @@
       if (document.activeElement !== seek) {
         seek.value = String(audio.currentTime);
       }
+      setSeekFill(seek, audio.currentTime, audio.duration);
       $('#t-cur').textContent = fmtTime(audio.currentTime);
       updateFsProgress();
     });
@@ -5278,6 +5281,7 @@
     $('#seek').addEventListener('input', (event) => {
       const value = Number(event.target.value);
       if (Number.isFinite(value)) audio.currentTime = value;
+      setSeekFill(event.target, value, audio.duration);
       $('#t-cur').textContent = fmtTime(value);
     });
 
@@ -9606,6 +9610,12 @@
     }, 2800);
   }
 
+  function setSeekFill(seek, current, duration) {
+    if (!seek) return;
+    const percent = duration > 0 ? Math.max(0, Math.min(100, (current / duration) * 100)) : 0;
+    seek.style.setProperty('--fill', `${percent.toFixed(2)}%`);
+  }
+
   function updateFsProgress() {
     if (!state.fullscreen) return;
     const item = currentItem();
@@ -9618,8 +9628,7 @@
     if (!live) {
       seek.max = String(audio.duration || 0);
       if (document.activeElement !== seek) seek.value = String(audio.currentTime || 0);
-      const percent = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
-      seek.style.setProperty('--fill', `${percent}%`);
+      setSeekFill(seek, audio.currentTime, audio.duration);
       $('#fs-cur').textContent = fmtTime(audio.currentTime);
       $('#fs-dur').textContent = fmtTime(audio.duration);
     }

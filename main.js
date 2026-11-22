@@ -1333,6 +1333,18 @@ function createMainWindow() {
           `);
           console.log('SMOKE_VOLUME:', JSON.stringify(volumeResult));
 
+          const seekResult = await mainWindow.webContents.executeJavaScript(`
+            (() => {
+              const seek = document.querySelector('#seek');
+              return {
+                fill: seek.style.getPropertyValue('--fill').trim(),
+                value: Number(seek.value) || 0,
+                max: Number(seek.max) || 0,
+              };
+            })()
+          `);
+          console.log('SMOKE_SEEK:', JSON.stringify(seekResult));
+
           await mainWindow.webContents.executeJavaScript(
             "window.CleanMusic.showView('radio')"
           );
