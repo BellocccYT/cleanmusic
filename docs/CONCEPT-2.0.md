@@ -444,8 +444,9 @@ verändert das Erlebnis bereits vollständig, ohne das Studio anzufassen.
 ## 15. Die ersten drei Schritte
 
 **Stand:** Schritt 1 (Rezepte v0) ist mit CleanMusic 1.19.0 veröffentlicht –
-siehe [`PLAN-SMART-PLAYLISTS.md`](PLAN-SMART-PLAYLISTS.md). Die Schritte 2 und 3
-(Modul-Aufteilung, Raum-Prototyp) sind noch offen.
+siehe [`PLAN-SMART-PLAYLISTS.md`](PLAN-SMART-PLAYLISTS.md). Schritt 2 hat
+begonnen: `renderer/core/text.js` ist der erste ausgelagerte, mit Node getestete
+Baustein. Der Raum-Prototyp (Schritt 3) ist noch offen.
 
 1. **Rezepte v0 im heutigen UI bauen.** Die geplante Smart-Playlist wird als
    `playlist.smart` umgesetzt — mit Regel-Engine, Vorschau und „Aktualisieren".
