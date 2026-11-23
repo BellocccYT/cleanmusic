@@ -5741,6 +5741,13 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.19.0': [
+      'Smart-Playlists: Regeln aus Favoriten, lokaler Musik, Verlauf, anderen Playlists, Vorschlägen und Charts – mit Live-Vorschau und einem Klick aktualisieren.',
+      'Filter nach stream-sicher, Credit, „seit X Tagen nicht gehört“ und Dislikes; Limit von 5 bis 100 Titeln.',
+      'Neuer Seitenleisten-Knopf „Smart-Playlist“: smarte Listen tragen ein Funken-Symbol und zeigen ihre Regeln im Kopf.',
+      'Titel in japanischer, kyrillischer oder griechischer Schreibweise werden nicht mehr fälschlich zusammengefasst – das gilt auch für „Mehr/Weniger davon“.',
+      'Alles bleibt lokal: Smart-Playlists lösen keine neuen Suchen oder Netzwerkabfragen aus.',
+    ],
     '1.18.1': [
       'Wiedergabe: Vorschauen mit abgelaufener Adresse laden im Hintergrund nach – „Play“ startet nie mehr den vorherigen Titel.',
       'Crossfade: Pause und Stummschalten wirken sofort, auch mitten in der Überblendung.',

@@ -443,8 +443,8 @@ verändert das Erlebnis bereits vollständig, ohne das Studio anzufassen.
 
 ## 15. Die ersten drei Schritte
 
-**Stand:** Schritt 1 (Rezepte v0) ist im Arbeitsstand umgesetzt – siehe
-[`PLAN-SMART-PLAYLISTS.md`](PLAN-SMART-PLAYLISTS.md). Die Schritte 2 und 3
+**Stand:** Schritt 1 (Rezepte v0) ist mit CleanMusic 1.19.0 veröffentlicht –
+siehe [`PLAN-SMART-PLAYLISTS.md`](PLAN-SMART-PLAYLISTS.md). Die Schritte 2 und 3
 (Modul-Aufteilung, Raum-Prototyp) sind noch offen.
 
 1. **Rezepte v0 im heutigen UI bauen.** Die geplante Smart-Playlist wird als

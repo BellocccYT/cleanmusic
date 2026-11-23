@@ -1,6 +1,6 @@
 # Plan: Smart-Playlists („Rezepte v0“)
 
-**Stand: umgesetzt im Arbeitsstand, Version noch nicht angehoben.**
+**Stand: umgesetzt und mit CleanMusic 1.19.0 veröffentlicht.**
 
 Smart-Playlists sind der erste Baustein aus [`CONCEPT-2.0.md`](CONCEPT-2.0.md):
 eine Playlist, die nicht aus einer festen Liste besteht, sondern aus **Regeln**.
