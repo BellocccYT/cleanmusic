@@ -815,8 +815,11 @@ function interleaveTracks(first, second) {
         .replace(/[^a-z0-9äöüß]+/gi, ' ')
         .trim();
 
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
+      // Titles in Japanese, Cyrillic, Greek … keep no Latin characters at all.
+      // Falling back to the raw identity makes sure they are not dropped.
+      const dedupeKey = key || `${track.title}|${track.artist}|${track.id || ''}`.trim().toLowerCase();
+      if (!dedupeKey || seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
       out.push(track);
     }
   }
@@ -1172,6 +1175,35 @@ function createMainWindow() {
       console.log(
         `SMOKE_WIDEVINE: ${widevine ? `${widevine.version} @ ${widevine.dir}` : 'not found'}`
       );
+
+      // Pure helpers that had real bugs – keep them covered.
+      try {
+        const fixDir = path.join(app.getPath('temp'), 'cleanmusic-smoke-fixes');
+        fs.mkdirSync(fixDir, { recursive: true });
+        const goodConfig = path.join(fixDir, 'good.json');
+        const badConfig = path.join(fixDir, 'bad.json');
+        fs.writeFileSync(goodConfig, JSON.stringify({ remoteEnabled: true }));
+        fs.writeFileSync(badConfig, '{ kaputt');
+        const parsed = parseConfigFile(goodConfig);
+        console.log(
+          'SMOKE_FIXES:',
+          JSON.stringify({
+            nonLatinKept: interleaveTracks([{ title: '打上花火', artist: '米津玄師', id: 'apple:1' }], []).length === 1,
+            duplicatesRemoved:
+              interleaveTracks(
+                [{ title: 'One More Time', artist: 'Daft Punk' }],
+                [{ title: 'one more time!', artist: 'DAFT PUNK' }]
+              ).length === 1,
+            downloadHosts:
+              allowedDownloadHost('https://cdn.incompetech.com/x.mp3') && !allowedDownloadHost('https://example.com/x.mp3'),
+            configParsed: Boolean(parsed && parsed.remoteEnabled === true),
+            configCorrupt: parseConfigFile(badConfig) === null,
+          })
+        );
+        fs.rmSync(fixDir, { recursive: true, force: true });
+      } catch (error) {
+        console.error('SMOKE_FIXES_FAIL:', error.message);
+      }
 
       try {
         const result = await mainWindow.webContents.executeJavaScript(`
@@ -2862,6 +2894,9 @@ async function previewBySearch(meta) {
   const titleKey = looseKey(title);
   const titleWord = titleKey.split(' ')[0];
   const artistWord = looseKey(artist).split(' ')[0];
+  // With a title in a non-Latin script both keys are empty – then any result
+  // would match ("startsWith('')"). Better no preview than the wrong song.
+  if (!titleKey) return null;
   const exact = results.find(
     (entry) =>
       entry.previewUrl &&
@@ -2871,6 +2906,7 @@ async function previewBySearch(meta) {
   const loose = results.find(
     (entry) =>
       entry.previewUrl &&
+      titleWord &&
       looseKey(entry.trackName).includes(titleWord) &&
       (!artistWord || looseKey(entry.artistName).includes(artistWord))
   );
@@ -3265,6 +3301,10 @@ ipcMain.handle('cutting-download', async (_event, input) => {
       clearTimeout(timer);
       throw new Error(`HTTP ${response.status}`);
     }
+    if (response.url && !allowedDownloadHost(response.url)) {
+      clearTimeout(timer);
+      throw new Error('Weiterleitung nicht erlaubt');
+    }
     const type = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     const fromUrl = (path.extname(new URL(url).pathname) || '').toLowerCase();
     const extension =
@@ -3273,9 +3313,35 @@ ipcMain.handle('cutting-download', async (_event, input) => {
       clearTimeout(timer);
       throw new Error('Keine Audiodatei');
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
+    // Stream instead of buffering blindly: a 2 GB "original" would otherwise
+    // be loaded into memory completely before the size check.
+    const LIMIT = 250 * 1024 * 1024;
+    const announced = Number(response.headers.get('content-length')) || 0;
+    if (announced > LIMIT) {
+      clearTimeout(timer);
+      throw new Error('Datei zu groß');
+    }
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(Buffer.from(value));
+      total += value.byteLength;
+      if (total > LIMIT) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* enough */
+        }
+        clearTimeout(timer);
+        throw new Error('Datei zu groß');
+      }
+    }
     clearTimeout(timer);
-    if (buffer.length > 250 * 1024 * 1024) throw new Error('Datei zu groß');
+    const buffer = Buffer.concat(chunks, total);
+    if (buffer.length > LIMIT) throw new Error('Datei zu groß');
 
     let file = path.join(folder, stem + extension);
     let existed = false;
@@ -3694,21 +3760,51 @@ function configFile() {
   return path.join(app.getPath('userData'), 'cleanmusic-config.json');
 }
 
-function readConfig() {
+function parseConfigFile(file) {
   try {
-    return JSON.parse(fs.readFileSync(configFile(), 'utf8')) || {};
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
-    return {};
+    return null;
   }
+}
+
+function readConfig() {
+  const file = configFile();
+  // A corrupted or locked file is not an empty configuration – try the last
+  // good copy instead of silently starting from scratch (which would wipe all
+  // settings on the next writeConfig).
+  const main = parseConfigFile(file);
+  if (main) return main;
+  if (!fs.existsSync(file)) return {};
+  const backup = parseConfigFile(`${file}.bak`);
+  return backup || {};
 }
 
 function writeConfig(patch) {
   const next = { ...readConfig(), ...patch };
+  const file = configFile();
+  const temp = `${file}.tmp`;
   try {
-    fs.mkdirSync(path.dirname(configFile()), { recursive: true });
-    fs.writeFileSync(configFile(), JSON.stringify(next, null, 2));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // Write to a temp file and swap it in: a crash in the middle can never
+    // leave a truncated config behind, and the previous state stays as .bak.
+    fs.writeFileSync(temp, JSON.stringify(next, null, 2));
+    if (fs.existsSync(file)) {
+      try {
+        fs.copyFileSync(file, `${file}.bak`);
+      } catch {
+        /* backup is best effort */
+      }
+    }
+    fs.renameSync(temp, file);
   } catch {
     /* read-only profile – keep it in memory only */
+    try {
+      fs.rmSync(temp, { force: true });
+    } catch {
+      /* ignore */
+    }
   }
   return next;
 }
@@ -5387,8 +5483,9 @@ function recordDiagnosticError(source, error) {
 }
 
 function activePluginDiagnostics() {
+  const { enabled } = pluginConfig();
   return Array.from(plugins.values())
-    .filter((plugin) => plugin.enabled && plugin.module)
+    .filter((plugin) => plugin.module && enabled.includes(plugin.id))
     .map((plugin) => ({
       name: cleanText(plugin.module.name || plugin.id, 80),
       version: cleanText(plugin.module.version || 'unbekannt', 30),
@@ -6491,9 +6588,9 @@ async function checkForUpdates() {
 
   updateTask = (async () => {
     setUpdate({ status: 'checking', error: null });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000);
       const response = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
         signal: controller.signal,
         headers: {
@@ -6501,12 +6598,13 @@ async function checkForUpdates() {
           'user-agent': `CleanMusic/${app.getVersion()} (update check)`,
         },
       });
-      clearTimeout(timer);
       if (response.status === 404) {
         setUpdate({ status: 'current', latest: null, checkedAt: Date.now() });
         return publicUpdate();
       }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // The timeout stays armed while the body is read: a stalled body would
+      // otherwise leave `updateTask` pending forever.
       const release = await response.json();
       const latest = String(release.tag_name || '').replace(/^v/i, '');
       const current = UPDATE_TEST ? '0.0.1' : app.getVersion();
@@ -6524,6 +6622,8 @@ async function checkForUpdates() {
     } catch (error) {
       const message = error.name === 'AbortError' ? 'Zeitüberschreitung' : friendlyNetError(error).message || error.message;
       setUpdate({ status: 'error', error: `Update-Prüfung fehlgeschlagen: ${message}`, checkedAt: Date.now() });
+    } finally {
+      clearTimeout(timer);
     }
     return publicUpdate();
   })().finally(() => {
@@ -6545,31 +6645,70 @@ async function downloadUpdate() {
 
   setUpdate({ status: 'downloading', progress: 0, error: null });
   const partial = `${dest}.download`;
+  // A dead connection must not leave the app in "downloading" forever (that
+  // blocks every later update check): abort after 10 minutes without progress.
+  const controller = new AbortController();
+  let idleTimer = null;
+  let reader = null;
+  let out = null;
+  const touch = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+  };
   try {
     fs.mkdirSync(target.dir, { recursive: true });
-    const response = await net.fetch(asset.url, { headers: { 'user-agent': `CleanMusic/${app.getVersion()}` } });
+    touch();
+    const response = await net.fetch(asset.url, {
+      headers: { 'user-agent': `CleanMusic/${app.getVersion()}` },
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     if (response.url && !updateHostAllowed(response.url)) throw new Error('Unerwartete Download-Adresse');
 
     const hash = crypto.createHash('sha256');
-    const out = fs.createWriteStream(partial);
-    const reader = response.body.getReader();
+    out = fs.createWriteStream(partial);
+    // A write error (disk full, permissions) arrives as an event, not as a
+    // rejected promise – without this the whole app would crash.
+    let streamError = null;
+    out.on('error', (error) => {
+      streamError = streamError || error;
+    });
+    reader = response.body.getReader();
     let received = 0;
     let lastSent = 0;
     for (;;) {
       const { done, value } = await reader.read();
+      if (streamError) throw streamError;
       if (done) break;
       const chunk = Buffer.from(value);
       received += chunk.length;
+      touch();
       if (received > 600 * 1024 * 1024) throw new Error('Datei zu groß');
       hash.update(chunk);
-      if (!out.write(chunk)) await new Promise((resolve) => out.once('drain', resolve));
+      if (!out.write(chunk)) {
+        await new Promise((resolve, reject) => {
+          const drain = () => {
+            out.off('error', fail);
+            resolve();
+          };
+          const fail = (error) => {
+            out.off('drain', drain);
+            reject(error);
+          };
+          out.once('drain', drain);
+          out.once('error', fail);
+        });
+      }
       if (Date.now() - lastSent > 250) {
         lastSent = Date.now();
         setUpdate({ progress: asset.size ? Math.min(0.99, received / asset.size) : 0 });
       }
     }
-    await new Promise((resolve, reject) => out.end((error) => (error ? reject(error) : resolve())));
+    if (streamError) throw streamError;
+    await new Promise((resolve, reject) => {
+      out.once('error', reject);
+      out.end(resolve);
+    });
 
     if (asset.size && received !== asset.size) throw new Error('Download unvollständig');
     const digest = hash.digest('hex');
@@ -6580,8 +6719,19 @@ async function downloadUpdate() {
     if (target.kind === 'appimage') fs.chmodSync(dest, 0o755);
     setUpdate({ status: 'ready', progress: 1, file: dest });
   } catch (error) {
+    if (reader) {
+      try {
+        await reader.cancel();
+      } catch {
+        /* already closed */
+      }
+    }
+    if (out) out.destroy();
     fs.rmSync(partial, { force: true });
-    setUpdate({ status: 'error', error: `Download fehlgeschlagen: ${error.message}` });
+    const reason = error && error.name === 'AbortError' ? 'Zeitüberschreitung – Verbindung hängt' : error.message;
+    setUpdate({ status: 'error', error: `Download fehlgeschlagen: ${reason}` });
+  } finally {
+    clearTimeout(idleTimer);
   }
   return publicUpdate();
 }

@@ -2641,9 +2641,13 @@
     const host = $('#home-local');
     if (!host) return;
 
-    const entries = state.library.entries;
+    const all = state.library.entries;
+    // The cards resolve their clicks through visibleLocal() (sort + mood), so
+    // they must be built from the same order – otherwise a click plays a
+    // different file than the one shown.
+    const entries = visibleLocal();
 
-    if (!entries.length) {
+    if (!all.length) {
       host.innerHTML = `
         <div class="home-local-head">
           <div>
@@ -2681,11 +2685,11 @@
       <div class="home-local-head">
         <div>
           <h3>Deine Musik</h3>
-          <p>${entries.length} lokale Titel</p>
+          <p>${all.length} lokale Titel</p>
         </div>
         <button class="btn ghost small" data-home-action="open-local">Alle ansehen</button>
       </div>
-      <div class="home-local-list">${rows}</div>
+      <div class="home-local-list">${rows || '<p class="muted small home-local-note">Für diese Stimmung gibt es keine Titel.</p>'}</div>
       <div class="home-local-foot">
         <span class="muted small">${esc(state.library.folder || '')}</span>
         <button class="btn ghost small" data-home-action="add-folder">+ Ordner</button>
@@ -4419,9 +4423,11 @@
   }
 
   function persistLibrary() {
+    // New files are appended, so the newest ones must survive the cap (a
+    // folder can hold up to MAX_TRACKS = 5000 files in main.js).
     writeJSON(STORAGE.library, {
       folder: state.library.folder,
-      tracks: state.library.tracks.slice(0, 4000),
+      tracks: state.library.tracks.slice(-5000),
     });
   }
 
@@ -4666,7 +4672,12 @@
   }
 
   function needsSlowResolve(item) {
-    return item.kind === 'plugin' || (item.kind === 'preview' && (fullMode() || !item.url));
+    return (
+      item.kind === 'plugin' ||
+      // Expired preview URLs are refreshed through the catalog – that takes
+      // a moment, so the old title must not keep playing underneath.
+      (item.kind === 'preview' && (fullMode() || !item.url || previewExpired(item.url)))
+    );
   }
 
   function prefetchPluginEntry(entry) {
@@ -4709,7 +4720,14 @@
     if (liveIndicator) liveIndicator.hidden = !live;
 
     const slow = needsSlowResolve(item);
-    if (slow) audio.pause();
+    if (slow) {
+      // Unload the previous title: otherwise Play (or a media key) would
+      // resume the old song under the new title, and a failed resolve would
+      // leave it playable.
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    }
 
     state.nowMode = slow ? 'loading' : null;
     state.nowLabel = null;
@@ -4884,11 +4902,15 @@
 
     if (direction > 0 && autoplayEligible()) {
       const queue = state.queue;
+      // Remember where the user was: if they pick another title while the
+      // recommendations load, the queue index changes and we must not jump
+      // ahead afterwards.
+      const at = queue.index;
       const task = maybeAutoplay();
       if (task) {
         task.then(() => {
-          if (state.queue === queue && queue.index < queue.items.length - 1) {
-            playFromQueue(queue.index + 1);
+          if (state.queue === queue && queue.index === at && at < queue.items.length - 1) {
+            playFromQueue(at + 1);
           }
         });
         return;
@@ -5067,7 +5089,12 @@
     playButton.addEventListener('click', () => {
       if (!audio.src) return;
       if (audio.paused) audio.play().catch(() => {});
-      else audio.pause();
+      else {
+        // A running crossfade keeps the old title alive in a second element –
+        // Pause must silence that too.
+        stopGhost();
+        audio.pause();
+      }
     });
 
     $('#btn-prev').addEventListener('click', () => {
@@ -5276,6 +5303,15 @@
       setSeekFill(seek, audio.currentTime, audio.duration);
       $('#t-cur').textContent = fmtTime(audio.currentTime);
       updateFsProgress();
+    });
+
+    // Once a title has really played, a later mid-stream error gets the full
+    // retry chain again (fresh URL, alternates) instead of jumping straight
+    // to the 30 s preview.
+    audio.addEventListener('timeupdate', () => {
+      if (state.retry && audio.currentTime > 5 && state.retry.count > 0) {
+        state.retry = { id: state.retry.id, count: 0 };
+      }
     });
 
     audio.addEventListener('timeupdate', checkSilence);
@@ -5881,7 +5917,15 @@
 
   async function ensureLyrics(refresh = false) {
     const item = currentItem();
-    if (!lyricsOn() || !item || item.kind === 'radio' || !bridge.lyricsGet) return;
+    // Radio, local "no lyrics" or switched off: drop the previous title's
+    // lyrics instead of leaving them (and the remote's lyric) on screen.
+    if (!lyricsOn() || !item || item.kind === 'radio' || !bridge.lyricsGet) {
+      if (lyricsState.key) {
+        Object.assign(lyricsState, { key: '', lines: [], plain: '', loading: false, error: null, index: -1 });
+        renderLyrics();
+      }
+      return;
+    }
     const key = matchKey(item);
     if (!key || (!refresh && key === lyricsState.key)) return;
     Object.assign(lyricsState, { key, lines: [], plain: '', loading: true, error: null, index: -1 });
@@ -6377,6 +6421,7 @@
       if (mood) {
         localMood = mood.dataset.localMood;
         renderLocal();
+        renderHomeLocal();
         return;
       }
       const sort = event.target.closest('#view-local [data-local-sort]');
@@ -6384,6 +6429,7 @@
         localSort = sort.dataset.localSort === 'folder' ? 'folder' : 'list';
         writeJSON(STORAGE.localView, { sort: localSort });
         renderLocal();
+        renderHomeLocal();
       }
     });
     document.addEventListener('change', (event) => {
@@ -6394,6 +6440,7 @@
       else delete localMoods[dir];
       writeJSON(STORAGE.localMoods, localMoods);
       renderLocal();
+      renderHomeLocal();
     });
   }
 
@@ -6754,9 +6801,10 @@
     if (!src) return;
     const ghost = new Audio();
     ghost.preload = 'auto';
-    transition = { ghost, timer: null, mainBegin: 0 };
+    transition = { ghost, timer: null, mainBegin: 0, index: state.queue.index };
     const level = volumeLevel();
     ghost.volume = vol.muted ? 0 : Math.min(1, level * level);
+    ghost.muted = vol.muted;
     ghost.src = src;
     const giveUp = setTimeout(() => {
       if (transition && transition.ghost === ghost && !transition.timer) stopGhost();
@@ -6779,6 +6827,12 @@
       () => {
         clearTimeout(giveUp);
         if (!transition || transition.ghost !== ghost) return;
+        // The title already ended (or the user paused/picked another one) while
+        // the ghost was loading: do not advance a second time.
+        if (audio.paused || audio.ended || transition.index !== state.queue.index) {
+          stopGhost();
+          return;
+        }
         fadeFactor = 0;
         applyVolume();
         const from = ghost.volume;
@@ -7289,6 +7343,9 @@
         })
         .catch(() => {})
         .finally(() => {
+          // A failed decode must not block the title forever: bpmCache alone
+          // decides whether it is measured again on the next try.
+          bpmRunning.delete(entry.id);
           bpmBusy -= 1;
           clearTimeout(bpmRenderTimer);
           bpmRenderTimer = setTimeout(() => {
@@ -7392,7 +7449,7 @@
       return;
     }
     host.hidden = false;
-    if (cut.id !== entry.id && !cut.loading) {
+    if (cut.id !== entry.id) {
       loadWaveform(entry);
       return;
     }
@@ -8658,6 +8715,8 @@
       audio.volume = Math.min(1, gain * fadeFactor);
       audio.muted = vol.muted;
     }
+    // The crossfade ghost is a second element; Mute must silence it too.
+    if (transition) transition.ghost.muted = vol.muted;
     updateVolumeUi();
     pushPlayerState();
   }
@@ -9542,7 +9601,8 @@
   }
 
   function persistCredits() {
-    writeJSON(STORAGE.credits, state.credits.slice(0, 200));
+    // Newest credits are appended at the end – keep those, not the oldest.
+    writeJSON(STORAGE.credits, state.credits.slice(-200));
   }
 
   async function collectCredit(entry) {
@@ -10663,6 +10723,9 @@
             name: String(playlist.name || 'Playlist').slice(0, 80),
             createdAt: Number(playlist.createdAt) || Date.now(),
             updatedAt: Date.now(),
+            // Templates keep their key, otherwise the Vorlagen page would
+            // create a duplicate playlist after a restore.
+            preset: typeof playlist.preset === 'string' ? playlist.preset.slice(0, 80) : '',
             items: items.map(storable),
           });
           counts.playlists += 1;
@@ -10754,6 +10817,14 @@
     onCollectionChanged({ favorites: true });
     applyTheme();
     applyVolume();
+    // Visualizer choices are part of the backup, so apply them right away
+    // instead of waiting for the next restart.
+    syncVisualizerEngine();
+    applyVisualizerVisibility();
+    if (window.CMVisualizer && window.CMVisualizer.setStyle) {
+      window.CMVisualizer.setStyle($('#fs-viz'), state.settings.vizStyle);
+      window.CMVisualizer.wake();
+    }
     renderCredits();
     buildHome();
     renderSettings();

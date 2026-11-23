@@ -62,7 +62,11 @@ window.CMVisualizer = (function () {
       // Windows may suspend/interrupt the context (output device changed, e.g.
       // Wave Link or Bluetooth) – wake it up again while music plays.
       ctx.addEventListener('statechange', () => {
-        if (ctx.state !== 'running' && audioEl && !audioEl.paused) ctx.resume().catch(() => {});
+        // Only wake up while something really needs the context. A deliberate
+        // suspend (visualizer and plugins off, no audio chain) must stick.
+        if (ctx.state !== 'running' && (enabled || watching || engine) && audioEl && !audioEl.paused) {
+          ctx.resume().catch(() => {});
+        }
       });
     }
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -318,7 +322,23 @@ window.CMVisualizer = (function () {
   // Log-spaced spectrum for plugins, normalised to 0..1.
   function spectrum(count) {
     const size = Math.max(8, Math.min(64, Math.round(Number(count)) || 32));
+    // Without a drawing loop (visualizer off, only a plugin is watching) the
+    // FFT buffer would never be refreshed – read it here on demand.
+    if (!raf) sampleNow();
     return bands(size);
+  }
+
+  // Reads the analyser once and updates the smoothed bass level (used when
+  // no animation loop is running).
+  function sampleNow() {
+    if (!analyser || !(source || tapped)) return false;
+    analyser.getByteFrequencyData(freq);
+    analyser.getByteTimeDomainData(wave);
+    let bass = 0;
+    for (let k = 1; k < 10; k += 1) bass += freq[k];
+    const level = bass / 9 / 255;
+    bassLevel += (level - bassLevel) * (level > bassLevel ? 0.24 : 0.08);
+    return true;
   }
 
   function register(canvas, options = {}) {
@@ -556,10 +576,14 @@ window.CMVisualizer = (function () {
     let radius = Math.min(width, height) * 0.22;
     if (target.anchor && target.anchor.isConnected) {
       const box = target.anchor.getBoundingClientRect();
-      const host = canvas.getBoundingClientRect();
-      cx = (box.left + box.width / 2 - host.left) * ratio;
-      cy = (box.top + box.height / 2 - host.top) * ratio;
-      radius = (Math.max(box.width, box.height) / 2) * ratio * 1.08;
+      // A hidden anchor (lyrics focus hides the cover) is connected but has no
+      // box – keep the centre fallback instead of collapsing into the corner.
+      if (box.width > 0 && box.height > 0) {
+        const host = canvas.getBoundingClientRect();
+        cx = (box.left + box.width / 2 - host.left) * ratio;
+        cy = (box.top + box.height / 2 - host.top) * ratio;
+        radius = (Math.max(box.width, box.height) / 2) * ratio * 1.08;
+      }
     }
 
     const count = 120;
