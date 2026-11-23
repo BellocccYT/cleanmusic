@@ -5780,6 +5780,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.20.1': [
+      'Neuer Info-Knopf im Player: „Warum läuft das?“ zeigt Herkunft, Quelle, Lizenz, Stream-sicher-Status und Länge – bei lokalen Titeln auch die Datei.',
+      'Credits lassen sich dort direkt kopieren, Links im Dienst öffnen; Smart-Playlists zeigen ihre Regel-Chips.',
+      'Der Assistent merkt sich, ob du die Hintergrundmusik willst, und startet sie beim nächsten Öffnen entsprechend.',
+      'Das Dienstemenü an Titeln scrollt jetzt, wenn viele Dienste verfügbar sind.',
+    ],
     '1.20.0': [
       'Erste Schritte mit leiser Hintergrundmusik: „Thinking Music“ von Kevin MacLeod (CC BY 4.0), mit Musik-Knopf und sauberem Ausblenden beim Schließen.',
       'Dienste in der Seitenleiste aufgeräumt: vier häufige Dienste sichtbar, der Rest hinter „Weitere Dienste“; Creator lässt sich separat ausklappen.',
