@@ -574,7 +574,10 @@ CleanMusic (Token-geschützt, nur lokal). Optional **Songwünsche** mit `!sr`,
 Apple Music und YouTube (mit Quellen-Plugin): Der Wunsch kommt **als Nächstes** und
 landet zusätzlich in der Playlist „Songwünsche aus dem Chat“. Ein **KI-Filter** lehnt
 gekennzeichnete KI-Songs ab („AI Cover“, „Suno“, „KI-generiert“ …) – er erkennt nur,
-was gekennzeichnet ist. Anleitung:
+was gekennzeichnet ist. Seit Plugin 1.3.0 meldet CleanMusic **Titelwechsel per
+WebSocket** an Streamer.bot und ruft dort eine Action auf (Titel, Artist, Album,
+Cover, Link, Quelle, Länge, Wiedergabestatus); optional mit Passwort, mit
+automatischem Neuaufbau. Anleitung:
 [extras/plugins/README.md](extras/plugins/README.md#streamerbot-streamerbotjs).
 
 ### OBS Now-Playing (optionales Plugin)
@@ -903,8 +906,10 @@ Epidemic Sound und Artlist, Erste-Schritte-Assistent, Installer – fertig). Als
 
 - **1.1: Englische Oberfläche** (Deutsch/Englisch umschaltbar, README auf Englisch).
 
-0. **Streamer.bot Phase 2:** Titelwechsel als WebSocket-Ereignis direkt in Streamer.bot
-   (Phase 1 mit !song/!skip/!pause ist fertig). Plan: [docs/PLAN-STREAMERBOT.md](docs/PLAN-STREAMERBOT.md).
+0. ~~**Streamer.bot Phase 2:** Titelwechsel als WebSocket-Ereignis~~ – erledigt in
+   Plugin 1.3.0 (Action mit Argumenten, Action-Liste, Passwort, Auto-Reconnect). Plan:
+   [docs/PLAN-STREAMERBOT.md](docs/PLAN-STREAMERBOT.md). Offen bleibt nur ein
+   Auswahlfeld für die Action (braucht dynamische Optionslisten in der Plugin-API).
 
 1. **Cloud-freier Sync** zwischen PCs über einen selbst gewählten Ordner.
 3. **Cutter-Extras:** BPM-Filter, Wellenform mit Schnittmarken, Sounds per Drag & Drop in den Editor.

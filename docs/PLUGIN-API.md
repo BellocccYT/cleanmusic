@@ -137,6 +137,7 @@ module.exports = {
     { id: 'files', type: 'toggle', label: 'Textdateien schreiben', default: false, help: 'Kurzer Hinweis' },
     { id: 'folder', type: 'folder', label: 'Ordner', default: '' },
     { id: 'name', type: 'text', label: 'Name', default: '', placeholder: 'optional' },
+    { id: 'secret', type: 'password', label: 'Passwort', default: '' },   // als Punkte angezeigt
   ],
   async onSettings(values) {},         // nach jeder Änderung, values = alle Felder
 

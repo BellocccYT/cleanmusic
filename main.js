@@ -3967,8 +3967,7 @@ async function smokeStreamerbotPlugin() {
   })()`);
   const wrong = await get('/wrongsong?token=' + token + '&user=smoke');
   const wrongNone = await get('/wrongsong?token=' + token + '&user=nobody');
-  const afterWrong = await js('window.CleanMusic.requests().length');
-  // Song requests with links, "next", playlist, AI filter (plugin 1.2.0, CleanMusic 1.4.0).
+  const afterWrong = await js('window.CleanMusic.requests().length');  // Song requests with links, "next", playlist, AI filter (plugin 1.2.0, CleanMusic 1.4.0).
   await js("window.cm.pluginSettingsSet('streamerbot', { requests: true, requestSource: 'preview', requestCooldown: 0, requestPerUser: 6, requestMax: 30, requestPosition: 'next', requestPlaylist: 'Smoke Wünsche', requestBlockAi: true })");
   await wait(500);
   const linkSpotify = await sr('linker', 'https://open.spotify.com/intl-de/track/0VjIjW4GlUZAMYd2vXMi3b?si=smoke');
@@ -4017,6 +4016,168 @@ async function smokeStreamerbotPlugin() {
   await wait(2600);
   const blocked = await get('/skip?token=' + token);
   const info = (await pluginList(false)).plugins.find((entry) => entry.id === 'streamerbot');
+
+  // WebSocket (plugin 1.3.0): Hello, Authenticate, GetActions, DoAction.
+  const wsSeen = { connection: 0, auth: null, first: null, last: null };
+  const wsPort = port + 1;
+  const wsServer = http.createServer((_request, response) => {
+    response.writeHead(426);
+    response.end('Upgrade required');
+  });
+  const frame = (payload) => {
+    const data = Buffer.from(JSON.stringify(payload), 'utf8');
+    let header;
+    if (data.length < 126) header = Buffer.from([0x81, data.length]);
+    else if (data.length < 65536) {
+      header = Buffer.alloc(4);
+      header[0] = 0x81;
+      header[1] = 126;
+      header.writeUInt16BE(data.length, 2);
+    } else {
+      header = Buffer.alloc(10);
+      header[0] = 0x81;
+      header[1] = 127;
+      header.writeBigUInt64BE(BigInt(data.length), 2);
+    }
+    return Buffer.concat([header, data]);
+  };
+  const salt = Buffer.from('smoke-salt').toString('base64');
+  const challenge = Buffer.from('smoke-challenge').toString('base64');
+  const wsSockets = new Set();
+  wsServer.on('upgrade', (request, socket) => {
+    const accept = crypto
+      .createHash('sha1')
+      .update(String(request.headers['sec-websocket-key'] || '') + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+      .digest('base64');
+    socket.write(
+      'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+        `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
+    );
+    wsSeen.connection += 1;
+    wsSockets.add(socket);
+    socket.on('close', () => wsSockets.delete(socket));
+    socket.on('error', () => wsSockets.delete(socket));
+    let rest = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      rest = Buffer.concat([rest, chunk]);
+      for (;;) {
+        if (rest.length < 2) return;
+        const opcode = rest[0] & 0x0f;
+        const masked = (rest[1] & 0x80) !== 0;
+        let length = rest[1] & 0x7f;
+        let offset = 2;
+        if (length === 126) {
+          if (rest.length < 4) return;
+          length = rest.readUInt16BE(2);
+          offset = 4;
+        } else if (length === 127) {
+          if (rest.length < 10) return;
+          length = Number(rest.readBigUInt64BE(2));
+          offset = 10;
+        }
+        let mask = null;
+        if (masked) {
+          if (rest.length < offset + 4) return;
+          mask = rest.subarray(offset, offset + 4);
+          offset += 4;
+        }
+        if (rest.length < offset + length) return;
+        let payload = rest.subarray(offset, offset + length);
+        if (masked) {
+          const copy = Buffer.alloc(length);
+          for (let index = 0; index < length; index += 1) copy[index] = payload[index] ^ mask[index % 4];
+          payload = copy;
+        }
+        rest = rest.subarray(offset + length);
+        if (opcode === 0x8) {
+          socket.end();
+          return;
+        }
+        if (opcode !== 0x1) continue;
+        let message = null;
+        try {
+          message = JSON.parse(payload.toString('utf8'));
+        } catch {
+          continue;
+        }
+        if (!message || typeof message !== 'object') continue;
+        if (message.request === 'Authenticate') {
+          const secret = crypto.createHash('sha256').update('smoke-secret' + salt, 'utf8').digest('base64');
+          const expected = crypto.createHash('sha256').update(secret + challenge, 'utf8').digest('base64');
+          wsSeen.auth = message.authentication === expected;
+          socket.write(frame({ status: wsSeen.auth ? 'ok' : 'error', id: message.id, request: 'Authenticate' }));
+        } else if (message.request === 'GetActions') {
+          socket.write(
+            frame({
+              status: 'ok',
+              id: message.id,
+              request: 'GetActions',
+              actions: [
+                { id: 'a1', name: 'CleanMusic Titelwechsel' },
+                { id: 'a2', name: 'Nur ein Test' },
+              ],
+            })
+          );
+        } else if (message.request === 'DoAction') {
+          const entry = { name: message.action && message.action.name, args: message.args || {} };
+          if (!wsSeen.first) wsSeen.first = entry;
+          wsSeen.last = entry;
+          socket.write(frame({ status: 'ok', id: message.id, request: 'DoAction' }));
+        }
+      }
+    });
+    socket.write(
+      frame({
+        timestamp: new Date().toISOString(),
+        request: 'Hello',
+        info: { instanceId: 'smoke', name: 'Streamer.bot Smoke', version: '0.2.5', mode: 'ui' },
+        authentication: { salt, challenge },
+      })
+    );
+  });
+  await new Promise((resolve) => wsServer.listen(wsPort, '127.0.0.1', resolve));
+  await js(
+    `window.cm.pluginSettingsSet('streamerbot', ${JSON.stringify({
+      wsEnabled: true,
+      wsUrl: `ws://127.0.0.1:${wsPort}/`,
+      wsPassword: 'smoke-secret',
+      wsAction: 'CleanMusic Titelwechsel',
+    })})`
+  );
+  await wait(1500);
+  const wsModule = plugins.get('streamerbot') && plugins.get('streamerbot').module;
+  const wsDebug = wsModule && typeof wsModule._debug === 'function' ? wsModule._debug().ws : null;
+  const announcedOnConnect = wsSeen.first;
+  wsSeen.first = null;
+  wsSeen.last = null;
+  // The HTTP control was switched off above – use the player UI for the
+  // track change instead.
+  await js("document.querySelector('#btn-next').click()");
+  await wait(1200);
+  const afterWsSkip = await js('window.CleanMusic.playerSnapshot()');
+  const wsResult = {
+    connected: wsSeen.connection > 0,
+    state: wsDebug ? wsDebug.state : null,
+    auth: wsSeen.auth === true,
+    actions: wsDebug ? wsDebug.actions : null,
+    announcedOnConnect: Boolean(announcedOnConnect && announcedOnConnect.name === 'CleanMusic Titelwechsel'),
+    onSkip: Boolean(wsSeen.last && wsSeen.last.name === 'CleanMusic Titelwechsel'),
+    argsTitle: wsSeen.last ? wsSeen.last.args.title : '',
+    matchesTrack: Boolean(wsSeen.last && afterWsSkip.track && wsSeen.last.args.title === afterWsSkip.track.title),
+    statusText: ((await pluginList(false)).plugins.find((entry) => entry.id === 'streamerbot') || {}).status?.text || null,
+  };
+  await js("window.cm.pluginSettingsSet('streamerbot', { wsEnabled: false })");
+  await wait(400);
+  const wsModuleAfter = plugins.get('streamerbot') && plugins.get('streamerbot').module;
+  wsResult.offState = wsModuleAfter && typeof wsModuleAfter._debug === 'function' ? wsModuleAfter._debug().ws.state : null;
+  for (const socket of wsSockets) {
+    try {
+      socket.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
+  wsServer.close();
 
   const cleanup = pluginConfig();
   cleanup.enabled = cleanup.enabled.filter((id) => id !== 'streamerbot');
@@ -4067,6 +4228,7 @@ async function smokeStreamerbotPlugin() {
     },
     status: info && info.status ? info.status.text : null,
     fields: info && info.settings ? info.settings.fields.length : 0,
+    websocket: wsResult,
     closedAfterUnload: closed.status === 0,
   };
 }
@@ -5304,7 +5466,7 @@ ipcMain.on('player-state', (_event, raw) => {
 
 /* --- Plugin settings fields (API v2) -------------------------------- */
 
-const SETTING_TYPES = ['text', 'number', 'toggle', 'select', 'folder'];
+const SETTING_TYPES = ['text', 'number', 'toggle', 'select', 'folder', 'password'];
 
 function pluginSettingFields(mod) {
   return (mod && Array.isArray(mod.settings) ? mod.settings : [])

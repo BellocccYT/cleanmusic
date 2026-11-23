@@ -11623,6 +11623,8 @@
               <input type="text" id="${id}" ${data} value="${esc(value)}" placeholder="${esc(field.placeholder)}" spellcheck="false" />
               <button class="btn ghost small" data-plugin-folder="${esc(plugin.id)}" data-field="${esc(field.id)}">Ordner …</button>
             </span>`;
+        } else if (field.type === 'password') {
+          control = `<input type="password" id="${id}" ${data} value="${esc(value)}" placeholder="${esc(field.placeholder)}" spellcheck="false" autocomplete="new-password" />`;
         } else {
           control = `<input type="text" id="${id}" ${data} value="${esc(value)}" placeholder="${esc(field.placeholder)}" spellcheck="false" />`;
         }

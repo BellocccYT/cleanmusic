@@ -93,8 +93,14 @@ Authentifizierung des WebSocket-Servers, Versionsunterschiede.
 
 ## Nächste Phase
 
-- Weg B (WebSocket): Titelwechsel als Ereignis direkt in Streamer.bot, Action-Auswahl
-  in der Plugin-Karte. Vorher gegen die aktuelle Streamer.bot-Doku prüfen.
+- Weg B (WebSocket) ist ab Plugin 1.3.0 umgesetzt: Titelwechsel → Action mit
+  Argumenten, Action-Liste für den Status, optionale Anmeldung mit Passwort
+  (Salt/Challenge wie in der Streamer.bot-Doku), automatischer Neuaufbau.
+  Smoke testet Hello, Authenticate, GetActions und DoAction gegen einen
+  Fake-Server (`npm run smoke:streamerbot`).
+- Offen (optional): Auswahlfeld statt Textfeld für die Action. Dafür müsste die
+  Plugin-API dynamische Optionslisten bekommen (`settings` mit `options` aus
+  einer Funktion), bisher sind nur feste Listen erlaubt.
 
 ## Ursprüngliche Fragen (beantwortet)
 

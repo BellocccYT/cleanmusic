@@ -141,3 +141,27 @@ in CleanMusic entfernst du Wünsche in der Warteschlange mit ×.
 
 Achte darauf, dass du gewünschte Musik in deinem Stream spielen darfst
 (Musikrichtlinien von Twitch) – die Verantwortung liegt bei dir.
+
+### Titelwechsel per WebSocket (ab Plugin 1.3.0)
+
+Statt „Streamer.bot fragt CleanMusic“ kann CleanMusic auch **von sich aus** eine
+Action auslösen, sobald ein neuer Titel läuft – praktisch für Overlays,
+„Now Playing“-Grafiken oder eigene Aktionen.
+
+1. In Streamer.bot: **Servers/Clients → WebSocket Server** einschalten (Standard
+   `ws://127.0.0.1:8080/`). Ein Passwort ist optional.
+2. In CleanMusic in der Plugin-Karte: **Titelwechsel per WebSocket** aktivieren,
+   Adresse prüfen, bei Bedarf das **WebSocket-Passwort** eintragen (wird als
+   Punkte angezeigt) und den **Namen der Action** eintragen, z. B.
+   `CleanMusic Titelwechsel`.
+3. In Streamer.bot eine Action mit diesem Namen anlegen. Sie bekommt die
+   Argumente `title`, `artist`, `album`, `artwork`, `link`, `source`,
+   `duration` und `playing` – z. B. `%title%` oder `%artist%` in einer
+   Sub-Action verwenden.
+
+Der Status in der Plugin-Karte zeigt, ob die Verbindung steht und wie viele
+Actions Streamer.bot gemeldet hat („Streamer.bot verbunden“). Bricht die
+Verbindung ab, versucht CleanMusic es automatisch erneut (2 s bis 30 s,
+wachsend). Der Befehl **Streamer.bot neu verbinden** in der Plugin-Karte hilft
+beim Einrichten. Die Action wird beim Verbinden einmal für den laufenden Titel
+und danach bei jedem Titelwechsel aufgerufen.
