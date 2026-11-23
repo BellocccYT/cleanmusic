@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.18.0**
+**Version 1.18.1**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -145,14 +145,19 @@ Music bzw. YouTube Music, eine Spotify-Suche und den Download. Die Seite liegt i
 und wird per GitHub Pages veröffentlicht (`.github/workflows/pages.yml`); sie speichert
 nichts und hat keine Statistik.
 
-### Chrome-Erweiterung für YouTube
+### Chrome-Erweiterung für YouTube (2.0)
 
-Unter `extras/browser-extension/cleanmusic-youtube/` liegt eine Manifest-V3-Erweiterung:
-Auf YouTube erscheint ein Knopf in den Player-Steuerungen (und ein Toolbar-Popup) für
-**„Zur Warteschlange“** und **„Jetzt abspielen“**. Sie schickt nur Video-ID, Titel und
-Channel an die lokale App – über `cleanmusic://add` bzw. `cleanmusic://play`. Installation
-per „Entpackte Erweiterung laden“ in `chrome://extensions`; Details stehen in der
-`README.md` der Erweiterung.
+Unter `extras/browser-extension/cleanmusic-youtube/` liegt eine Manifest-V3-Erweiterung,
+die für den Chrome Web Store vorbereitet ist: Knopf unter dem Titel, in den
+Player-Steuerungen und schwebend auf YouTube Music/Shorts; Popup mit Vorschau und
+Katalogsuche; drei Rechtsklick-Einträge; drei Tastenkürzel; Einstellungen, Einrichtungs-
+und Datenschutzseite. Sie schickt nur Video-ID, Titel und Channel an die lokale App –
+über `cleanmusic://add` bzw. `cleanmusic://play`, geprüft von `parseDeepLink` in
+`main.js`. Keine Netzwerkanfragen, kein Remote-Code, Einstellungen nur lokal.
+Installation per „Entpackte Erweiterung laden“ in `chrome://extensions`; Store-Texte,
+Berechtigungsbegründungen und Prüfliste stehen in `STORE.md`, Details in der
+`README.md` der Erweiterung. Prüfen mit
+`node extras/browser-extension/test/extension.test.js`.
 
 ### Lokale Musik nach Ordner und Stimmung
 

@@ -3,125 +3,184 @@
 /**
  * CleanMusic für YouTube – content script.
  *
- * Adds a small button to the YouTube player (and a floating button on
- * YouTube Music / Shorts). The video id, title and channel are read from the
- * page; the background worker opens cleanmusic://add or cleanmusic://play.
- * Nothing is sent anywhere except to the local CleanMusic app.
+ * Adds the CleanMusic entry points to YouTube and hands the current video to
+ * the local CleanMusic app. Everything happens in this page: the click opens
+ * `cleanmusic://…` directly, so Chrome still sees the user gesture.
+ *
+ * Read from the page: video id, title, channel, playlist flag.
+ * Sent anywhere else: nothing. No fetch, no cookies, no storage of videos.
  */
 
 (() => {
   if (window.top !== window) return;
 
-  const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
-  const BTN_CLASS = 'cm-yt-add';
-  const ACTION_CLASS = 'cm-yt-action';
-  const FLOAT_CLASS = 'cm-yt-float';
-  const TOAST_CLASS = 'cm-yt-toast';
-  const ICON = `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M9 18V6l10-2v11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="6" cy="18" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
-      <circle cx="16" cy="15" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
-      <path d="M19 3v6M16 6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-    </svg>`;
+  const CMX = globalThis.CMX;
+  if (!CMX) return;
 
+  const CLASS = {
+    player: 'cm-yt-player',
+    action: 'cm-yt-action',
+    float: 'cm-yt-float',
+    toast: 'cm-yt-toast',
+    toastText: 'cm-yt-toast-text',
+    toastAction: 'cm-yt-toast-action'
+  };
+  const ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M9 18V6l10-2v11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="6" cy="18" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+    '<circle cx="16" cy="15" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+    '<path d="M19 3v6M16 6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+    '</svg>';
+
+  let settings = CMX.settingsWithDefaults(null);
   let toastEl = null;
   let toastTimer = 0;
   let ensureTimer = 0;
 
-  function clean(value, max = 200) {
-    return String(value || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, max);
+  /* --- settings ------------------------------------------------------- */
+
+  function applySettings(next) {
+    settings = CMX.settingsWithDefaults(next);
+    ensure();
+    if (!settings.toasts) hideToast(0);
+  }
+
+  try {
+    chrome.storage.local.get('settings', (stored) => {
+      applySettings(stored && stored.settings);
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.settings) applySettings(changes.settings.newValue);
+    });
+  } catch {
+    /* extension context gone – the defaults stay active */
+  }
+
+  /* --- reading the page ----------------------------------------------- */
+
+  function host() {
+    return location.hostname;
   }
 
   function isMusic() {
-    return location.hostname === 'music.youtube.com';
+    return host() === 'music.youtube.com';
   }
 
   function isShorts() {
     return /^\/shorts\//.test(location.pathname);
   }
 
+  function text(selector) {
+    const node = document.querySelector(selector);
+    return node && node.textContent ? node.textContent : '';
+  }
+
   function currentVideo() {
     const url = new URL(location.href);
     const shorts = location.pathname.match(/^\/shorts\/([A-Za-z0-9_-]{11})/);
     const id = url.searchParams.get('v') || (shorts ? shorts[1] : '');
-    if (!id || !VIDEO_ID.test(id)) return null;
+    if (!id || !CMX.VIDEO_ID.test(id)) return null;
 
-    const musicTitle = document.querySelector('ytmusic-player-bar .title')?.textContent;
-    const musicArtist = document.querySelector('ytmusic-player-bar .byline')?.textContent;
-    const metaTitle = document.querySelector('meta[name="title"]')?.content;
-    const heading = document.querySelector(
-      'h1.ytd-watch-metadata yt-formatted-string, h1.title yt-formatted-string'
-    )?.textContent;
-
-    let title = clean((isMusic() ? musicTitle : '') || heading || metaTitle || document.title, 220);
-    let artist = clean(
-      (isMusic() ? musicArtist : '') ||
-        document.querySelector('#owner #channel-name a, ytd-channel-name a, #channel-name a')?.textContent ||
-        '',
-      160
+    const musicTitle = isMusic() ? text('ytmusic-player-bar .title') : '';
+    const musicArtist = isMusic() ? text('ytmusic-player-bar .byline') : '';
+    const shortsTitle = isShorts()
+      ? text('ytd-reel-video-renderer[is-active] #shorts-title') ||
+        text('ytd-reel-video-renderer[is-active] h2') ||
+        text('ytd-shorts #shorts-title')
+      : '';
+    const heading = text(
+      'ytd-watch-metadata h1 yt-formatted-string, h1.ytd-watch-metadata yt-formatted-string, h1.title yt-formatted-string'
     );
+    const metaTitle = (document.querySelector('meta[name="title"]') || {}).content || '';
+    const ogTitle = (document.querySelector('meta[property="og:title"]') || {}).content || '';
+    const channel =
+      text('#owner #channel-name a') ||
+      text('ytd-video-owner-renderer #channel-name a') ||
+      text('#owner ytd-channel-name a') ||
+      text('ytd-channel-name a');
 
-    title = title
-      .replace(/^\(\d+\)\s*/, '')
-      .replace(/\s*[-–—]\s*YouTube(\s*Music)?$/i, '')
-      .replace(/\s*[\(\[](?:official\s+)?(?:music\s+)?(?:video|audio|lyrics?|visualizer|lyric\s+video)[^\)\]]*[\)\]]/gi, '')
-      .trim();
-    artist = artist.replace(/\s*[-–—]\s*Topic$/i, '').replace(/\s*VEVO$/i, '').trim();
+    const rawTitle =
+      musicTitle || shortsTitle || heading || metaTitle || ogTitle || document.title;
+    if (!CMX.normalizeText(rawTitle, 10)) return null;
 
-    // A title like "Artist – Song" is common when the channel is not the artist.
-    const split = title.match(/^(.{2,80}?)\s+[-–—]\s+(.+)$/);
-    if (split && (!artist || /^(youtube|various artists|topic)$/i.test(artist))) {
-      artist = clean(split[1], 160);
-      title = clean(split[2], 220);
-    }
-
-    // "Artist – Song" in the title, artist also known from the channel.
-    if (artist) {
-      const prefix = title.toLowerCase();
-      const name = artist.toLowerCase();
-      if (prefix.startsWith(`${name} - `)) title = clean(title.slice(artist.length + 3), 220);
-      else if (prefix.startsWith(`${name} – `)) title = clean(title.slice(artist.length + 3), 220);
-      else if (prefix.startsWith(`${name} — `)) title = clean(title.slice(artist.length + 3), 220);
-    }
-
-    if (!title) return null;
-    return { id, title, artist };
+    const split = CMX.splitArtistTitle(rawTitle, musicArtist || channel);
+    return {
+      id,
+      title: split.title,
+      artist: split.artist,
+      url: `https://www.youtube.com/watch?v=${id}`,
+      playlist: Boolean(url.searchParams.get('list')),
+      site: isMusic() ? 'music' : isShorts() ? 'shorts' : 'watch'
+    };
   }
 
-  function showToast(text) {
-    if (!toastEl) {
-      toastEl = document.createElement('div');
-      toastEl.className = TOAST_CLASS;
-      document.body.appendChild(toastEl);
-    }
-    toastEl.textContent = text;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2800);
-  }
+  /* --- launching the app ---------------------------------------------- */
 
-  function directLink(action, video) {
-    const params = new URLSearchParams();
-    params.set('src', 'youtube');
-    params.set('id', video.id);
-    if (video.title) params.set('t', video.title);
-    if (video.artist) params.set('a', video.artist);
-    return `cleanmusic://${action === 'add' ? 'add' : 'play'}?${params.toString()}`;
-  }
-
-  // Fallback when the background worker is not reachable (e.g. after a reload).
-  function openDirect(action, video) {
+  function openExternal(link) {
+    // A real anchor click in the page keeps the transient user activation that
+    // Chrome requires for external protocols. It also never navigates this tab
+    // away when no handler is registered.
     const anchor = document.createElement('a');
-    anchor.href = directLink(action, video);
+    anchor.href = link;
+    anchor.rel = 'noopener';
     anchor.style.display = 'none';
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    showToast('CleanMusic wird geöffnet …');
+  }
+
+  function send(type, payload) {
+    try {
+      const result = chrome.runtime.sendMessage(Object.assign({ type }, payload));
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    } catch {
+      /* extension context gone */
+    }
+  }
+
+  function openHelp() {
+    send('cm-open-onboarding');
+  }
+
+  function notifyBadge() {
+    send('cm-flash');
+  }
+
+  function hideToast(delay) {
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => {
+      if (toastEl) toastEl.classList.remove('show');
+    }, delay == null ? 3200 : delay);
+  }
+
+  function showToast(message, actionLabel) {
+    if (!settings.toasts || !document.body) return;
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = CLASS.toast;
+      toastEl.setAttribute('role', 'status');
+      toastEl.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = '';
+
+    const label = document.createElement('span');
+    label.className = CLASS.toastText;
+    label.textContent = message;
+    toastEl.appendChild(label);
+
+    if (actionLabel) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = CLASS.toastAction;
+      button.textContent = actionLabel;
+      button.addEventListener('click', openHelp);
+      toastEl.appendChild(button);
+    }
+
+    toastEl.classList.add('show');
+    hideToast(actionLabel ? 6000 : 2800);
   }
 
   function launch(action) {
@@ -130,101 +189,130 @@
       showToast('Kein YouTube-Video erkannt.');
       return;
     }
-    try {
-      chrome.runtime.sendMessage({ type: 'cm-launch', action, video }, (response) => {
-        if (chrome.runtime.lastError) {
-          openDirect(action, video);
-          return;
-        }
-        if (response && response.ok) {
-          showToast(action === 'add' ? 'An CleanMusic gesendet' : 'In CleanMusic geöffnet');
-        } else {
-          showToast((response && response.error) || 'CleanMusic ist nicht erreichbar.');
-          openDirect(action, video);
-        }
-      });
-    } catch {
-      openDirect(action, video);
+
+    const link =
+      action === 'search'
+        ? CMX.buildSearchLink(`${video.artist} ${video.title}`.trim())
+        : CMX.buildDeepLink(action, video);
+
+    if (!link || !CMX.isAllowedLink(link)) {
+      showToast('Der Link konnte nicht erstellt werden.');
+      return;
     }
+
+    openExternal(link);
+    notifyBadge();
+    showToast(
+      action === 'play'
+        ? 'Wird in CleanMusic abgespielt …'
+        : action === 'search'
+          ? 'Suche wird an CleanMusic gesendet …'
+          : 'An CleanMusic gesendet …',
+      'App fehlt?'
+    );
   }
 
-  function makeButton(className, title) {
+  function onClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (settings.modifierClicks && (event.metaKey || event.altKey)) {
+      launch('search');
+      return;
+    }
+    if (settings.modifierClicks && event.shiftKey) {
+      launch('play');
+      return;
+    }
+    launch('add');
+  }
+
+  const TOOLTIP = 'Zu CleanMusic hinzufügen · Shift: abspielen · Alt: suchen';
+
+  function makeButton(className, extraClass) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = className;
-    button.title = title;
-    button.setAttribute('aria-label', title);
+    button.className = extraClass ? `${extraClass} ${className}` : className;
+    button.title = TOOLTIP;
+    button.setAttribute('aria-label', 'Zu CleanMusic hinzufügen');
     button.innerHTML = ICON;
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      launch('add');
-    });
+    button.addEventListener('click', onClick);
     return button;
   }
 
+  /* --- injecting ------------------------------------------------------ */
+
+  function remove(className) {
+    document.querySelectorAll(`.${className}`).forEach((node) => node.remove());
+  }
+
   function injectPlayerButton() {
-    if (isMusic() || isShorts()) return false;
     const controls = document.querySelector('.ytp-right-controls');
     if (!controls) return false;
-    if (controls.querySelector(`.${BTN_CLASS}`)) return true;
-    controls.prepend(makeButton(`ytp-button ${BTN_CLASS}`, 'Zu CleanMusic hinzufügen'));
+    if (controls.querySelector(`.${CLASS.player}`)) return true;
+    controls.prepend(makeButton(CLASS.player, 'ytp-button'));
     return true;
   }
 
   function injectActionButton() {
-    if (isMusic() || isShorts()) return false;
-    const host = document.querySelector(
+    const hostEl = document.querySelector(
       'ytd-watch-metadata #top-level-buttons-computed, #top-level-buttons-computed'
     );
-    if (!host) return false;
-    if (host.querySelector(`.${ACTION_CLASS}`)) return true;
+    if (!hostEl) return false;
+    if (hostEl.querySelector(`.${CLASS.action}`)) return true;
 
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = ACTION_CLASS;
-    button.title = 'Zu CleanMusic hinzufügen';
+    button.className = CLASS.action;
+    button.title = TOOLTIP;
     button.setAttribute('aria-label', 'Zu CleanMusic hinzufügen');
-    button.innerHTML = `<span class="cm-yt-action-ic">${ICON}</span><span class="cm-yt-action-label">CleanMusic</span>`;
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      launch('add');
-    });
-    host.appendChild(button);
+    button.innerHTML =
+      `<span class="cm-yt-action-ic">${ICON}</span>` +
+      '<span class="cm-yt-action-label">CleanMusic</span>';
+    button.addEventListener('click', onClick);
+    hostEl.appendChild(button);
     return true;
   }
 
-  function injectFloating() {
-    if (document.querySelector(`.${FLOAT_CLASS}`)) return;
-    if (!currentVideo()) return;
-    document.body.appendChild(makeButton(FLOAT_CLASS, 'Zu CleanMusic hinzufügen'));
-  }
-
-  function removeControls() {
-    document.querySelectorAll(`.${BTN_CLASS}, .${ACTION_CLASS}, .${FLOAT_CLASS}`).forEach((el) => el.remove());
+  function injectFloat() {
+    if (document.querySelector(`.${CLASS.float}`)) return;
+    document.body.appendChild(makeButton(CLASS.float, isShorts() ? 'cm-yt-float-shorts' : ''));
   }
 
   function ensure() {
-    if (!currentVideo()) {
-      removeControls();
+    if (!document.body) return;
+    const video = currentVideo();
+    if (!video) {
+      remove(CLASS.player);
+      remove(CLASS.action);
+      remove(CLASS.float);
       return;
     }
-    if (isMusic() || isShorts()) {
-      document.querySelector(`.${BTN_CLASS}`)?.remove();
-      document.querySelector(`.${ACTION_CLASS}`)?.remove();
-      injectFloating();
-    } else {
-      document.querySelector(`.${FLOAT_CLASS}`)?.remove();
-      injectPlayerButton();
-      injectActionButton();
+
+    const floating = isMusic() || isShorts();
+    if (floating) {
+      remove(CLASS.player);
+      remove(CLASS.action);
+      if (settings.floatButton) injectFloat();
+      else remove(CLASS.float);
+      return;
     }
+
+    remove(CLASS.float);
+    if (settings.playerButton) injectPlayerButton();
+    else remove(CLASS.player);
+    if (settings.actionButton) injectActionButton();
+    else remove(CLASS.action);
   }
 
   function scheduleEnsure() {
-    clearTimeout(ensureTimer);
-    ensureTimer = window.setTimeout(ensure, 180);
+    if (ensureTimer) return;
+    ensureTimer = window.setTimeout(() => {
+      ensureTimer = 0;
+      ensure();
+    }, 250);
   }
+
+  /* --- wiring --------------------------------------------------------- */
 
   try {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -239,10 +327,9 @@
   document.addEventListener('yt-navigate-finish', scheduleEnsure);
   document.addEventListener('yt-page-data-updated', scheduleEnsure);
   window.addEventListener('popstate', scheduleEnsure);
-  new MutationObserver(scheduleEnsure).observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-  });
-  window.setInterval(ensure, 4000);
+
+  const observer = new MutationObserver(scheduleEnsure);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  window.setInterval(ensure, 5000);
   ensure();
 })();

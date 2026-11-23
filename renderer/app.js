@@ -5347,6 +5347,16 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.18.1': [
+      'Wiedergabe: Vorschauen mit abgelaufener Adresse laden im Hintergrund nach – „Play“ startet nie mehr den vorherigen Titel.',
+      'Crossfade: Pause und Stummschalten wirken sofort, auch mitten in der Überblendung.',
+      'Startseite: „Deine Musik“ zeigt und spielt dieselben Titel, auch mit Ordner-Sortierung und Stimmungen.',
+      'Cutter: Die Wellenform bleibt nach schnellem Titelwechsel nicht mehr hängen, und die Tempo-Messung lässt sich nach einem Fehler wiederholen.',
+      'OBS-Visualizer bleibt live, auch wenn der Visualizer in der App ausgeschaltet ist.',
+      'Katalogsuche findet auch Titel in japanischer, kyrillischer oder griechischer Schreibweise.',
+      'Sicherer und robuster: Einstellungen werden crash-sicher gespeichert, hängende Update-Downloads brechen ab, große Cutter-Downloads schonen den Speicher.',
+      'Chrome-Erweiterung 2.0 (Zip im Release): Knöpfe auf YouTube, Rechtsklick-Menüs, drei Tastenkürzel, Einstellungen und eine Einrichtungsseite.',
+    ],
     '1.18.0': [
       'Chrome-Erweiterung „CleanMusic für YouTube“: Knopf im Player und Toolbar-Popup – Video zur Warteschlange hinzufügen oder direkt in CleanMusic abspielen.',
       'Neue Deep-Link-Aktion cleanmusic://add: Ein Titel landet in der Warteschlange, ohne die laufende Wiedergabe zu unterbrechen.',

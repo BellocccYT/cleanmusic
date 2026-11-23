@@ -1,62 +1,159 @@
-# CleanMusic für YouTube (Chrome-Erweiterung)
+# CleanMusic für YouTube (Chrome-Erweiterung 2.0)
 
-Ein kleiner Knopf im YouTube-Player und ein Toolbar-Popup: Das laufende Video
-landet mit einem Klick in der **CleanMusic-Warteschlange** – oder wird direkt
-dort abgespielt.
+Die Brücke zwischen YouTube und der **CleanMusic**-Desktop-App: Das laufende Video landet mit
+einem Klick in der Warteschlange – oder wird direkt dort abgespielt. Kein Konto, kein Server,
+keine Telemetrie. Alles bleibt auf dem Rechner.
 
-## Installieren (Chrome / Edge)
+> CleanMusic ist ein inoffizielles Projekt und nicht mit YouTube oder Google verbunden.
+> „YouTube“ ist eine Marke von Google LLC.
 
-1. Ordner `cleanmusic-youtube` herunterladen bzw. entpacken.
-2. In Chrome `chrome://extensions` öffnen.
-3. Oben rechts **Entwicklermodus** einschalten.
-4. **Entpackte Erweiterung laden** → diesen Ordner auswählen.
-5. Oben rechts auf das Puzzle-Symbol → **CleanMusic für YouTube** anheften
-   (optional, dann ist das Toolbar-Symbol immer sichtbar).
+## Installieren
 
-Die Erweiterung läuft auch in Microsoft Edge (`edge://extensions`) und anderen
-Chromium-Browsern. Für den Chrome Web Store müsste sie dort separat
-veröffentlicht werden; das ist hier nicht enthalten.
+**Aus dem Chrome Web Store** (nach der Veröffentlichung): Seite öffnen → *Hinzufügen*.
 
-## Benutzen
+**Entpackt (Entwicklung):**
 
-- Auf einem YouTube-Video erscheint in der **Aktionsleiste unter dem Titel**
-  (Like / Teilen / Speichern) ein **CleanMusic-Knopf** und links in den
-  Player-Steuerungen ein kleines Noten-Symbol. Klick = **zur Warteschlange**.
-- Auf YouTube Music und bei Shorts erscheint ein schwebender runder Knopf.
-- Oder das Toolbar-Symbol öffnen: Dort gibt es **Zur Warteschlange** und
-  **Jetzt abspielen**.
+1. Diesen Ordner herunterladen bzw. entpacken.
+2. `chrome://extensions` öffnen, oben rechts **Entwicklermodus** einschalten.
+3. **Entpackte Erweiterung laden** → diesen Ordner auswählen.
+4. Optional das Puzzle-Symbol → **CleanMusic für YouTube** anheften.
 
-Beim ersten Mal fragt Chrome, ob `cleanmusic://` geöffnet werden darf. Das
-bestätigen; CleanMusic muss dafür installiert sein (der Installer registriert
-das Protokoll, die portable EXE beim ersten Start).
+Funktioniert in Chrome, Edge und jedem Chromium-Browser. Für Edge gibt es einen eigenen Store;
+die entpackte Version läuft dort genauso.
 
-## Was passiert mit dem Video?
+**Voraussetzung:** CleanMusic 1.18 oder neuer, installiert und einmal gestartet. Der Installer
+registriert `cleanmusic://`; die portable EXE macht das beim ersten Start selbst.
 
-Die Erweiterung schickt nur Video-ID, Titel und Channel an die **lokale**
-CleanMusic-App (`cleanmusic://add?src=youtube&id=…`). Kein Server, kein Konto,
-keine Telemetrie.
+## Was die Erweiterung kann
 
-- Ist in CleanMusic ein Quellen-Plugin mit `lookup` aktiv (z. B. yt-dlp), wird
-  das Video direkt aufgelöst.
-- Ohne Plugin sucht CleanMusic über Titel und Artist nach der passenden
-  Vorschau im Katalog.
-- **CleanMusic 1.18+** legt den Titel in die Warteschlange. In **1.17.0** kennt
-  die App die `add`-Aktion noch nicht und startet den Titel stattdessen; das
-  ist der eingebaute Fallback, bis die neue Version installiert ist.
+### Drei Einstiegspunkte auf YouTube
+
+| Ort | Verhalten |
+| --- | --- |
+| Aktionsleiste unter dem Titel (Like / Teilen / Speichern) | Knopf „CleanMusic“ |
+| Player-Steuerungen unten rechts | Noten-Symbol |
+| YouTube Music und Shorts | schwebender runder Knopf |
+
+Jeder Knopf lässt sich in den Einstellungen abschalten.
+
+**Zusatztasten** (abschaltbar): `Shift`-Klick spielt sofort ab, `Alt`-Klick sucht den Titel im
+Katalog statt ihn hinzuzufügen.
+
+### Popup
+
+- Vorschau mit Thumbnail, Titel und Kanal, Hinweis bei Playlists
+- **Zur Warteschlange** und **Jetzt abspielen**
+- **Suche** in CleanMusic, vorbefüllt mit Kanal und Titel – auch auf Seiten ohne Video
+- Tastatur: `A` = Warteschlange, `P` = abspielen
+- Direktlinks zu Einstellungen und Installationshilfe
+
+### Rechtsklick und Tastenkürzel
+
+| Auslöser | Aktion |
+| --- | --- |
+| Rechtsklick auf eine YouTube-Seite | Aktuelles Video zur Warteschlange |
+| Rechtsklick auf einen YouTube-Link | Diesen Link zur Warteschlange |
+| Rechtsklick auf markierten Text | Text in CleanMusic suchen |
+| `Alt+Shift+C` | Popup öffnen |
+| `Alt+Shift+S` | Aktuelles Video zur Warteschlange |
+| `Alt+Shift+P` | Aktuelles Video abspielen |
+
+Kürzel änderbar unter `chrome://extensions/shortcuts`.
+
+### Rückmeldung
+
+Kurzer Hinweis auf der Seite (mit Link zur Hilfe, falls die App nicht startet) und ein Häkchen
+am Toolbar-Symbol. Beides abschaltbar.
+
+### Einstellungen, Hilfe, Datenschutz
+
+- `options.html`: Knöpfe, Zusatztasten, Rückmeldungen, Verbindungstest, Zurücksetzen
+- `onboarding.html`: Einrichtung in drei Schritten, Berechtigungen im Klartext, Fehlerbehebung
+- `privacy.html`: vollständige Datenschutzerklärung (auch online:
+  `https://bellocccyt.github.io/cleanmusic/privacy/`)
+
+## So läuft die Übergabe
+
+1. Die Erweiterung liest Video-ID, Titel und Kanal aus der Seite.
+2. Sie baut `cleanmusic://add?src=youtube&id=…&t=…&a=…` (oder `play`, oder `src=search`).
+3. Ein echter Klick auf einen Link öffnet das registrierte Protokoll. Windows startet
+   CleanMusic und übergibt den Link.
+4. Die App prüft denselben Link noch einmal (`parseDeepLink` in `main.js`): nur
+   `add`/`play`, nur die Quellen `deezer`, `apple`, `youtube`, `search`, nur gültige IDs.
+
+Ohne installierte App passiert nichts – dann zeigt der Hinweis auf der Seite den Weg zur
+Installation. Für Rechtsklick und Tastenkürzel öffnet der Service Worker `launch.html`: Dort
+steht, was gesendet wird, und der eigentliche Start ist ein normaler Klick. So bleibt die
+Nutzer-Geste erhalten, die Chrome für externe Protokolle verlangt.
+
+Ohne Quellen-Plugin sucht CleanMusic über Titel und Kanal nach der passenden Vorschau im
+Katalog. Mit einem Plugin, das `lookup` anbietet, wird das Video direkt aufgelöst. Die
+Erweiterung enthält keinen Download- und keinen Extraktionscode.
+
+## Datenschutz und Berechtigungen
+
+| Berechtigung | Zweck |
+| --- | --- |
+| `https://www.youtube.com/*`, `https://m.youtube.com/*`, `https://music.youtube.com/*` | Knöpfe einfügen, Video-Angaben lesen |
+| `contextMenus` | drei Rechtsklick-Einträge |
+| `storage` | Einstellungen lokal (`chrome.storage.local`) |
+
+- keine Netzwerkanfragen aus der Erweiterung, kein Remote-Code, kein `eval`
+- keine Cookies, kein Verlauf, keine Lesezeichen, keine Downloads
+- keine Synchronisierung der Einstellungen
+- Thumbnails lädt Chrome direkt von `i.ytimg.com`
+
+## Entwicklung
+
+Kein Build-Schritt, kein npm-Paket: Die Dateien in diesem Ordner sind die Erweiterung.
+
+```powershell
+node extras/browser-extension/test/extension.test.js
+```
+
+Der Test prüft die reinen Helfer (URL-Erkennung, Deep-Link-Regeln, Textbereinigung,
+Einstellungen) und die Struktur: Manifest, Berechtigungen, vorhandene Dateien, keine
+Fremdskripte, keine Inline-Handler, keine `fetch`/`eval`-Aufrufe.
+
+**ZIP für den Store** (ohne Test- und Doku-Dateien):
+
+```powershell
+Compress-Archive -Path .\* -DestinationPath ..\cleanmusic-youtube-2.0.0.zip `
+  -CompressionLevel Optimal
+```
+
+Vorher `test/` und `README.md`/`STORE.md` aus dem Ordner nehmen oder beim Packen
+ausschließen – im Store-Paket haben sie nichts zu suchen. Details und alle Listing-Texte
+stehen in [`STORE.md`](STORE.md).
 
 ## Dateien
 
 | Datei | Zweck |
 | --- | --- |
-| `manifest.json` | Manifest V3, Berechtigungen nur für YouTube |
-| `content.js` / `content.css` | Knopf in der Aktionsleiste und den Player-Steuerungen, Video-Infos, kleine Toasts |
-| `background.js` | öffnet den `cleanmusic://`-Link |
-| `popup.html` / `popup.css` / `popup.js` | Toolbar-Popup mit beiden Aktionen |
+| `manifest.json` | Manifest V3, Berechtigungen, Kürzel, Seiten |
+| `shared.js` | reine Helfer: URLs, Deep-Links, Textbereinigung, Einstellungen |
+| `content.js` / `content.css` | Knöpfe, Video-Erkennung, Hinweise auf der Seite |
+| `background.js` | Service Worker: Kontextmenü, Kürzel, Badge, Seiten öffnen |
+| `popup.html` / `popup.css` / `popup.js` | Toolbar-Popup |
+| `launch.html` / `launch.css` / `launch.js` | Übergabeseite für Rechtsklick und Kürzel |
+| `options.html` / `options.css` / `options.js` | Einstellungen |
+| `onboarding.html` / `onboarding.css` / `onboarding.js` | Einrichtung und Hilfe |
+| `privacy.html` / `privacy.css` | Datenschutzerklärung |
+| `ui.css` | gemeinsame Gestaltung (hell und dunkel) |
 | `icon*.png` | CleanMusic-Icon in 16/32/48/128 px |
+| `../test/extension.test.js` | Prüfungen (nicht Teil des Store-Pakets) |
 
-## Weitergeben
+## Fehlerbehebung
 
-Den kompletten Ordner als ZIP weitergeben. Der Empfänger entpackt ihn und lädt
-ihn über `chrome://extensions` → **Entpackte Erweiterung laden**. Die
-Erweiterung enthält keine ausführbaren Binaries; CleanMusic und das optionale
-Quellen-Plugin werden getrennt installiert.
+**Chrome öffnet die App nicht.** CleanMusic installieren und einmal starten. Fragt Chrome nach
+der Freigabe für externe Apps, „Öffnen“ wählen. Nach einem App-Update die App einmal von Hand
+starten, damit Windows das Protokoll wieder kennt.
+
+**Der Knopf fehlt.** Seite neu laden (F5) und in den Einstellungen prüfen, ob der jeweilige
+Knopf aktiv ist. Auf YouTube Music und Shorts erscheint der schwebende Knopf.
+
+**„Video noch nicht bereit“ im Popup.** Die Seite war beim Öffnen des Popups noch nicht fertig
+geladen – einmal neu laden.
+
+**Nach dem Neuladen der Erweiterung reagiert die Seite nicht.** YouTube-Tab neu laden; alte
+Content-Scripts werden beim Reload der Erweiterung abgehängt.

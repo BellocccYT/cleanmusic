@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanMusic für YouTube – Einrichtung</title>
+  <link rel="stylesheet" href="ui.css" />
+  <link rel="stylesheet" href="onboarding.css" />
+</head>
+<body class="onboarding">
+  <div class="wrap">
+    <div class="welcome" id="welcome" hidden>
+      <strong>Installiert.</strong> Danke! Drei Schritte, dann ist alles startklar.
+    </div>
+
+    <header class="hero">
+      <img src="icon128.png" width="56" height="56" alt="" />
+      <div>
+        <h1>CleanMusic für YouTube</h1>
+        <p class="muted">
+          Das laufende Video mit einem Klick in die Warteschlange der Desktop-App – oder direkt
+          dort abspielen. <strong>Ohne Konto, ohne Server, ohne Verlauf in der Cloud.</strong>
+        </p>
+      </div>
+    </header>
+
+    <section class="steps">
+      <article class="step card">
+        <span class="step-num">1</span>
+        <div>
+          <h2>CleanMusic installieren</h2>
+          <p class="muted">
+            Die Erweiterung ist nur die Brücke: Die Wiedergabe passiert in der Desktop-App.
+            Installiere CleanMusic 1.18 oder neuer.
+          </p>
+          <div class="row wrap-row">
+            <button class="btn small primary" id="download" type="button">CleanMusic herunterladen</button>
+            <a class="btn small ghost" href="https://github.com/BellocccYT/cleanmusic" target="_blank" rel="noopener">Zum Quellcode</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="step card">
+        <span class="step-num">2</span>
+        <div>
+          <h2>Einmal „Öffnen" bestätigen</h2>
+          <p class="muted">
+            Beim ersten Klick fragt Chrome, ob <code>cleanmusic://</code> geöffnet werden darf.
+            Einmal erlauben – danach startet die App direkt. Der Installer registriert das
+            Protokoll; die portable EXE macht es beim ersten Start selbst.
+          </p>
+        </div>
+      </article>
+
+      <article class="step card">
+        <span class="step-num">3</span>
+        <div>
+          <h2>Knopf drücken – fertig</h2>
+          <p class="muted">
+            Unter dem Titel, in den Player-Steuerungen oder über das Toolbar-Symbol. Auf YouTube
+            Music und bei Shorts schwebt der Knopf am Rand.
+          </p>
+          <div class="row wrap-row">
+            <button class="btn small" id="test" type="button">Verbindung testen</button>
+            <button class="btn small ghost" id="options" type="button">Einstellungen öffnen</button>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2>Tastenkürzel</h2>
+      <div class="card shortcuts">
+        <div class="shortcut-row"><span>Popup öffnen</span><span class="keys"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>C</kbd></span></div>
+        <div class="shortcut-row"><span>Video zur Warteschlange</span><span class="keys"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>S</kbd></span></div>
+        <div class="shortcut-row"><span>Video abspielen</span><span class="keys"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>P</kbd></span></div>
+      </div>
+      <p class="tiny muted">
+        Änderbar unter <code>chrome://extensions/shortcuts</code>. Im Popup: <kbd>A</kbd> für
+        Warteschlange, <kbd>P</kbd> für Abspielen.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>Was die Erweiterung darf – und was nicht</h2>
+      <div class="card perms">
+        <div class="perm">
+          <strong>YouTube-Seiten lesen</strong>
+          <span>Nur auf youtube.com, m.youtube.com und music.youtube.com. Gelesen werden Video-ID,
+            Titel, Kanal und die Playlist-Kennung – nichts davon wird gespeichert.</span>
+        </div>
+        <div class="perm">
+          <strong>Rechtsklick-Menü</strong>
+          <span>Drei Einträge: aktuelles Video, YouTube-Link, markierter Text als Suche.</span>
+        </div>
+        <div class="perm">
+          <strong>Einstellungen speichern</strong>
+          <span>Nur lokal auf diesem Gerät (<code>chrome.storage.local</code>). Keine Synchronisierung.</span>
+        </div>
+        <div class="perm">
+          <strong>Nicht enthalten</strong>
+          <span>Keine Netzwerkanfragen, keine Cookies, keine Verlaufsdaten, kein Code aus dem
+            Internet, keine Downloads.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Wenn nichts passiert</h2>
+      <details class="card help-block">
+        <summary>Chrome öffnet die App nicht</summary>
+        <ol>
+          <li>Prüfe, ob CleanMusic installiert ist und einmal gestartet wurde.</li>
+          <li>Fragt Chrome nach der Freigabe für externe Apps? Wähle <strong>Öffnen</strong>.</li>
+          <li>Hast du die App gerade aktualisiert? Starte sie einmal von Hand – Windows kennt das
+            Protokoll danach wieder.</li>
+          <li>Im Zweifel den Test oben nutzen: Er zeigt die Übergabeseite mit einem echten Knopf.</li>
+        </ol>
+      </details>
+      <details class="card help-block">
+        <summary>Der Knopf fehlt auf YouTube</summary>
+        <ol>
+          <li>Seite einmal neu laden (F5).</li>
+          <li>In den Einstellungen prüfen, ob der jeweilige Knopf eingeschaltet ist.</li>
+          <li>Bei YouTube Music und Shorts erscheint ein schwebender Knopf statt der Aktionsleiste.</li>
+        </ol>
+      </details>
+      <details class="card help-block">
+        <summary>Funktioniert die Erweiterung auch in Edge?</summary>
+        <p>
+          Ja, in jedem Chromium-Browser. Für Edge wird sie separat im Edge-Add-ons-Store
+          veröffentlicht; die entpackte Version lässt sich dort ebenfalls laden.
+        </p>
+      </details>
+    </section>
+
+    <footer class="foot">
+      <p class="tiny muted">
+        CleanMusic ist ein inoffizielles Projekt und nicht mit YouTube oder Google verbunden.
+        „YouTube" ist eine Marke von Google LLC. Diese Erweiterung überträgt nur Video-Kennungen
+        an die lokal installierte App.
+      </p>
+      <div class="row wrap-row">
+        <a class="btn small ghost" href="privacy.html" target="_blank" rel="noopener">Datenschutz</a>
+        <a class="btn small ghost" href="https://github.com/BellocccYT/cleanmusic/issues" target="_blank" rel="noopener">Problem melden</a>
+      </div>
+      <p class="tiny muted" id="version"></p>
+    </footer>
+  </div>
+
+  <script src="shared.js"></script>
+  <script src="onboarding.js"></script>
+</body>
+</html>

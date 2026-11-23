@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Datenschutz · CleanMusic für YouTube</title>
+  <link rel="stylesheet" href="ui.css" />
+  <link rel="stylesheet" href="privacy.css" />
+</head>
+<body class="privacy">
+  <div class="wrap">
+    <header class="page-head">
+      <img src="icon128.png" width="44" height="44" alt="" />
+      <div>
+        <h1>Datenschutz</h1>
+        <p class="muted tiny">CleanMusic für YouTube · Stand: November 2026</p>
+      </div>
+    </header>
+
+    <p class="lead">
+      Die Erweiterung ist eine Brücke zwischen YouTube und der lokal installierten
+      CleanMusic-App. Sie hat keinen Server, kein Konto und keine Analyse. Es werden keine
+      Daten an den Entwickler oder an Dritte übertragen.
+    </p>
+
+    <section>
+      <h2>Welche Daten verarbeitet werden</h2>
+      <p>
+        Beim Klick auf einen CleanMusic-Knopf liest die Erweiterung aus der geöffneten
+        YouTube-Seite ausschließlich:
+      </p>
+      <ul>
+        <li>die Video-Kennung (11 Zeichen),</li>
+        <li>den Titel des Videos,</li>
+        <li>den Kanal- bzw. Künstlernamen,</li>
+        <li>die Angabe, ob das Video Teil einer Playlist ist (nur als Ja/Nein im Popup).</li>
+      </ul>
+      <p>
+        Diese Angaben werden <strong>nicht gespeichert und nicht protokolliert</strong>. Sie
+        werden im selben Augenblick an die lokal laufende CleanMusic-App übergeben – über den
+        Link <code>cleanmusic://…</code>, den Windows an die App weiterreicht. Ohne Klick
+        werden keine Inhalte gelesen.
+      </p>
+    </section>
+
+    <section>
+      <h2>Was gespeichert wird</h2>
+      <p>
+        Nur deine Einstellungen (welche Knöpfe erscheinen, Rückmeldungen an oder aus) liegen
+        lokal auf diesem Gerät in <code>chrome.storage.local</code>. Sie werden nicht
+        synchronisiert und nicht übertragen. Beim Deinstallieren der Erweiterung löscht Chrome
+        sie.
+      </p>
+    </section>
+
+    <section>
+      <h2>Keine Netzwerkanfragen</h2>
+      <p>
+        Die Erweiterung führt keine eigenen HTTP-Anfragen aus. Sie lädt keinen Code aus dem
+        Internet nach, verwendet keine Cookies, keine Werbung, keine Statistik und keine
+        Fehlerberichte. Vorschaubilder im Popup kommen direkt von <code>i.ytimg.com</code> und
+        werden von Chrome wie jedes andere Bild geladen.
+      </p>
+    </section>
+
+    <section>
+      <h2>Berechtigungen und ihr Zweck</h2>
+      <table class="perm-table">
+        <thead>
+          <tr><th>Berechtigung</th><th>Zweck</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>youtube.com</code>, <code>m.youtube.com</code>, <code>music.youtube.com</code></td>
+            <td>Knöpfe einfügen und Video-Angaben lesen. Andere Seiten werden nicht angefasst.</td>
+          </tr>
+          <tr>
+            <td><code>contextMenus</code></td>
+            <td>Drei Rechtsklick-Einträge für Video, Link und markierten Text.</td>
+          </tr>
+          <tr>
+            <td><code>storage</code></td>
+            <td>Einstellungen lokal speichern.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="tiny muted">
+        Es gibt keine Berechtigung für den Verlauf, für Lesezeichen, für alle Websites oder für
+        das Herunterladen von Dateien.
+      </p>
+    </section>
+
+    <section>
+      <h2>Weitergabe</h2>
+      <p>
+        Es findet keine Weitergabe an Dritte statt. Die einzige Datenübertragung ist der
+        lokale Aufruf der CleanMusic-App auf demselben Rechner. Was die App danach mit dem
+        Titel macht, beschreibt die Datenschutzhinweise des Projekts.
+      </p>
+    </section>
+
+    <section>
+      <h2>Kontakt</h2>
+      <p>
+        Fragen oder Fehler:
+        <a href="https://github.com/BellocccYT/cleanmusic/issues" target="_blank" rel="noopener">
+          github.com/BellocccYT/cleanmusic/issues</a>.
+      </p>
+    </section>
+
+    <section>
+      <h2>English summary</h2>
+      <p class="en">
+        This extension has no server and collects no data. It reads the current YouTube video
+        id, title, channel and playlist flag only when you click one of its buttons, and passes
+        them to the locally installed CleanMusic desktop app via the <code>cleanmusic://</code>
+        protocol. Nothing is stored except your settings, locally in
+        <code>chrome.storage.local</code>. No analytics, no tracking, no remote code, no
+        third-party sharing. Contact: the GitHub issues page linked above.
+      </p>
+    </section>
+
+    <footer class="foot">
+      <a class="btn small ghost" href="onboarding.html">Zurück zur Einrichtung</a>
+    </footer>
+  </div>
+</body>
+</html>

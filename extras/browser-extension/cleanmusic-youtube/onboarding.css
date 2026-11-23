@@ -1,0 +1,206 @@
+/* CleanMusic für YouTube – onboarding / help page. */
+
+body.onboarding {
+  padding: 36px 0 64px;
+  background:
+    radial-gradient(1000px 460px at 12% -12%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 62%),
+    var(--bg);
+}
+
+.welcome {
+  margin-bottom: 20px;
+  padding: 11px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 45%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--panel));
+  font-size: 12.5px;
+}
+
+.hero {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 30px;
+}
+
+.hero img {
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.hero h1 {
+  font-size: 25px;
+  margin-bottom: 6px;
+}
+
+.hero p {
+  max-width: 620px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.steps {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 30px;
+}
+
+.step {
+  display: flex;
+  gap: 14px;
+  padding: 15px 17px;
+}
+
+.step-num {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--on-accent);
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.step h2 {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.step p {
+  max-width: 620px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.wrap-row {
+  flex-wrap: wrap;
+  margin-top: 10px;
+  gap: 8px;
+}
+
+.section {
+  margin-bottom: 28px;
+}
+
+.section > h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.shortcuts {
+  padding: 4px 16px;
+  max-width: 620px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.shortcut-row:last-child {
+  border-bottom: 0;
+}
+
+kbd,
+.shortcut-row kbd {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  font: 11px/1.5 "Cascadia Mono", "Consolas", monospace;
+}
+
+.keys {
+  display: inline-flex;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.section > p.tiny {
+  margin-top: 8px;
+  max-width: 620px;
+  line-height: 1.6;
+}
+
+.perms {
+  max-width: 700px;
+  padding: 4px 16px;
+}
+
+.perm {
+  display: grid;
+  gap: 3px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.perm:last-child {
+  border-bottom: 0;
+}
+
+.perm span {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.help-block {
+  max-width: 700px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.help-block summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.help-block summary:hover {
+  color: var(--accent);
+}
+
+.help-block ol,
+.help-block p {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.help-block p {
+  padding-left: 0;
+}
+
+.help-block li {
+  margin-bottom: 5px;
+}
+
+.foot {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.foot p {
+  max-width: 700px;
+  line-height: 1.65;
+}
+
+.foot .row {
+  margin: 12px 0;
+  gap: 8px;
+}

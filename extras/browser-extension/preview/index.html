@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanMusic für YouTube – Vorschau</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080a0e; --panel: #11161f; --border: #232c3a; --text: #e8ecf3;
+      --muted: #8d99ac; --accent: #5b8cff; --accent2: #35e0c0; --on: #06121a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 40px 0 64px; background: var(--bg); color: var(--text); font: 15px/1.6 "Segoe UI", system-ui, sans-serif; }
+    .wrap { width: min(880px, calc(100% - 40px)); margin: 0 auto; }
+    header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+    header img { width: 46px; height: 46px; border-radius: 12px; }
+    h1 { margin: 0; font-size: 24px; letter-spacing: -.03em; }
+    h2 { margin: 30px 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+    p { margin: 0 0 10px; color: var(--muted); font-size: 13.5px; }
+    a { color: var(--accent); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+    .card { display: block; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); text-decoration: none; }
+    .card:hover { border-color: var(--accent); }
+    .card strong { display: block; font-size: 14px; }
+    .card span { color: var(--muted); font-size: 12px; }
+    code { padding: 1px 6px; border-radius: 5px; background: #171f2b; font: 12.5px/1.5 "Cascadia Mono", Consolas, monospace; }
+    ol { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 13.5px; }
+    li { margin-bottom: 6px; }
+    .note { margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="../cleanmusic-youtube/icon128.png" alt="" />
+      <div>
+        <h1>Vorschau &amp; Store-Screenshots</h1>
+        <p style="margin:2px 0 0">Beispieldaten, echte Oberfläche. Nicht Teil des Store-Pakets.</p>
+      </div>
+    </header>
+
+    <h2>Screenshot-Seiten (1280 × 800)</h2>
+    <div class="grid">
+      <a class="card" href="shot-popup.html"><strong>Popup</strong><span>shot-popup.html</span></a>
+      <a class="card" href="shot-options.html"><strong>Einstellungen</strong><span>shot-options.html</span></a>
+      <a class="card" href="shot-onboarding.html"><strong>Einrichtung</strong><span>shot-onboarding.html</span></a>
+      <a class="card" href="shot-launch.html"><strong>Übergabe</strong><span>shot-launch.html</span></a>
+    </div>
+
+    <h2>Direkt ansehen</h2>
+    <div class="grid">
+      <a class="card" href="build/popup.html"><strong>Popup</strong><span>mit Beispielvideo</span></a>
+      <a class="card" href="build/options.html"><strong>Einstellungen</strong><span>sechs Schalter</span></a>
+      <a class="card" href="build/onboarding.html"><strong>Einrichtung</strong><span>drei Schritte</span></a>
+      <a class="card" href="build/launch.html?link=cleanmusic%3A%2F%2Fadd%3Fsrc%3Dyoutube%26id%3DdQw4w9WgXcQ%26t%3DNever%2520Gonna%2520Give%2520You%2520Up%26a%3DRick%2520Astley"><strong>Übergabe</strong><span>Beispielvideo</span></a>
+    </div>
+
+    <h2>Ablauf</h2>
+    <ol>
+      <li><code>node extras/browser-extension/preview/build.js</code> – baut <code>preview/build/</code> mit Stub.</li>
+      <li><code>node extras/browser-extension/preview/serve.js</code> – Server auf <code>127.0.0.1:8790</code>.</li>
+      <li>Eine <code>shot-*.html</code> öffnen und bei 1280 × 800 als PNG speichern.</li>
+    </ol>
+
+    <div class="note">
+      Zwei Store-Screenshots lassen sich nicht erzeugen, weil sie echte YouTube-Oberfläche zeigen:
+      der Knopf unter einem Video und das Rechtsklick-Menü. Beide bitte von Hand auf youtube.com
+      aufnehmen – Anleitung und Bildunterschriften stehen in <code>STORE.md</code>.
+    </div>
+  </div>
+</body>
+</html>

@@ -4,40 +4,72 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CleanMusic für YouTube</title>
+  <link rel="stylesheet" href="ui.css" />
   <link rel="stylesheet" href="popup.css" />
 </head>
-<body>
-  <header class="head">
-    <img src="icon48.png" width="30" height="30" alt="" />
-    <div>
+<body class="popup">
+  <header class="popup-head">
+    <img src="icon48.png" width="32" height="32" alt="" />
+    <div class="brand">
       <strong>CleanMusic</strong>
       <span>für YouTube</span>
     </div>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="options" type="button" title="Einstellungen" aria-label="Einstellungen">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.12.4.5.94 1.56 1.03H21a2 2 0 1 1 0 4h-.1A1.7 1.7 0 0 0 19.4 15Z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+    </button>
+    <button class="icon-btn" id="help" type="button" title="Hilfe und Installation" aria-label="Hilfe und Installation">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.5 2.3c-.7.35-1.1.85-1.1 1.7v.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+    </button>
   </header>
 
   <main>
-    <div class="video">
-      <div class="video-title" id="video-title">Kein Video erkannt</div>
-      <div class="video-artist" id="video-artist">Öffne ein YouTube-Video.</div>
+    <section class="card video" id="video-card" hidden>
+      <img class="thumb" id="thumb" alt="" width="96" height="54" />
+      <div class="video-meta">
+        <div class="video-title" id="video-title"></div>
+        <div class="video-artist" id="video-artist"></div>
+        <div class="video-chips">
+          <span class="chip" id="site-chip"></span>
+          <span class="chip accent" id="playlist-chip" hidden>Playlist erkannt</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card empty" id="empty">
+      <div class="empty-title" id="empty-title">Kein YouTube-Video erkannt</div>
+      <p class="muted tiny" id="empty-hint">Öffne ein Video auf youtube.com und klicke erneut.</p>
+    </section>
+
+    <div class="actions" id="actions">
+      <button class="btn primary" id="add" type="button" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Zur Warteschlange
+      </button>
+      <button class="btn" id="play" type="button" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5-11-6.5Z" fill="currentColor"/></svg>
+        Jetzt abspielen
+      </button>
     </div>
 
-    <div class="actions">
-      <button class="button primary" id="add" type="button" disabled>Zur Warteschlange</button>
-      <button class="button secondary" id="play" type="button" disabled>Jetzt abspielen</button>
-    </div>
+    <form class="field search" id="search-form">
+      <label class="sr-only" for="search-input">In CleanMusic suchen</label>
+      <input id="search-input" type="search" placeholder="Titel oder Künstler suchen" autocomplete="off" spellcheck="false" />
+      <button class="btn small" type="submit" id="search-btn">Suchen</button>
+    </form>
 
     <p class="status" id="status" role="status" aria-live="polite"></p>
-    <p class="hint">
-      CleanMusic muss installiert sein. Beim ersten Mal fragt Chrome, ob
-      <code>cleanmusic://</code> geöffnet werden darf.
+    <p class="hint" id="hint">
+      CleanMusic muss installiert sein. Alles bleibt auf diesem Rechner – kein Konto, kein Server.
     </p>
   </main>
 
   <footer>
-    <a href="https://github.com/BellocccYT/cleanmusic/releases/latest" target="_blank" rel="noopener">CleanMusic herunterladen ↗</a>
+    <button class="link-btn" id="download" type="button">CleanMusic installieren ↗</button>
     <span id="version"></span>
   </footer>
 
+  <script src="shared.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

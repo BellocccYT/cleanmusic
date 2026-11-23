@@ -1,0 +1,98 @@
+/* CleanMusic für YouTube – options page. */
+
+body.options {
+  padding: 34px 0 60px;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 30px;
+}
+
+.page-head img {
+  border-radius: 12px;
+}
+
+.page-head h1 {
+  font-size: 21px;
+}
+
+.saved {
+  min-width: 64px;
+  color: var(--accent-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.section {
+  margin-bottom: 30px;
+}
+
+.section h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.section-hint {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 620px;
+}
+
+.stack {
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.shortcuts {
+  max-width: 640px;
+  padding: 4px 14px;
+  margin-bottom: 10px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.shortcut-row:last-child {
+  border-bottom: 0;
+}
+
+.shortcut-row kbd {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: 11px/1.5 "Cascadia Mono", "Consolas", monospace;
+}
+
+.shortcut-row .none {
+  color: var(--muted-2);
+  font-size: 11.5px;
+}
+
+.wrap-row {
+  flex-wrap: wrap;
+}
+
+.legal {
+  max-width: 640px;
+  margin-top: 18px;
+  line-height: 1.6;
+}

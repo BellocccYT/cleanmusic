@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanMusic für YouTube – Einstellungen</title>
+  <link rel="stylesheet" href="ui.css" />
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body class="options">
+  <div class="wrap">
+    <header class="page-head">
+      <img src="icon128.png" width="44" height="44" alt="" />
+      <div>
+        <h1>CleanMusic für YouTube</h1>
+        <p class="muted tiny">Einstellungen · <span id="version"></span></p>
+      </div>
+      <span class="spacer"></span>
+      <span class="saved" id="saved" role="status" aria-live="polite"></span>
+    </header>
+
+    <section class="section">
+      <h2>Knöpfe auf YouTube</h2>
+      <p class="section-hint">Bestimme, wo CleanMusic auf den Seiten auftaucht.</p>
+      <div class="stack">
+        <label class="switch">
+          <input type="checkbox" data-setting="playerButton" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-body">
+            <span class="switch-title">Noten-Symbol in den Player-Steuerungen</span>
+            <span class="switch-hint">Unten rechts im Player, neben Vollbild und Einstellungen.</span>
+          </span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" data-setting="actionButton" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-body">
+            <span class="switch-title">CleanMusic-Knopf unter dem Titel</span>
+            <span class="switch-hint">In der Reihe mit Like, Teilen und Speichern.</span>
+          </span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" data-setting="floatButton" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-body">
+            <span class="switch-title">Schwebender Knopf auf YouTube Music und Shorts</span>
+            <span class="switch-hint">Dort gibt es keine feste Aktionsleiste.</span>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Verhalten</h2>
+      <div class="stack">
+        <label class="switch">
+          <input type="checkbox" data-setting="modifierClicks" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-body">
+            <span class="switch-title">Zusatztasten am Knopf</span>
+            <span class="switch-hint">Shift-Klick spielt sofort ab, Alt-Klick sucht im Katalog statt hinzuzufügen.</span>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Rückmeldung</h2>
+      <div class="stack">
+        <label class="switch">
+          <input type="checkbox" data-setting="toasts" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-body">
+            <span class="switch-title">Kurze Bestätigung auf der Seite</span>
+            <span class="switch-hint">Ein kleiner Hinweis unten im Bild, inklusive Link zur Hilfe.</span>
+          </span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" data-setting="badge" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-body">
+            <span class="switch-title">Häkchen am Toolbar-Symbol</span>
+            <span class="switch-hint">Zeigt zwei Sekunden lang, dass der Titel übergeben wurde.</span>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Tastenkürzel</h2>
+      <p class="section-hint">Kürzel lassen sich jederzeit in Chrome ändern.</p>
+      <div class="card shortcuts" id="shortcuts"></div>
+      <div class="row wrap-row">
+        <button class="btn small" id="shortcut-settings" type="button">Kürzel in Chrome ändern</button>
+        <span class="muted tiny" id="shortcut-hint">chrome://extensions/shortcuts</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Testen und Hilfe</h2>
+      <p class="section-hint">
+        Der Test öffnet die Übergabeseite. Dort bestätigst du einmal – so siehst du sofort,
+        ob Windows die App startet.
+      </p>
+      <div class="row wrap-row">
+        <button class="btn small primary" id="test" type="button">Verbindung testen</button>
+        <button class="btn small" id="reset" type="button">Standard wiederherstellen</button>
+        <button class="btn small ghost" id="help" type="button">Installationshilfe</button>
+        <a class="btn small ghost" id="privacy" href="privacy.html" target="_blank" rel="noopener">Datenschutz</a>
+        <a class="btn small ghost" id="github" href="https://github.com/BellocccYT/cleanmusic" target="_blank" rel="noopener">Quellcode</a>
+      </div>
+      <p class="legal tiny muted">
+        Inoffizielles Projekt, nicht mit YouTube oder Google verbunden. Einstellungen liegen nur
+        auf diesem Gerät (<code>chrome.storage.local</code>).
+      </p>
+    </section>
+  </div>
+
+  <script src="shared.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

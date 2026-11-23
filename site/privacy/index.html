@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="description" content="Datenschutzerklärung für die Browser-Erweiterung CleanMusic für YouTube: keine Server, keine Analyse, keine Weitergabe." />
+  <title>Datenschutz · CleanMusic für YouTube</title>
+  <link rel="icon" href="../icon.png" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080a0e; --panel: #11161f; --panel2: #161c27;
+      --border: #232c3a; --text: #e8ecf3; --muted: #8d99ac; --muted2: #5f6a7c;
+      --accent: #5b8cff; --accent2: #35e0c0; --on-accent: #06121a;
+      --max: 820px;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        color-scheme: light;
+        --bg: #eef1f6; --panel: #ffffff; --panel2: #f6f8fb;
+        --border: #d0d8e4; --text: #172033; --muted: #536076; --muted2: #7b879a;
+        --accent: #2f6bff; --accent2: #0c9b86; --on-accent: #ffffff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 "Segoe UI", system-ui, -apple-system, sans-serif; }
+    a { color: var(--accent); }
+    .wrap { width: min(var(--max), calc(100% - 40px)); margin-inline: auto; }
+    .topbar { border-bottom: 1px solid var(--border); }
+    .nav { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 72px; }
+    .brand { display: inline-flex; align-items: center; gap: 11px; color: var(--text); text-decoration: none; font-weight: 850; letter-spacing: -.03em; font-size: 19px; }
+    .brand img { width: 34px; height: 34px; display: block; }
+    .nav a.button { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 15px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); text-decoration: none; font-weight: 700; font-size: 14px; }
+    main { padding: 56px 0 72px; }
+    .eyebrow { color: var(--accent2); text-transform: uppercase; font-size: 11.5px; font-weight: 850; letter-spacing: .16em; }
+    h1 { margin: 10px 0 14px; font-size: clamp(34px, 5vw, 48px); letter-spacing: -.05em; line-height: 1.05; }
+    .lead { max-width: 700px; margin: 0 0 8px; color: var(--muted); font-size: 17px; }
+    .updated { color: var(--muted2); font-size: 13px; }
+    section { margin-top: 36px; }
+    h2 { margin: 0 0 10px; font-size: 18px; letter-spacing: -.02em; }
+    p, li { color: var(--muted); font-size: 15px; }
+    p + p { margin-top: 10px; }
+    ul, ol { margin: 10px 0; padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    code { padding: 1px 6px; border-radius: 5px; background: var(--panel2); color: var(--text); font: 13px/1.5 "Cascadia Mono", Consolas, monospace; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; color: var(--muted); }
+    th { color: var(--muted2); font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; }
+    td:first-child { color: var(--text); width: 42%; }
+    .summary { margin-top: 14px; padding: 16px 18px; border: 1px dashed var(--border); border-radius: 14px; }
+    .summary p { color: var(--muted); font-size: 14px; }
+    footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted2); font-size: 13px; }
+    footer p { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap nav">
+      <a class="brand" href="../"><img src="../icon.png" alt="" /> CleanMusic</a>
+      <a class="button" href="../">Zur Startseite</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p class="eyebrow">Datenschutz</p>
+    <h1>CleanMusic für YouTube</h1>
+    <p class="lead">
+      Diese Erklärung gilt für die Browser-Erweiterung „CleanMusic für YouTube“. Sie hat keinen
+      Server, kein Konto und keine Analyse. Es werden keine Daten an den Entwickler oder an
+      Dritte übertragen.
+    </p>
+    <p class="updated">Stand: November 2026 · Gilt für Erweiterung 2.x</p>
+
+    <section>
+      <h2>Welche Daten die Erweiterung verarbeitet</h2>
+      <p>
+        Wenn du einen CleanMusic-Knopf auf YouTube anklickst, liest die Erweiterung aus der
+        geöffneten Seite ausschließlich:
+      </p>
+      <ul>
+        <li>die Video-Kennung (elf Zeichen),</li>
+        <li>den Titel des Videos,</li>
+        <li>den Kanal- beziehungsweise Künstlernamen,</li>
+        <li>ob das Video Teil einer Playlist ist (nur als Ja/Nein im Popup).</li>
+      </ul>
+      <p>
+        Diese Angaben werden nicht gespeichert und nicht protokolliert. Sie werden im selben
+        Moment an die lokal installierte CleanMusic-App übergeben – über den Link
+        <code>cleanmusic://…</code>, den das Betriebssystem an die App weiterreicht. Ohne Klick
+        werden keine Inhalte gelesen.
+      </p>
+    </section>
+
+    <section>
+      <h2>Was gespeichert wird</h2>
+      <p>
+        Nur deine Einstellungen (welche Knöpfe erscheinen, Rückmeldungen an oder aus) liegen
+        lokal auf diesem Gerät in <code>chrome.storage.local</code>. Sie werden nicht
+        synchronisiert und nicht übertragen. Beim Entfernen der Erweiterung löscht Chrome sie.
+      </p>
+    </section>
+
+    <section>
+      <h2>Keine Netzwerkanfragen</h2>
+      <p>
+        Die Erweiterung führt keine eigenen HTTP-Anfragen aus, lädt keinen Code aus dem Internet
+        nach und verwendet keine Cookies, Werbung, Statistik oder Fehlerberichte.
+        Vorschaubilder im Popup kommen direkt von <code>i.ytimg.com</code> und werden von Chrome
+        wie jedes andere Bild geladen.
+      </p>
+    </section>
+
+    <section>
+      <h2>Berechtigungen und ihr Zweck</h2>
+      <table>
+        <thead>
+          <tr><th>Berechtigung</th><th>Zweck</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>youtube.com</code>, <code>m.youtube.com</code>, <code>music.youtube.com</code></td>
+            <td>Knöpfe einfügen und Video-Angaben lesen. Andere Websites werden nicht angefasst.</td>
+          </tr>
+          <tr>
+            <td><code>contextMenus</code></td>
+            <td>Drei Rechtsklick-Einträge: aktuelles Video, YouTube-Link, markierter Text als Suche.</td>
+          </tr>
+          <tr>
+            <td><code>storage</code></td>
+            <td>Einstellungen lokal speichern.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Es gibt keine Berechtigung für den Browser-Verlauf, für Lesezeichen, für alle Websites
+        oder für Downloads.
+      </p>
+    </section>
+
+    <section>
+      <h2>Weitergabe</h2>
+      <p>
+        Es findet keine Weitergabe an Dritte statt. Die einzige Übertragung ist der lokale
+        Aufruf der CleanMusic-App auf demselben Rechner. Was die App danach mit dem Titel macht,
+        beschreibt die <a href="../">Projektseite</a> und die dort verlinkten rechtlichen
+        Hinweise.
+      </p>
+    </section>
+
+    <section>
+      <h2>Kontakt</h2>
+      <p>
+        Fragen oder Fehler bitte über
+        <a href="https://github.com/BellocccYT/cleanmusic/issues" rel="noopener">GitHub-Issues</a>.
+      </p>
+    </section>
+
+    <section class="summary" lang="en">
+      <h2>English summary</h2>
+      <p>
+        This extension has no server and collects no personal data. It reads the current YouTube
+        video id, title, channel and playlist flag only when you click one of its buttons, and
+        passes them to the locally installed CleanMusic desktop app through the
+        <code>cleanmusic://</code> protocol. Nothing is stored except your settings, locally in
+        <code>chrome.storage.local</code>. There is no analytics, no tracking, no remote code and
+        no third-party sharing. Contact: the GitHub issues page above.
+      </p>
+    </section>
+
+    <footer>
+      <p>
+        CleanMusic ist ein inoffizielles Projekt und nicht mit YouTube oder Google verbunden.
+        „YouTube“ ist eine Marke von Google LLC. Diese Seite beschreibt ausschließlich die
+        Browser-Erweiterung.
+      </p>
+    </footer>
+  </main>
+</body>
+</html>

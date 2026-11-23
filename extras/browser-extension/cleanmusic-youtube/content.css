@@ -1,6 +1,6 @@
-/* CleanMusic für YouTube – injected controls */
+/* CleanMusic für YouTube – in-page controls (content script only). */
 
-.ytp-right-controls .cm-yt-add {
+.ytp-right-controls .cm-yt-player {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -15,12 +15,14 @@
   vertical-align: top;
 }
 
-.ytp-right-controls .cm-yt-add:hover {
+.ytp-right-controls .cm-yt-player:hover,
+.ytp-right-controls .cm-yt-player:focus-visible {
   opacity: 1;
   background: rgba(255, 255, 255, 0.1);
+  outline: none;
 }
 
-.ytp-right-controls .cm-yt-add svg {
+.ytp-right-controls .cm-yt-player svg {
   display: block;
   width: 23px;
   height: 23px;
@@ -34,7 +36,7 @@
   align-items: center;
   gap: 7px;
   height: 36px;
-  padding: 0 12px;
+  padding: 0 13px;
   border: 0;
   border-radius: 18px;
   background: var(--yt-spec-badge-chip-background, rgba(128, 128, 128, 0.16));
@@ -42,22 +44,32 @@
   font: 500 14px/1 "Roboto", "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
 }
+
 .cm-yt-action:hover {
   background: var(--yt-spec-badge-chip-background-hover, rgba(128, 128, 128, 0.26));
 }
+
+.cm-yt-action:focus-visible {
+  outline: 2px solid #5b8cff;
+  outline-offset: 2px;
+}
+
 .cm-yt-action-ic {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
+
 .cm-yt-action svg {
   display: block;
   width: 20px;
   height: 20px;
 }
+
 .cm-yt-action-label {
   white-space: nowrap;
 }
+
 @media (max-width: 760px) {
   .cm-yt-action {
     width: 36px;
@@ -69,6 +81,7 @@
   }
 }
 
+/* Floating button on YouTube Music and Shorts */
 .cm-yt-float {
   position: fixed;
   right: 22px;
@@ -88,9 +101,19 @@
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
+.cm-yt-float-shorts {
+  top: 76px;
+  bottom: auto;
+}
+
 .cm-yt-float:hover {
   transform: translateY(-2px) scale(1.04);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.cm-yt-float:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .cm-yt-float svg {
@@ -99,19 +122,22 @@
   height: 24px;
 }
 
+/* Confirmation toast */
 .cm-yt-toast {
   position: fixed;
   left: 50%;
   bottom: 112px;
   z-index: 2147483001;
-  max-width: min(420px, calc(100vw - 32px));
-  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(460px, calc(100vw - 32px));
+  padding: 10px 12px 10px 16px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  background: rgba(8, 10, 14, 0.94);
+  background: rgba(8, 10, 14, 0.95);
   color: #e8ecf3;
   font: 600 12.5px/1.25 "Segoe UI", system-ui, -apple-system, sans-serif;
-  text-align: center;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42);
   opacity: 0;
   pointer-events: none;
@@ -121,5 +147,33 @@
 
 .cm-yt-toast.show {
   opacity: 1;
+  pointer-events: auto;
   transform: translate(-50%, 0);
+}
+
+.cm-yt-toast-text {
+  min-width: 0;
+}
+
+.cm-yt-toast-action {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: transparent;
+  color: #35e0c0;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.cm-yt-toast-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-yt-float,
+  .cm-yt-toast {
+    transition: none;
+  }
 }

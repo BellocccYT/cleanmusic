@@ -1,9 +1,12 @@
 {
   "manifest_version": 3,
   "name": "CleanMusic für YouTube",
-  "version": "1.0.0",
-  "description": "Fügt das laufende YouTube-Video zu CleanMusic hinzu oder spielt es dort ab.",
-  "permissions": ["activeTab"],
+  "short_name": "CleanMusic",
+  "version": "2.0.0",
+  "description": "Das laufende YouTube-Video in die CleanMusic-Warteschlange legen oder direkt in der Desktop-App abspielen.",
+  "homepage_url": "https://bellocccyt.github.io/cleanmusic/",
+  "minimum_chrome_version": "116",
+  "permissions": ["contextMenus", "storage"],
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://m.youtube.com/*",
@@ -13,7 +16,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Zu CleanMusic hinzufügen",
+    "default_title": "CleanMusic für YouTube",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icon16.png",
@@ -28,6 +31,24 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+C" },
+      "description": "CleanMusic-Popup öffnen"
+    },
+    "add-current": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Aktuelles Video zur Warteschlange"
+    },
+    "play-current": {
+      "suggested_key": { "default": "Alt+Shift+P" },
+      "description": "Aktuelles Video in CleanMusic abspielen"
+    }
+  },
   "content_scripts": [
     {
       "matches": [
@@ -35,9 +56,12 @@
         "https://m.youtube.com/*",
         "https://music.youtube.com/*"
       ],
-      "js": ["content.js"],
+      "js": ["shared.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' data: https://i.ytimg.com"
+  }
 }
