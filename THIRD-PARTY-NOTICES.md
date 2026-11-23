@@ -19,6 +19,15 @@ Projekte verwendet. Alle Paletten stehen unter der MIT-Lizenz.
 Die Namen der Themes werden nur zur Kennzeichnung der jeweiligen Farbpalette
 verwendet. CleanMusic steht in keiner Verbindung zu diesen Projekten.
 
+## Hintergrundmusik im Erste-Schritte-Assistenten
+
+`renderer/assets/onboarding/thinking-music.mp3` ist ein 78-Sekunden-Ausschnitt
+von „Thinking Music“ von **Kevin MacLeod** (incompetech.com), lizenziert unter
+[Creative Commons: By Attribution 4.0](https://creativecommons.org/licenses/by/4.0/).
+Der Ausschnitt ist für den Assistenten gekürzt und mit Ein-/Ausblendung versehen.
+Der vollständige Credit steht zusätzlich in
+`renderer/assets/onboarding/CREDITS.txt`.
+
 ## MIT-Lizenz (gilt für jede der oben genannten Paletten)
 
 Copyright (c) die jeweiligen oben genannten Rechteinhaber

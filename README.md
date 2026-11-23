@@ -77,9 +77,11 @@ Trotzdem ausführen*).
 
 Beim allerersten Start führt ein kurzer **Assistent** durch CleanMusic: Theme wählen,
 Musikordner hinzufügen, was CleanMusic alles abspielt, die wichtigsten Optionen
-(Autoplay, Update-Suche, Downloads, Visualizer, Infobereich) und Plugins. Jederzeit
-erneut unter *Einstellungen → System → „Erste Schritte erneut zeigen“*. Nach einem
-Update zeigt eine kleine Karte, was neu ist.
+(Autoplay, Update-Suche, Downloads, Visualizer, Infobereich) und Plugins. Dazu läuft
+eine leise Hintergrundmusik („Thinking Music“ von Kevin MacLeod, CC BY 4.0), die sich
+im Assistenten mit einem Klick ausschalten lässt. Jederzeit erneut unter
+*Einstellungen → System → „Erste Schritte erneut zeigen“*. Nach einem Update zeigt
+eine kleine Karte, was neu ist.
 
 ## Was zu 100 % in CleanMusic läuft
 
@@ -99,6 +101,8 @@ Update zeigt eine kleine Karte, was neu ist.
 | **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren |
 | Apple Music | ✅ offizieller Web-Player; zusätzlich **MusicKit-Fenster** für volle Titel (Developer-Token nötig) |
 | Spotify, YouTube Music, TIDAL, Deezer, Amazon Music, SoundCloud | ✅ als offizieller Web-Player eingebettet |
+| Qobuz, Bandcamp, Audius | ✅ zusätzlich als offizieller Web-Player – ausklappbar unter „Weitere Dienste“ |
+| Dienste in der Seitenleiste | ✅ vier häufige Dienste sichtbar, der Rest hinter „Weitere Dienste“; Creator separat ausklappbar |
 | Suche in einem Dienst | ✅ startet die Suche im jeweiligen Web-Player |
 
 ### Songs & Vorschauen

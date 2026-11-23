@@ -447,8 +447,12 @@ verändert das Erlebnis bereits vollständig, ohne das Studio anzufassen.
 siehe [`PLAN-SMART-PLAYLISTS.md`](PLAN-SMART-PLAYLISTS.md). Schritt 2 hat
 begonnen: `renderer/core/text.js` und `renderer/core/storage.js` sind die ersten
 ausgelagerten, mit Node getesteten Bausteine. Schritt 3 ist als eigenständiger
-Prototyp unter [`renderer/room/`](../renderer/room/) angelegt und aus
-Einstellungen → Darstellung erreichbar.
+Prototyp unter [`docs/room-prototype/`](room-prototype/) angelegt – **nicht Teil
+der App**.
+
+**Entscheidung (23.11.2026):** Die bestehende Oberfläche bleibt. Der komplette
+Raum-Umbau wird nicht weiterverfolgt; aus dem Konzept werden höchstens einzelne
+Ideen übernommen (z. B. Rezepte, Queue-Herkunft, „Warum das?“).
 
 1. **Rezepte v0 im heutigen UI bauen.** Die geplante Smart-Playlist wird als
    `playlist.smart` umgesetzt — mit Regel-Engine, Vorschau und „Aktualisieren".

@@ -1707,24 +1707,6 @@
     return openDialog(Object.assign({ input: false }, options));
   }
 
-  function openRoomPreview() {
-    const root = $('#room-preview');
-    const frame = $('#room-frame');
-    if (!root || !frame) return;
-    const theme = encodeURIComponent(state.settings.theme || 'nacht');
-    frame.src = `room/index.html?theme=${theme}`;
-    root.hidden = false;
-    requestAnimationFrame(() => $('#room-preview-close')?.focus());
-  }
-
-  function closeRoomPreview() {
-    const root = $('#room-preview');
-    const frame = $('#room-frame');
-    if (!root || root.hidden) return;
-    root.hidden = true;
-    if (frame) frame.src = 'about:blank';
-  }
-
   function isYouTubePlaylistLink(value) {
     try {
       const url = new URL(String(value || ''));
@@ -2163,22 +2145,71 @@
    * Sidebar
    * ---------------------------------------------------------------- */
 
-  function buildSidebar() {
-    const serviceButton = (service) => `
-        <button class="nav-item service-item" data-service="${service.id}">
-          <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
-          <span class="svc-name">${esc(service.name)}</span>
-        </button>`;
-    const creatorNav = $('#creator-nav');
-    if (creatorNav) creatorNav.innerHTML = SERVICES.filter((service) => service.creator).map(serviceButton).join('');
-    $('#service-nav').innerHTML = SERVICES.filter((service) => !service.creator).map(
-      (service) => `
-        <button class="nav-item service-item" data-service="${service.id}">
-          <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
-          <span class="svc-name">${esc(service.name)}</span>
-        </button>`
-    ).join('');
+  const NAV_STATE_KEY = 'cleanmusic.nav.v1';
+  const savedNav = readJSON(NAV_STATE_KEY, {});
+  let navState = Object.assign(
+    { services: false, creator: false },
+    savedNav && typeof savedNav === 'object' ? savedNav : {}
+  );
 
+  function saveNavState() {
+    writeJSON(NAV_STATE_KEY, { services: Boolean(navState.services), creator: Boolean(navState.creator) });
+  }
+
+  function serviceButton(service) {
+    return `
+      <button class="nav-item service-item" data-service="${service.id}">
+        <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
+        <span class="svc-name">${esc(service.name)}</span>
+      </button>`;
+  }
+
+  function syncServiceActive() {
+    $$('#service-nav .service-item, #creator-nav .service-item').forEach((button) => {
+      button.classList.toggle('active', button.dataset.service === state.currentService);
+    });
+  }
+
+  function renderServiceNav() {
+    const music = SERVICES.filter((service) => !service.creator);
+    const featured = music.filter((service) => service.featured);
+    const extra = music
+      .filter((service) => !service.featured)
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    const host = $('#service-nav');
+    if (host) {
+      host.innerHTML = `
+        ${featured.map(serviceButton).join('')}
+        <div id="service-extra" class="service-extra" ${navState.services ? '' : 'hidden'}>
+          ${extra.map(serviceButton).join('')}
+        </div>
+        ${
+          extra.length
+            ? `<button class="nav-more" id="btn-services-more" aria-expanded="${navState.services}">
+                 <span class="nav-more-sign">${navState.services ? '−' : '+'}</span>
+                 <span>${navState.services ? 'Weniger Dienste' : `Weitere Dienste (${extra.length})`}</span>
+                 <span class="nav-chevron ${navState.services ? 'open' : ''}">›</span>
+               </button>`
+            : ''
+        }`;
+    }
+    const count = $('#service-count');
+    if (count) count.textContent = String(music.length);
+
+    const creatorNav = $('#creator-nav');
+    if (creatorNav) {
+      creatorNav.innerHTML = SERVICES.filter((service) => service.creator).map(serviceButton).join('');
+      creatorNav.hidden = !navState.creator;
+    }
+    const toggle = document.querySelector('[data-nav-toggle="creator"]');
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', String(Boolean(navState.creator)));
+      toggle.classList.toggle('open', Boolean(navState.creator));
+    }
+  }
+
+  function buildSidebar() {
+    renderServiceNav();
     renderLibraryNav();
   }
 
@@ -2189,7 +2220,14 @@
     const host = $('#playlist-nav');
     if (!host) return;
 
-    host.innerHTML = state.collection.playlists
+    const playlists = state.collection.playlists
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.smart)) - Number(Boolean(a.smart)) ||
+          a.name.localeCompare(b.name, 'de')
+      );
+    host.innerHTML = playlists
       .map(
         (playlist) => `
           <button
@@ -5798,6 +5836,11 @@
 
   const ONBOARDING_STEPS = 5;
   let onboardingStep = 0;
+  const onboardingMusic = window.CMOnboardingMusic || null;
+
+  function onboardingMusicPlaying() {
+    return Boolean(onboardingMusic && onboardingMusic.isPlaying());
+  }
 
   function onboardingThemes() {
     const active = currentTheme();
@@ -5833,7 +5876,8 @@
               <p>Alle Musikdienste an einem Ort, eigene Musik, Radio – und ein Cutter-Modus mit Musik und Sounds für deine Videos. Such dir zuerst einen Look aus:</p>
             </div>
           </div>
-          <div class="theme-grid ob-themes">${onboardingThemes()}</div>`;
+          <div class="theme-grid ob-themes">${onboardingThemes()}</div>
+          <p class="ob-credit">Musik: „Thinking Music“ – Kevin MacLeod (CC BY 4.0)</p>`;
       case 1: {
         const count = state.library.entries.length;
         return `
@@ -5886,6 +5930,9 @@
         <div class="ob-progress">${Array.from({ length: ONBOARDING_STEPS }, (_, i) => `<i class="${i <= step ? 'on' : ''}"></i>`).join('')}</div>
         <div class="ob-body">${onboardingBody(step)}</div>
         <div class="ob-actions">
+          <button class="btn ghost small ob-music ${onboardingMusicPlaying() ? 'on' : ''}" data-ob-action="music" title="Hintergrundmusik an/aus">
+            ${ICONS.note}<span>Musik ${onboardingMusicPlaying() ? 'an' : 'aus'}</span>
+          </button>
           <button class="btn ghost small" data-ob-action="skip">${last ? 'Zu den Einstellungen' : 'Überspringen'}</button>
           <span class="ob-spacer"></span>
           ${step > 0 ? '<button class="btn ghost small" data-ob-action="back">Zurück</button>' : ''}
@@ -5900,11 +5947,13 @@
     onboardingStep = 0;
     root.hidden = false;
     renderOnboarding();
+    if (onboardingMusic && !(state.info && state.info.smoke)) onboardingMusic.start();
   }
 
   function closeOnboarding(target) {
     const root = $('#onboarding');
     if (!root || root.hidden) return;
+    if (onboardingMusic) onboardingMusic.stop();
     root.hidden = true;
     root.innerHTML = '';
     state.settings.onboarded = true;
@@ -5958,6 +6007,9 @@
     const action = event.target.closest('[data-ob-action]');
     if (!action) return;
     switch (action.dataset.obAction) {
+      case 'music':
+        if (onboardingMusic) onboardingMusic.toggle();
+        return;
       case 'folder':
         await addFolder();
         renderOnboarding();
@@ -6024,6 +6076,15 @@
   }
 
   function wireOnboarding() {
+    if (onboardingMusic) {
+      onboardingMusic.setListener((playing) => {
+        const button = document.querySelector('#onboarding [data-ob-action="music"]');
+        if (!button) return;
+        button.classList.toggle('on', playing);
+        const label = button.querySelector('span');
+        if (label) label.textContent = `Musik ${playing ? 'an' : 'aus'}`;
+      });
+    }
     $('#onboarding').addEventListener('click', onOnboardingClick);
     $('#onboarding').addEventListener('change', (event) => {
       const option = event.target.closest('[data-ob-option]');
@@ -12242,12 +12303,6 @@
         ${settingsTab === 'look' ? `
           ${themePanel()}
 
-          <div class="panel">
-            <h3>Raum-Prototyp</h3>
-            <p>Vorschau der künftigen Oberfläche aus dem 2.0-Konzept: Rail, Bühne, Strom und vier Modi. Der Prototyp nutzt Beispieldaten und verändert nichts an deiner Musik.</p>
-            <button class="btn ghost small" data-room-preview="open">Prototyp öffnen</button>
-          </div>
-
           ${performancePanel()}
 
           ${visualizerPanel()}
@@ -12735,6 +12790,20 @@ ${updatePanel()}
         promptSmartPlaylist();
         return;
       }
+      if (event.target.closest('#btn-services-more')) {
+        navState.services = !navState.services;
+        saveNavState();
+        renderServiceNav();
+        syncServiceActive();
+        return;
+      }
+      if (event.target.closest('[data-nav-toggle="creator"]')) {
+        navState.creator = !navState.creator;
+        saveNavState();
+        renderServiceNav();
+        syncServiceActive();
+        return;
+      }
 
       const playlist = event.target.closest('[data-playlist]');
       if (playlist) {
@@ -12755,8 +12824,6 @@ ${updatePanel()}
     $('#btn-open-external').addEventListener('click', () => {
       if (state.currentService) openExternalService(state.currentService);
     });
-
-    $('#room-preview-close')?.addEventListener('click', closeRoomPreview);
 
     document.addEventListener('click', (event) => {
       const link = event.target.closest('a[href^="http"]');
@@ -13066,11 +13133,6 @@ ${updatePanel()}
         renderSettings();
         const content = $('#content');
         if (content) content.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-
-      if (event.target.closest('[data-room-preview="open"]')) {
-        openRoomPreview();
         return;
       }
 
@@ -13908,8 +13970,7 @@ ${updatePanel()}
           $('#btn-prev').click();
           return;
         case 'Escape':
-          if (!$('#room-preview').hidden) closeRoomPreview();
-          else closeFullscreen();
+          closeFullscreen();
           return;
         default:
       }
@@ -14271,6 +14332,7 @@ ${updatePanel()}
         options: document.querySelectorAll('#onboarding [data-ob-option]').length,
         onboarded: Boolean(state.settings.onboarded),
         firstRun: FIRST_RUN,
+        music: onboardingMusic ? onboardingMusic.state() : null,
       }),
       click: (selector) => {
         const el = document.querySelector('#onboarding ' + selector);

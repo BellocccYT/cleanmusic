@@ -1,15 +1,15 @@
 # Raum-Prototyp
 
 Vorschau der künftigen CleanMusic-Oberfläche aus
-[`docs/CONCEPT-2.0.md`](../../docs/CONCEPT-2.0.md). Der Prototyp ist bewusst
+[`docs/CONCEPT-2.0.md`](../CONCEPT-2.0.md). Der Prototyp ist bewusst
 eigenständig: keine Wiedergabe, keine Netzwerkabfragen, keine Nutzerdaten.
+Er ist **nicht Teil der App** und wird nicht mit ausgeliefert.
 
 ## Öffnen
 
-- In der App: **Einstellungen → Darstellung → Raum-Prototyp → Prototyp öffnen**.
-  Der Prototyp läuft in einem Overlay; **Esc** oder „Prototyp schließen“ beendet ihn.
-- Direkt im Browser: `renderer/room/index.html` öffnen. Über
-  `?theme=tag` oder `?theme=nord` lässt sich die Stimmung vorwählen.
+- Direkt im Browser: `docs/room-prototype/index.html` öffnen. Über
+  `?theme=tag` oder `?theme=nord` lässt sich die Stimmung vorwählen. (Die
+  Datei lädt `renderer/themes.js`; deshalb braucht sie den Repo-Kontext.)
 - Tastatur: `1`–`4` wechselt Hören/Stöbern/Bauen/Verbinden, `Leertaste`
   Play/Pause, `Q` öffnet den Strom, `T` wechselt das Theme, `←`/`→` den Titel.
 
@@ -28,5 +28,6 @@ eigenständig: keine Wiedergabe, keine Netzwerkabfragen, keine Nutzerdaten.
 - Beispieldaten, keine echte Bibliothek.
 - Kein Audio; Play/Pause ist nur ein Zustand.
 - Keine Persistenz; ein Neuladen setzt alles zurück.
-- Noch keine Verbindung zu `app.js`, absichtlich. Erst wenn die Form stimmt,
-  wird der Rest umgebaut.
+- Noch keine Verbindung zu `app.js`, absichtlich.
+- **Entscheidung:** Die bestehende Oberfläche bleibt. Der Prototyp dient nur
+  als Design-Notiz; einzelne Ideen können später übernommen werden.

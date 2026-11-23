@@ -1198,18 +1198,9 @@ function createMainWindow() {
               allowedDownloadHost('https://cdn.incompetech.com/x.mp3') && !allowedDownloadHost('https://example.com/x.mp3'),
             configParsed: Boolean(parsed && parsed.remoteEnabled === true),
             configCorrupt: parseConfigFile(badConfig) === null,
-            roomPrototype: (() => {
-              try {
-                const html = fs.readFileSync(path.join(ROOT, 'renderer', 'room', 'index.html'), 'utf8');
-                return (
-                  html.includes('data-mode="listen"') &&
-                  html.includes('class="nowbar"') &&
-                  fs.existsSync(path.join(ROOT, 'renderer', 'room', 'room.js'))
-                );
-              } catch {
-                return false;
-              }
-            })(),
+            onboardingMusic: fs.existsSync(
+              path.join(ROOT, 'renderer', 'assets', 'onboarding', 'thinking-music.mp3')
+            ),
           })
         );
         fs.rmSync(fixDir, { recursive: true, force: true });
@@ -1221,6 +1212,15 @@ function createMainWindow() {
         const result = await mainWindow.webContents.executeJavaScript(`
           (() => ({
             navItems: document.querySelectorAll('#sidebar .nav-item').length,
+            sidebar: {
+              services: document.querySelectorAll('#service-nav .service-item').length,
+              visibleServices: Array.from(document.querySelectorAll('#service-nav .service-item')).filter(
+                (item) => item.offsetParent !== null
+              ).length,
+              more: Boolean(document.querySelector('#btn-services-more')),
+              extraHidden: Boolean((document.querySelector('#service-extra') || {}).hidden),
+              creatorHidden: Boolean((document.querySelector('#creator-nav') || {}).hidden),
+            },
             hasAudio: Boolean(document.querySelector('#audio')),
             logo: (document.querySelector('.brand .logo') || {}).naturalWidth || 0,
             themes: (() => {
@@ -1240,6 +1240,53 @@ function createMainWindow() {
         console.log('SMOKE_UI:', JSON.stringify(result));
       } catch (error) {
         console.error('SMOKE_UI_FAIL:', error.message);
+      }
+
+      // Services stay compact: four featured entries, the rest behind one
+      // toggle; Creator starts collapsed. The choice is persisted.
+      try {
+        const sidebarSmoke = await mainWindow.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const total = document.querySelectorAll('#service-nav .service-item').length;
+            const visible = () =>
+              Array.from(document.querySelectorAll('#service-nav .service-item')).filter(
+                (item) => item.offsetParent !== null
+              ).length;
+            const initial = visible();
+            const more = () => document.querySelector('#btn-services-more');
+            if (more()) more().click();
+            await wait(80);
+            const expanded = visible();
+            const expandedLabel = more() ? more().textContent.trim() : '';
+            const storedExpanded = JSON.parse(localStorage.getItem('cleanmusic.nav.v1') || '{}');
+            if (more()) more().click();
+            await wait(80);
+            const collapsed = visible();
+            const creatorToggle = document.querySelector('[data-nav-toggle="creator"]');
+            if (creatorToggle) creatorToggle.click();
+            await wait(80);
+            const creatorOpen = !document.querySelector('#creator-nav').hidden;
+            const storedCreator = JSON.parse(localStorage.getItem('cleanmusic.nav.v1') || '{}');
+            if (creatorToggle) creatorToggle.click();
+            await wait(80);
+            const creatorClosed = document.querySelector('#creator-nav').hidden;
+            return {
+              total,
+              initial,
+              expanded,
+              expandedLabel,
+              collapsed,
+              creatorOpen,
+              creatorClosed,
+              storedExpanded,
+              storedCreator,
+            };
+          })()
+        `);
+        console.log('SMOKE_SIDEBAR:', JSON.stringify(sidebarSmoke));
+      } catch (error) {
+        console.error('SMOKE_SIDEBAR_FAIL:', error.message);
       }
 
       setTimeout(async () => {
@@ -2093,54 +2140,6 @@ function createMainWindow() {
           `);
           console.log('SMOKE_SETTINGS:', JSON.stringify(settingsSmoke));
 
-          // Room prototype: opens from Settings → Darstellung, iframe loads,
-          // and the preview closes again without touching the player.
-          const roomSmoke = await mainWindow.webContents.executeJavaScript(`
-            (async () => {
-              const cm = window.CleanMusic;
-              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-              cm.showView('settings');
-              await wait(120);
-              const tab = document.querySelector('#view-settings [data-settings-tab="look"]');
-              if (tab) tab.click();
-              await wait(150);
-              const button = document.querySelector('[data-room-preview="open"]');
-              if (button) button.click();
-              await wait(700);
-              const root = document.querySelector('#room-preview');
-              const frame = document.querySelector('#room-frame');
-              const open = Boolean(root && !root.hidden);
-              const src = frame ? String(frame.getAttribute('src') || '') : '';
-              let inner = null;
-              try {
-                const doc = frame && frame.contentDocument;
-                inner = doc
-                  ? {
-                      rail: doc.querySelectorAll('.rail [data-mode]').length,
-                      stage: Boolean(doc.querySelector('.stage')),
-                      nowbar: Boolean(doc.querySelector('.nowbar')),
-                      drawer: Boolean(doc.querySelector('#drawer')),
-                    }
-                  : null;
-              } catch (error) {
-                inner = { error: String(error && error.message || error) };
-              }
-              const close = document.querySelector('#room-preview-close');
-              if (close) close.click();
-              await wait(150);
-              const closed = Boolean(root && root.hidden);
-              cm.showView('home');
-              return {
-                button: Boolean(button),
-                open,
-                src: /room\\/index\\.html/.test(src),
-                inner,
-                closed,
-              };
-            })()
-          `);
-          console.log('SMOKE_ROOM:', JSON.stringify(roomSmoke));
-
           // First steps assistant + "what's new" card (0.12).
           const onboardingResult = await mainWindow.webContents.executeJavaScript(`
             (async () => {
@@ -2151,6 +2150,8 @@ function createMainWindow() {
               ob.open();
               const steps = [];
               const first = ob.state();
+              const musicButton = Boolean(document.querySelector('#onboarding [data-ob-action="music"]'));
+              const musicCredit = Boolean(document.querySelector('#onboarding .ob-credit'));
               ob.click('[data-ob-theme="dracula"]');
               const themed = cm.theme().id;
               for (let i = 0; i < 5; i += 1) {
@@ -2173,6 +2174,8 @@ function createMainWindow() {
                 options: steps.length,
                 closed: !done.open,
                 onboarded: done.onboarded,
+                musicButton,
+                musicCredit,
                 whatsNew: shown && card && cardClosed,
               };
             })()

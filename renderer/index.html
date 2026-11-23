@@ -48,14 +48,14 @@
         <button class="nav-item active" data-view="home">
           <span class="nav-dot"></span>Home
         </button>
+        <button class="nav-item" data-view="search">
+          <span class="nav-dot"></span>Suche
+        </button>
         <button class="nav-item" data-view="mixes">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3Z"></path><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"></path></svg>
           </span>
           <span class="svc-name">Mixes</span>
-        </button>
-        <button class="nav-item" data-view="search">
-          <span class="nav-dot"></span>Suche
         </button>
         <button class="nav-item" data-view="radio">
           <span class="nav-dot"></span>Radio
@@ -83,18 +83,6 @@
           </span>
           <span class="svc-name">Lokale Musik</span>
         </button>
-        <button class="nav-item" data-view="review">
-          <span class="nav-ic">
-            <svg class="ic" viewBox="0 0 24 24"><path d="M5 20V11"></path><path d="M12 20V5"></path><path d="M19 20v-7"></path></svg>
-          </span>
-          <span class="svc-name">Dein Rückblick</span>
-        </button>
-        <button class="nav-item" data-view="downloads">
-          <span class="nav-ic">
-            <svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path></svg>
-          </span>
-          <span class="svc-name">Downloads</span>
-        </button>
         <button class="nav-item" data-view="presets">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3Z"></path></svg>
@@ -118,13 +106,25 @@
           <span class="nav-ic"><span aria-hidden="true">↗</span></span>
           <span class="svc-name">Playlist übertragen</span>
         </button>
+        <button class="nav-item" data-view="downloads">
+          <span class="nav-ic">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path></svg>
+          </span>
+          <span class="svc-name">Downloads</span>
+        </button>
+        <button class="nav-item" data-view="review">
+          <span class="nav-ic">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M5 20V11"></path><path d="M12 20V5"></path><path d="M19 20v-7"></path></svg>
+          </span>
+          <span class="svc-name">Dein Rückblick</span>
+        </button>
       </div>
 
       <div class="nav-group grow">
-        <div class="nav-label">Dienste</div>
+        <div class="nav-label">Dienste <span class="nav-label-hint" id="service-count"></span></div>
         <div id="service-nav"></div>
-        <div class="nav-label creator-label">Creator</div>
-        <div id="creator-nav"></div>
+        <button class="nav-label nav-label-btn creator-label" data-nav-toggle="creator" aria-expanded="false">Creator <span class="nav-chevron">›</span></button>
+        <div id="creator-nav" class="nav-collapse" hidden></div>
       </div>
 
       <div class="sidebar-footer">
@@ -362,11 +362,6 @@
     </form>
   </div>
 
-  <div id="room-preview" class="room-preview" hidden>
-    <iframe id="room-frame" title="Raum-Prototyp" src="about:blank"></iframe>
-    <button class="btn ghost small room-preview-close" id="room-preview-close" type="button">Prototyp schließen</button>
-  </div>
-
   <div id="toast" class="toast"></div>
 
   <script src="services.js"></script>
@@ -377,6 +372,7 @@
   <script src="live-bg.js"></script>
   <script src="core/storage.js"></script>
   <script src="core/text.js"></script>
+  <script src="onboarding-music.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
