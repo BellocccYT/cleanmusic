@@ -2182,6 +2182,40 @@ function createMainWindow() {
           `);
           console.log('SMOKE_ONBOARDING:', JSON.stringify(onboardingResult));
 
+          // Update card shows every changelog between the previous and the
+          // current version, not just the newest one.
+          const whatsNewSmoke = await mainWindow.webContents.executeJavaScript(`
+            (() => {
+              const cm = window.CleanMusic;
+              const card = document.querySelector('#whatsnew-card');
+              const title = () => (card.querySelector('.update-text > strong') || {}).textContent || '';
+              const groups = () => card.querySelectorAll('.whatsnew-version').length;
+              const items = () => card.querySelectorAll('.whatsnew-list li').length;
+              const multi = cm.whatsNew('1.20.0', '1.18.1');
+              const multiState = { title: title(), groups: groups(), items: items() };
+              card.querySelector('[data-whatsnew="ok"]').click();
+              const one = cm.whatsNew('1.20.0', '1.19.0');
+              const oneState = { title: title(), groups: groups(), items: items() };
+              card.querySelector('[data-whatsnew="ok"]').click();
+              const same = cm.whatsNew('1.20.0', '1.20.0');
+              const current = cm.whatsNew('1.20.0', '');
+              const currentState = { title: title(), groups: groups(), items: items() };
+              card.querySelector('[data-whatsnew="ok"]').click();
+              return {
+                multi,
+                multiState,
+                one,
+                oneState,
+                same,
+                sameHidden: card.hidden,
+                current,
+                currentState,
+                closed: card.hidden,
+              };
+            })()
+          `);
+          console.log('SMOKE_WHATS_NEW:', JSON.stringify(whatsNewSmoke));
+
           let playlistImportChecks;
           try {
             playlistImportChecks = await runSpotifyImportSmoke();

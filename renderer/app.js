@@ -5682,6 +5682,13 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.20.0': [
+      'Erste Schritte mit leiser Hintergrundmusik: „Thinking Music“ von Kevin MacLeod (CC BY 4.0), mit Musik-Knopf und sauberem Ausblenden beim Schließen.',
+      'Dienste in der Seitenleiste aufgeräumt: vier häufige Dienste sichtbar, der Rest hinter „Weitere Dienste“; Creator lässt sich separat ausklappen.',
+      'Neu: Qobuz, Bandcamp und Audius als offizielle Web-Player – zusammen mit YouTube Music, Spotify, Apple Music, SoundCloud, Deezer, TIDAL und Amazon Music.',
+      'Start und Bibliothek neu sortiert, Playlists alphabetisch (Smart-Playlists zuerst).',
+      'Die Update-Karte zeigt jetzt alle Änderungen seit deiner vorherigen Version, nicht nur die neueste.',
+    ],
     '1.19.0': [
       'Smart-Playlists: Regeln aus Favoriten, lokaler Musik, Verlauf, anderen Playlists, Vorschlägen und Charts – mit Live-Vorschau und einem Klick aktualisieren.',
       'Filter nach stream-sicher, Credit, „seit X Tagen nicht gehört“ und Dislikes; Limit von 5 bis 100 Titeln.',
@@ -6042,15 +6049,55 @@
     if (version) writeJSON(STORAGE.seenVersion, version);
   }
 
-  function showWhatsNew(version) {
-    const notes = WHATS_NEW[version];
+  function versionParts(value) {
+    return String(value || '')
+      .split('.')
+      .map((part) => parseInt(part, 10) || 0);
+  }
+
+  function versionCompare(left, right) {
+    const a = versionParts(left);
+    const b = versionParts(right);
+    for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+      const diff = (a[index] || 0) - (b[index] || 0);
+      if (diff) return diff;
+    }
+    return 0;
+  }
+
+  function whatsNewVersions(current, previous = '') {
+    const target = current || currentVersion();
+    if (!target) return [];
+    if (!previous) return WHATS_NEW[target] ? [target] : [];
+    if (versionCompare(previous, target) >= 0) return [];
+    return Object.keys(WHATS_NEW).filter(
+      (version) =>
+        versionCompare(version, previous) > 0 && versionCompare(version, target) <= 0
+    );
+  }
+
+  function showWhatsNew(version, previous = '') {
+    const target = version || currentVersion();
+    const versions = whatsNewVersions(target, previous);
     const card = $('#whatsnew-card');
-    if (!notes || !card) return false;
+    if (!versions.length || !card) return false;
+    const since = previous && versionCompare(previous, target) < 0 ? previous : '';
+    const groups = versions
+      .map(
+        (entry) => `
+          <div class="whatsnew-group">
+            ${since ? `<div class="whatsnew-version">Version ${esc(entry)}</div>` : ''}
+            <ul class="whatsnew-list">${(WHATS_NEW[entry] || [])
+              .map((line) => `<li>${esc(line)}</li>`)
+              .join('')}</ul>
+          </div>`
+      )
+      .join('');
     card.innerHTML = `
       <span class="update-icon">${ICONS.spark}</span>
       <div class="update-text">
-        <strong>Neu in CleanMusic ${esc(version)}</strong>
-        <ul class="whatsnew-list">${notes.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>
+        <strong>${since ? `Neu seit CleanMusic ${esc(since)}` : `Neu in CleanMusic ${esc(target)}`}</strong>
+        ${groups}
       </div>
       <div class="update-actions">
         <button class="btn primary small" data-whatsnew="ok">Alles klar</button>
@@ -6070,7 +6117,7 @@
     const version = currentVersion();
     const seen = readJSON(STORAGE.seenVersion, '');
     if (version && seen !== version) {
-      showWhatsNew(version);
+      showWhatsNew(version, seen);
       markVersionSeen();
     }
   }
@@ -14340,7 +14387,7 @@ ${updatePanel()}
         return Boolean(el);
       },
     },
-    whatsNew: (version) => showWhatsNew(version),
+    whatsNew: (version, previous) => showWhatsNew(version, previous || ''),
     shortcuts: () => showShortcuts(),
     queue: () => ({
       index: state.queue.index,

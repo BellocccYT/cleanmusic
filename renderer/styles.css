@@ -4941,6 +4941,23 @@ html[data-perf='saver'] .fs-glow { animation: none !important; opacity: .9; }
 .whatsnew-card {
   right: auto;
   left: 20px;
+  max-height: min(68vh, 640px);
+  overflow-y: auto;
+}
+
+.whatsnew-group + .whatsnew-group {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.whatsnew-version {
+  margin-top: 3px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
 }
 
 .whatsnew-list {
