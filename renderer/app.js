@@ -29,6 +29,10 @@
     seededShuffle,
   } = CMText;
 
+  const CMStorage = window.CMStorage;
+  if (!CMStorage) throw new Error('renderer/core/storage.js fehlt');
+  const { readJSON, writeJSON } = CMStorage;
+
   const ICONS = {
     search:
       '<svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>',
@@ -355,23 +359,6 @@
   /* ---------------------------------------------------------------- *
    * Helpers
    * ---------------------------------------------------------------- */
-
-  function readJSON(key, fallback) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  function writeJSON(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      /* storage full or unavailable */
-    }
-  }
 
   function toast(message) {
     const el = $('#toast');
@@ -1718,6 +1705,24 @@
 
   function askConfirm(options) {
     return openDialog(Object.assign({ input: false }, options));
+  }
+
+  function openRoomPreview() {
+    const root = $('#room-preview');
+    const frame = $('#room-frame');
+    if (!root || !frame) return;
+    const theme = encodeURIComponent(state.settings.theme || 'nacht');
+    frame.src = `room/index.html?theme=${theme}`;
+    root.hidden = false;
+    requestAnimationFrame(() => $('#room-preview-close')?.focus());
+  }
+
+  function closeRoomPreview() {
+    const root = $('#room-preview');
+    const frame = $('#room-frame');
+    if (!root || root.hidden) return;
+    root.hidden = true;
+    if (frame) frame.src = 'about:blank';
   }
 
   function isYouTubePlaylistLink(value) {
@@ -12237,6 +12242,12 @@
         ${settingsTab === 'look' ? `
           ${themePanel()}
 
+          <div class="panel">
+            <h3>Raum-Prototyp</h3>
+            <p>Vorschau der künftigen Oberfläche aus dem 2.0-Konzept: Rail, Bühne, Strom und vier Modi. Der Prototyp nutzt Beispieldaten und verändert nichts an deiner Musik.</p>
+            <button class="btn ghost small" data-room-preview="open">Prototyp öffnen</button>
+          </div>
+
           ${performancePanel()}
 
           ${visualizerPanel()}
@@ -12745,6 +12756,8 @@ ${updatePanel()}
       if (state.currentService) openExternalService(state.currentService);
     });
 
+    $('#room-preview-close')?.addEventListener('click', closeRoomPreview);
+
     document.addEventListener('click', (event) => {
       const link = event.target.closest('a[href^="http"]');
       if (link) {
@@ -13053,6 +13066,11 @@ ${updatePanel()}
         renderSettings();
         const content = $('#content');
         if (content) content.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      if (event.target.closest('[data-room-preview="open"]')) {
+        openRoomPreview();
         return;
       }
 
@@ -13890,7 +13908,8 @@ ${updatePanel()}
           $('#btn-prev').click();
           return;
         case 'Escape':
-          closeFullscreen();
+          if (!$('#room-preview').hidden) closeRoomPreview();
+          else closeFullscreen();
           return;
         default:
       }

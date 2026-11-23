@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="de" data-theme="nacht">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none';"
+  />
+  <title>CleanMusic · Der Raum (Prototyp)</title>
+  <link rel="stylesheet" href="room.css" />
+</head>
+<body>
+  <div class="room" id="room" data-mode="listen">
+    <aside class="rail" aria-label="Bereiche">
+      <div class="rail-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+      </div>
+      <button class="rail-btn active" data-mode="listen" aria-label="Hören" title="Hören (1)">
+        <svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"></path><path d="M4 14h2v6H5a1 1 0 0 1-1-1v-5Z"></path><path d="M20 14h-2v6h1a1 1 0 0 0 1-1v-5Z"></path></svg>
+        <span>Hören</span>
+      </button>
+      <button class="rail-btn" data-mode="browse" aria-label="Stöbern" title="Stöbern (2)">
+        <svg viewBox="0 0 24 24"><path d="M4 5h6v6H4z"></path><path d="M14 5h6v6h-6z"></path><path d="M4 15h6v4H4z"></path><path d="M14 15h6v4h-6z"></path></svg>
+        <span>Stöbern</span>
+      </button>
+      <button class="rail-btn" data-mode="build" aria-label="Bauen" title="Bauen (3)">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M4 12h10"></path><path d="M4 17h7"></path><path d="M17 14v6l4-3z"></path></svg>
+        <span>Bauen</span>
+      </button>
+      <button class="rail-btn" data-mode="connect" aria-label="Verbinden" title="Verbinden (4)">
+        <svg viewBox="0 0 24 24"><path d="M9 3v5"></path><path d="M15 3v5"></path><path d="M6 8h12v3a6 6 0 0 1-12 0V8Z"></path><path d="M12 17v4"></path></svg>
+        <span>Verbinden</span>
+      </button>
+      <div class="rail-gap"></div>
+      <button class="rail-btn ghost" data-action="search" aria-label="Suchen" title="Suchen (S)">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4.5 4.5"></path></svg>
+        <span>Suchen</span>
+      </button>
+      <button class="rail-btn ghost" data-action="theme" aria-label="Theme wechseln" title="Theme wechseln (T)">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.9 4.9 1.4 1.4"></path><path d="m17.7 17.7 1.4 1.4"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m4.9 19.1 1.4-1.4"></path><path d="m17.7 6.3 1.4-1.4"></path></svg>
+        <span>Licht</span>
+      </button>
+    </aside>
+
+    <main class="main" id="main">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow" id="mode-eyebrow">Der Raum</div>
+          <h1 id="mode-title">Hören</h1>
+        </div>
+        <div class="top-actions">
+          <span class="proto-badge">Prototyp</span>
+          <button class="pill" data-action="drawer">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h10"></path></svg>
+            Strom
+            <span class="count" id="queue-count">5</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="panel listen-panel" data-panel="listen">
+        <div class="stage">
+          <div class="stage-art" id="stage-art" aria-hidden="true">
+            <span class="art-letter" id="art-letter">M</span>
+            <span class="art-ring"></span>
+            <span class="art-label">CLEANMUSIC</span>
+          </div>
+          <div class="stage-copy">
+            <div class="eyebrow" id="stage-source">Jetzt · Vorschau</div>
+            <h2 id="stage-title">Midnight City</h2>
+            <p class="stage-artist" id="stage-artist">M83</p>
+            <p class="stage-album" id="stage-album">Hurry Up, We’re Dreaming</p>
+            <div class="chips">
+              <span class="chip" id="stage-kind">Deezer · 30 s</span>
+              <span class="chip soft" id="stage-safe">Nicht stream-sicher</span>
+              <span class="chip soft">Regel: Späte Stunden</span>
+            </div>
+            <div class="stage-actions">
+              <button class="btn primary" data-action="play" id="stage-play">
+                <svg viewBox="0 0 24 24" class="play-icon"><path d="M8 5.5v13l11-6.5-11-6.5Z"></path></svg>
+                <span id="stage-play-label">Abspielen</span>
+              </button>
+              <button class="btn ghost" data-action="queue">
+                <svg viewBox="0 0 24 24"><path d="M4 7h9"></path><path d="M4 12h9"></path><path d="M15 9.5v9l6-4.5z"></path></svg>
+                In den Strom
+              </button>
+              <button class="icon-btn" data-action="like" aria-label="Favorit">♥</button>
+              <button class="icon-btn" data-action="why" aria-label="Warum das?">?</button>
+            </div>
+            <div class="stage-note" id="stage-note">
+              <strong>Warum das?</strong>
+              <span>Aus deinem Rezept „Späte Stunden“: Chill, 60–100 BPM, seit 14 Tagen nicht gehört.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="upnext">
+          <div class="section-head">
+            <h3>Als Nächstes</h3>
+            <span class="muted">Der Strom bleibt sichtbar.</span>
+          </div>
+          <div class="upnext-list" id="upnext"></div>
+        </div>
+      </section>
+
+      <section class="panel browse-panel" data-panel="browse" hidden>
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Regal</div>
+            <h2>Was du hast, in Regeln gebracht.</h2>
+          </div>
+          <button class="pill">Neues Rezept</button>
+        </div>
+        <div class="recipe-grid">
+          <article class="recipe-card accent">
+            <span class="recipe-tag">Smart</span>
+            <h3>Späte Stunden</h3>
+            <p>Chill · 60–100 BPM · 38 Titel</p>
+            <div class="recipe-points"><span>Favoriten</span><span>Verlauf</span><span>ohne Dislikes</span></div>
+            <button class="btn ghost small">Öffnen</button>
+          </article>
+          <article class="recipe-card">
+            <span class="recipe-tag">Smart</span>
+            <h3>Stream-sicher</h3>
+            <p>NCS · CC BY · CC0 · 24 Titel</p>
+            <div class="recipe-points"><span>nur freie Lizenzen</span><span>mit Credit</span></div>
+            <button class="btn ghost small">Öffnen</button>
+          </article>
+          <article class="recipe-card">
+            <span class="recipe-tag">Smart</span>
+            <h3>Nochmal</h3>
+            <p>Lange nicht gehört · 12 Titel</p>
+            <div class="recipe-points"><span>90 Tage</span><span>Favoriten</span></div>
+            <button class="btn ghost small">Öffnen</button>
+          </article>
+          <article class="recipe-card">
+            <span class="recipe-tag">Sammlung</span>
+            <h3>Lokale Musik</h3>
+            <p>184 Dateien · 12 Ordner</p>
+            <div class="recipe-points"><span>Ordner</span><span>Stimmungen</span></div>
+            <button class="btn ghost small">Öffnen</button>
+          </article>
+        </div>
+        <div class="shelf">
+          <div class="section-head"><h3>Zuletzt</h3><span class="muted">Alles lokal</span></div>
+          <div class="shelf-list">
+            <button class="shelf-row" data-track="0"><span class="shelf-art">M</span><span><strong>Midnight City</strong><small>M83 · Vorschau</small></span><span class="muted">4:03</span></button>
+            <button class="shelf-row" data-track="1"><span class="shelf-art alt">F</span><span><strong>Fluffing a Duck</strong><small>Kevin MacLeod · CC BY</small></span><span class="muted">1:07</span></button>
+            <button class="shelf-row" data-track="2"><span class="shelf-art warm">O</span><span><strong>One More Time</strong><small>Daft Punk · Vorschau</small></span><span class="muted">5:20</span></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel build-panel" data-panel="build" hidden>
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Studio</div>
+            <h2>Aus einem Moment ein Projekt.</h2>
+          </div>
+          <button class="pill">Exportieren</button>
+        </div>
+        <div class="studio-grid">
+          <div class="timeline">
+            <div class="timeline-head"><strong>Nachtaufnahme</strong><span class="muted">3 Clips · 0:48</span></div>
+            <div class="wave" aria-hidden="true">
+              <span style="--h:40%"></span><span style="--h:70%"></span><span style="--h:55%"></span><span style="--h:85%"></span><span style="--h:48%"></span><span style="--h:92%"></span><span style="--h:64%"></span><span style="--h:38%"></span><span style="--h:76%"></span><span style="--h:52%"></span><span style="--h:88%"></span><span style="--h:44%"></span><span style="--h:68%"></span><span style="--h:35%"></span><span style="--h:80%"></span><span style="--h:58%"></span><span style="--h:90%"></span><span style="--h:46%"></span><span style="--h:72%"></span><span style="--h:42%"></span><span style="--h:66%"></span><span style="--h:82%"></span><span style="--h:50%"></span><span style="--h:60%"></span>
+            </div>
+            <div class="clips">
+              <div class="clip"><span>Intro</span><small>0:00–0:12</small></div>
+              <div class="clip wide"><span>Fluffing a Duck</span><small>CC BY · 0:12–0:35</small></div>
+              <div class="clip"><span>Outro</span><small>0:35–0:48</small></div>
+            </div>
+            <div class="timeline-foot">
+              <span class="chip soft">120 BPM</span>
+              <span class="chip soft">WAV · 48 kHz</span>
+              <span class="chip soft">Credit bereit</span>
+            </div>
+          </div>
+          <aside class="studio-side">
+            <h3>Projekt</h3>
+            <p class="muted">Nicht-destruktiv. Nichts wird überschrieben.</p>
+            <dl class="facts">
+              <div><dt>Clips</dt><dd>3</dd></div>
+              <div><dt>Länge</dt><dd>0:48</dd></div>
+              <div><dt>Lizenz</dt><dd>CC BY 4.0</dd></div>
+              <div><dt>Credit</dt><dd>1 Titel</dd></div>
+            </dl>
+            <button class="btn primary small">WAV exportieren</button>
+            <p class="fine">Credit-.txt wird automatisch mitgeschrieben.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel connect-panel" data-panel="connect" hidden>
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Verbinden</div>
+            <h2>Alles, was mitspielt.</h2>
+          </div>
+          <button class="pill">Plugin hinzufügen</button>
+        </div>
+        <div class="connect-grid">
+          <article class="connect-card"><span class="dot on"></span><h3>OBS Overlay</h3><p>Now Playing · Port 4787</p><small>Läuft</small></article>
+          <article class="connect-card"><span class="dot on"></span><h3>Streamer.bot</h3><p>Titelwechsel per WebSocket</p><small>Verbunden · 12 Actions</small></article>
+          <article class="connect-card"><span class="dot off"></span><h3>Discord</h3><p>Rich Presence</p><small>Aus</small></article>
+          <article class="connect-card"><span class="dot on"></span><h3>Fernbedienung</h3><p>http://192.168.1.20:4790</p><small>1 Gerät verbunden</small></article>
+        </div>
+        <div class="connect-note">
+          <strong>Ein Raum, viele Ausgänge.</strong>
+          <p>Jeder Ausgang zeigt seinen Zustand, ohne die Wiedergabe zu unterbrechen. Plugins bleiben optional und werden nie automatisch geladen.</p>
+        </div>
+      </section>
+    </main>
+
+    <aside class="drawer" id="drawer" aria-label="Strom" aria-hidden="true">
+      <div class="drawer-head">
+        <div><div class="eyebrow">Warteschlange</div><h2>Strom</h2></div>
+        <button class="icon-btn" data-action="drawer" aria-label="Strom schließen">×</button>
+      </div>
+      <div class="drawer-section">
+        <span class="drawer-label">Jetzt</span>
+        <div class="queue-row playing" data-track="0"><span class="q-art" id="drawer-art">M</span><span><strong id="drawer-title">Midnight City</strong><small id="drawer-artist">M83 · Vorschau</small></span><span class="eq"><i></i></span></div>
+      </div>
+      <div class="drawer-section">
+        <span class="drawer-label">Als Nächstes</span>
+        <div id="drawer-queue"></div>
+      </div>
+      <div class="drawer-foot">
+        <span class="chip soft">Autoplay: Weiche</span>
+        <button class="link-btn">Strom leeren</button>
+      </div>
+    </aside>
+
+    <footer class="nowbar">
+      <div class="now-track">
+        <div class="now-art" id="now-art">M</div>
+        <div class="now-copy">
+          <strong id="now-title">Midnight City</strong>
+          <small id="now-artist">M83</small>
+        </div>
+        <button class="icon-btn heart" data-action="like" aria-label="Favorit">♥</button>
+      </div>
+      <div class="now-controls">
+        <button class="icon-btn" data-action="prev" aria-label="Vorheriger Titel">
+          <svg viewBox="0 0 24 24"><path d="M6 5v14"></path><path d="M18 6 8 12l10 6z"></path></svg>
+        </button>
+        <button class="play-btn" data-action="play" id="now-play" aria-label="Abspielen">
+          <svg viewBox="0 0 24 24" class="play-icon"><path d="M8 5.5v13l11-6.5-11-6.5Z"></path></svg>
+          <svg viewBox="0 0 24 24" class="pause-icon"><path d="M8 5h3v14H8z"></path><path d="M13 5h3v14h-3z"></path></svg>
+        </button>
+        <button class="icon-btn" data-action="next" aria-label="Nächster Titel">
+          <svg viewBox="0 0 24 24"><path d="M18 5v14"></path><path d="m6 6 10 6-10 6z"></path></svg>
+        </button>
+      </div>
+      <div class="now-progress">
+        <span id="now-time">1:12</span>
+        <div class="progress"><i id="progress-fill"></i></div>
+        <span id="now-duration">4:03</span>
+      </div>
+      <div class="now-side">
+        <button class="icon-btn" data-action="drawer" aria-label="Strom">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h10"></path></svg>
+        </button>
+        <div class="volume"><i></i></div>
+        <button class="icon-btn" data-action="theme" aria-label="Theme wechseln">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.9 4.9 1.4 1.4"></path><path d="m17.7 17.7 1.4 1.4"></path><path d="M2 12h2"></path><path d="M20 12h2"></path></svg>
+        </button>
+        <button class="icon-btn" data-action="full" aria-label="Vollbild">
+          <svg viewBox="0 0 24 24"><path d="M8 3H3v5"></path><path d="M16 3h5v5"></path><path d="M8 21H3v-5"></path><path d="M16 21h5v-5"></path></svg>
+        </button>
+      </div>
+    </footer>
+
+    <div class="toast" id="toast" role="status"></div>
+  </div>
+  <script src="../themes.js"></script>
+  <script src="room.js"></script>
+</body>
+</html>

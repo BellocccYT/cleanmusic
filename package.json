@@ -9,7 +9,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test:core": "node test/core.text.test.js",
+    "test:core": "node test/core.text.test.js && node test/core.storage.test.js",
     "dev": "electron . --dev",
     "smoke": "electron . --smoke",
     "smoke:plugin": "electron . --smoke --smoke-plugin",

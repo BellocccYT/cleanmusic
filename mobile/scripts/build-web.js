@@ -137,6 +137,7 @@ const mustExist = [
   'app.js',
   'services.js',
   'styles.css',
+  'core/storage.js',
   'core/text.js',
   'native.js',
   'mobile.css',

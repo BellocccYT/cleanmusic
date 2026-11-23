@@ -362,6 +362,11 @@
     </form>
   </div>
 
+  <div id="room-preview" class="room-preview" hidden>
+    <iframe id="room-frame" title="Raum-Prototyp" src="about:blank"></iframe>
+    <button class="btn ghost small room-preview-close" id="room-preview-close" type="button">Prototyp schließen</button>
+  </div>
+
   <div id="toast" class="toast"></div>
 
   <script src="services.js"></script>
@@ -370,6 +375,7 @@
   <script src="playlist-presets.js"></script>
   <script src="visualizer.js"></script>
   <script src="live-bg.js"></script>
+  <script src="core/storage.js"></script>
   <script src="core/text.js"></script>
   <script src="app.js"></script>
 </body>
