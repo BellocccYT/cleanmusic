@@ -1618,8 +1618,19 @@ function createMainWindow() {
               const gamingRetro = cm.creator();
               const allowedLicense = (value) => /^(CC0|Public Domain|CC BY(?: [0-9.]+)?)$/i.test(value);
               const openverseResults = [...Object.values(gameSounds), ...Object.values(freeMusic)];
+              // An Openverse outage or rate limit (HTTP 403) must not fail the
+              // release check; only a successful-but-empty category does.
+              const skipped = openverseResults
+                .filter((result) => Boolean(result.error))
+                .map((result) => result.label);
               const categoryFailures = openverseResults
-                .filter((result) => !result.items || !result.licenses.length || result.licenses.some((license) => !allowedLicense(license)))
+                .filter(
+                  (result) =>
+                    !result.error &&
+                    (!result.items ||
+                      !result.licenses.length ||
+                      result.licenses.some((license) => !allowedLicense(license)))
+                )
                 .map((result) => result.label);
               if (!gamingRetro.items) categoryFailures.push('Gaming & Retro (Kevin MacLeod)');
               cm.setCreator('classics', 'lustig');
@@ -1629,6 +1640,7 @@ function createMainWindow() {
                 gamingRetro: { items: gamingRetro.items },
                 allHit: categoryFailures.length === 0,
                 failures: categoryFailures,
+                skipped,
               };
 
               cm.setCreator('ncs', 'top');
