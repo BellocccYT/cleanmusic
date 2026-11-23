@@ -1955,6 +1955,104 @@ function createMainWindow() {
           `);
           console.log('SMOKE_TASTE:', JSON.stringify(tasteSmoke));
 
+          // Smart playlists ("Rezepte v0"): rules build a real playlist, the
+          // dialog previews the count, refreshing persists, dislikes drop out.
+          const smartSmoke = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const made = cm.smartPlaylist('Smoke Smart', {
+                sources: ['charts', 'favorites', 'history', 'recs', 'local'],
+                limit: 12,
+                excludeDislikes: true,
+              });
+              const info = cm.smartPlaylistInfo(made.id);
+              cm.openPlaylist(made.id);
+              await wait(180);
+              const eyebrow = (document.querySelector('#view-playlist .playlist-meta .eyebrow') || {}).textContent || '';
+              const refresh = Boolean(document.querySelector('#view-playlist [data-pl-action="smart-refresh"]'));
+              const rulesButton = Boolean(document.querySelector('#view-playlist [data-pl-action="smart-rules"]'));
+              const chips = document.querySelectorAll('#view-playlist .smart-chip').length;
+              const sidebar = Boolean(document.querySelector('#playlist-nav [data-playlist="' + made.id + '"]'));
+
+              document.querySelector('#view-playlist [data-pl-action="smart-rules"]').click();
+              await wait(180);
+              const dialogOpen = !document.querySelector('#dialog').hidden;
+              const sourceBoxes = document.querySelectorAll('#dialog [data-smart-source]').length;
+              const previewBefore = (document.querySelector('#dialog #smart-preview') || {}).textContent || '';
+              const limitField = document.querySelector('#dialog #smart-limit');
+              if (limitField) {
+                limitField.value = '5';
+                limitField.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              const previewAfter = (document.querySelector('#dialog #smart-preview') || {}).textContent || '';
+              document.querySelector('#dialog-ok').click();
+              await wait(700);
+              const dialogClosed = document.querySelector('#dialog').hidden;
+              const after = cm.smartPlaylistInfo(made.id);
+              const stored = (JSON.parse(localStorage.getItem('cleanmusic.collection.v1') || '{}').playlists || []).find(
+                (playlist) => playlist.id === made.id
+              );
+
+              const keyA = cm.matchKey({ artist: '米津玄師', title: '打上花火', id: 'a' });
+              const keyB = cm.matchKey({ artist: '米津玄師', title: 'Lemon', id: 'b' });
+              const nonLatinDistinct = keyA !== keyB && keyA.split('|').join('').trim() !== '';
+
+              const normalized = cm.smartPlaylist('Smoke Normalize', {
+                sources: ['favorites', 'bogus'],
+                limit: 999,
+                notPlayedDays: 3,
+              });
+              const normalizedInfo = cm.smartPlaylistInfo(normalized.id);
+              const normalizedOk =
+                normalizedInfo.smart.limit === 100 &&
+                normalizedInfo.smart.notPlayedDays === 0 &&
+                normalizedInfo.smart.sources.join(',') === 'favorites';
+              cm.smartPlaylistRemove(normalized.id);
+
+              const victim = after.titles[0] || '';
+              cm.tasteAt('playlist:' + made.id, 0, 'track-dislike');
+              cm.smartPlaylistRebuild(made.id);
+              const afterDislike = cm.smartPlaylistInfo(made.id);
+              const excluded = Boolean(victim) && !afterDislike.titles.includes(victim);
+              cm.tasteReset();
+
+              cm.smartPlaylistRemove(made.id);
+              cm.showView('home');
+
+              document.querySelector('#btn-smart-playlist').click();
+              await wait(150);
+              const createButtonDialog = !document.querySelector('#dialog').hidden;
+              if (createButtonDialog) document.querySelector('#dialog-cancel').click();
+              await wait(100);
+
+              return {
+                made: made.count,
+                eyebrow,
+                refresh,
+                rulesButton,
+                chips,
+                sidebar,
+                dialogOpen,
+                sourceBoxes,
+                previewBefore: /Titel passen|Keine Treffer/.test(previewBefore),
+                previewAfter: /Titel passen|Keine Treffer/.test(previewAfter),
+                dialogClosed,
+                count: after.count,
+                limit: after.smart ? after.smart.limit : 0,
+                updated: after.smart ? after.smart.updatedAt > 0 : false,
+                persisted: stored && stored.smart ? stored.smart.limit : 0,
+                unique: info.uniqueIds === info.count && info.uniqueKeys === info.count,
+                allValid: info.allValid,
+                nonLatinDistinct,
+                normalizedOk,
+                excluded,
+                createButtonDialog,
+              };
+            })()
+          `);
+          console.log('SMOKE_SMART:', JSON.stringify(smartSmoke));
+
           const settingsSmoke = await mainWindow.webContents.executeJavaScript(`
             (async () => {
               const cm = window.CleanMusic;

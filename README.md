@@ -90,6 +90,7 @@ Update zeigt eine kleine Karte, was neu ist.
 | **Beliebte Titel** | ✅ Deezer-Charts, sofort abspielbar |
 | **Live-Radio** | ✅ tausende öffentliche Sender, volle Songs, kein Login, kein DRM |
 | **Favoriten & Playlists** | ✅ ♥ und + an jedem Titel/Sender, gemischt aus allen Quellen, Drag & Drop |
+| **Smart-Playlists** (ab 1.19.0) | ✅ Regeln aus Favoriten, lokaler Musik, Verlauf, Playlists, Vorschlägen und Charts; Filter für stream-sicher, Credit, Dislikes |
 | **Vorlagen-Playlists** | ✅ acht Themen, je **stream-sicher** (NCS, CC BY, CC0) oder **normal** (Katalog) mit einem Klick |
 | **Vorschläge „Für dich“** | ✅ aus deinen Favoriten (Deezer-Artist-Radio, verwandte Artists, optional über Plugins) |
 | **Cutter-Modus** | ✅ NCS, YouTube-Klassiker (CC BY), Soundeffekte & freie Musik mit Lizenz und Credit |
@@ -181,6 +182,12 @@ Wunsch **nach Ordner**.
 - **Drag & Drop:** Titel aus jeder Liste auf *Favoriten*, eine Playlist oder
   *Neue Playlist* in der Seitenleiste ziehen. In einer Playlist per Griff
   sortieren.
+- **Smart-Playlists** (ab 1.19.0): Seitenleiste → *Smart-Playlist*. Du wählst Quellen
+  (Favoriten, lokale Musik, Verlauf, andere Playlists, Vorschläge, Charts) und
+  Filter (stream-sicher, mit Credit, seit X Tagen nicht gehört, ohne Dislikes)
+  sowie ein Limit. Die Vorschau zeigt sofort, wie viele Titel passen;
+  **Aktualisieren** baut die Liste mit deinem aktuellen Bestand neu. Alles
+  bleibt lokal, es werden keine neuen Suchen ausgelöst.
 - **Vorlagen** (Seitenleiste): acht fertige Themen wie *Gaming & Retro*,
   *Chill & Lounge*, *Episch & Action* oder *Workout & Energy*. Jede gibt es
   **stream-sicher** – nur NCS, CC BY und CC0, also mit Credit im Stream nutzbar –

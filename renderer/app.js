@@ -134,8 +134,22 @@
   const ENTRY_FIELDS = [
     'id', 'kind', 'source', 'sourceLabel', 'title', 'artist', 'album', 'artwork',
     'duration', 'url', 'link', 'artistId', 'pluginId', 'refId', 'path', 'dir', 'meta',
-    'license', 'licenseUrl', 'credit', 'category', 'addedAt',
+    'license', 'licenseUrl', 'credit', 'category', 'addedAt', 'ytLicense', 'aiHint',
   ];
+
+  // Smart playlists ("Rezepte"): the rules are stored on the playlist and the
+  // items are rebuilt from music that is already on the device. No network.
+  const SMART_SOURCES = [
+    { id: 'favorites', label: 'Favoriten', help: 'Alles, was du mit ♥ gespeichert hast.' },
+    { id: 'local', label: 'Lokale Musik', help: 'Dateien aus deinen Ordnern.' },
+    { id: 'history', label: 'Verlauf', help: 'Was du zuletzt gehört hast.' },
+    { id: 'playlists', label: 'Meine Playlists', help: 'Titel aus deinen anderen Playlists.' },
+    { id: 'recs', label: 'Vorschläge', help: 'Die zuletzt geladenen Empfehlungen.' },
+    { id: 'charts', label: 'Charts & Neuheiten', help: 'Nur, wenn die Startseite sie schon geladen hat.' },
+  ];
+  const SMART_DAYS = [0, 7, 14, 30, 90];
+  const SMART_LIMIT_MIN = 5;
+  const SMART_LIMIT_MAX = 100;
 
   const bridge = window.cm || {
     pickFolder: async () => {
@@ -399,7 +413,16 @@
   }
 
   function matchKey(entry) {
-    return `${normKey(entry.artist)}|${normKey(entry.title)}`;
+    const artist = normKey(entry.artist);
+    const title = normKey(entry.title);
+    if (artist && title) return `${artist}|${title}`;
+    // normKey() only keeps Latin letters, so Japanese/Cyrillic/Greek titles
+    // would otherwise all share the key "|". Fall back to the raw text (and
+    // finally to the id) so dedupe and taste feedback stay per title.
+    const rawArtist = String(entry.artist || '').trim().toLowerCase();
+    const rawTitle = String(entry.title || '').trim().toLowerCase();
+    if (rawArtist || rawTitle) return `${artist || rawArtist}|${title || rawTitle}`;
+    return `id:${entry.id}`;
   }
 
   function shuffled(list) {
@@ -660,6 +683,27 @@
    * Collection: favourites + playlists
    * ---------------------------------------------------------------- */
 
+  function normalizeSmartRules(raw) {
+    const input = raw && typeof raw === 'object' ? raw : {};
+    const sources = Array.from(
+      new Set(
+        (Array.isArray(input.sources) ? input.sources : []).filter((id) =>
+          SMART_SOURCES.some((source) => source.id === id)
+        )
+      )
+    );
+    const days = Number(input.notPlayedDays);
+    return {
+      sources: sources.length ? sources : ['favorites', 'local', 'history'],
+      limit: Math.min(SMART_LIMIT_MAX, Math.max(SMART_LIMIT_MIN, Math.round(Number(input.limit)) || 30)),
+      streamSafe: Boolean(input.streamSafe),
+      withCredit: Boolean(input.withCredit),
+      notPlayedDays: SMART_DAYS.includes(days) ? days : 0,
+      excludeDislikes: input.excludeDislikes !== false,
+      updatedAt: Number(input.updatedAt) || 0,
+    };
+  }
+
   function loadCollection() {
     const raw = readJSON(STORAGE.collection, null) || {};
     const favorites = Array.isArray(raw.favorites)
@@ -668,17 +712,24 @@
     const playlists = Array.isArray(raw.playlists)
       ? raw.playlists
           .filter((playlist) => playlist && typeof playlist.id === 'string')
-          .map((playlist) => ({
-            id: playlist.id,
-            name: String(playlist.name || 'Playlist').slice(0, 80),
-            createdAt: Number(playlist.createdAt) || Date.now(),
-            updatedAt: Number(playlist.updatedAt) || Date.now(),
-            // Preset key ("gaming:safe") when the playlist came from a template.
-            preset: typeof playlist.preset === 'string' ? playlist.preset.slice(0, 80) : '',
-            items: Array.isArray(playlist.items)
-              ? playlist.items.map(migrateEntry).filter(validEntry)
-              : [],
-          }))
+          .map((playlist) => {
+            const entry = {
+              id: playlist.id,
+              name: String(playlist.name || 'Playlist').slice(0, 80),
+              createdAt: Number(playlist.createdAt) || Date.now(),
+              updatedAt: Number(playlist.updatedAt) || Date.now(),
+              // Preset key ("gaming:safe") when the playlist came from a template.
+              preset: typeof playlist.preset === 'string' ? playlist.preset.slice(0, 80) : '',
+              items: Array.isArray(playlist.items)
+                ? playlist.items.map(migrateEntry).filter(validEntry)
+                : [],
+            };
+            // Smart playlists keep their rules; items are rebuilt from them.
+            if (playlist.smart && typeof playlist.smart === 'object') {
+              entry.smart = normalizeSmartRules(playlist.smart);
+            }
+            return entry;
+          })
       : [];
 
     return { favorites, playlists };
@@ -758,7 +809,7 @@
     return state.collection.playlists.find((playlist) => playlist.id === id) || null;
   }
 
-  function createPlaylist(name, preset = '') {
+  function createPlaylist(name, preset = '', smart = null) {
     const playlist = {
       id: uid(),
       name: String(name || 'Playlist').trim().slice(0, 80) || 'Playlist',
@@ -767,6 +818,7 @@
       preset: String(preset || '').slice(0, 80),
       items: [],
     };
+    if (smart) playlist.smart = normalizeSmartRules(smart);
     state.collection.playlists.push(playlist);
     onCollectionChanged({ playlists: true });
     return playlist;
@@ -775,6 +827,10 @@
   function addToPlaylist(id, entries, options = {}) {
     const playlist = playlistById(id);
     if (!playlist) return;
+    if (playlist.smart) {
+      toast('Smart-Playlists entstehen aus Regeln – ändere die Regeln, statt Titel hineinzuziehen.');
+      return;
+    }
 
     const known = new Set(playlist.items.map((entry) => entry.id));
     const fresh = [];
@@ -806,12 +862,154 @@
   function movePlaylistItem(id, from, to) {
     const playlist = playlistById(id);
     if (!playlist) return;
+    if (playlist.smart) {
+      toast('Smart-Playlists werden aus Regeln sortiert – nutze „Aktualisieren“.');
+      return;
+    }
     if (from === to || from < 0 || from >= playlist.items.length) return;
     const target = Math.max(0, Math.min(playlist.items.length - 1, to));
     const [item] = playlist.items.splice(from, 1);
     playlist.items.splice(target, 0, item);
     playlist.updatedAt = Date.now();
     onCollectionChanged({ playlists: true });
+  }
+
+  /* Smart playlists: collect what is already here, filter it, interleave the
+   * sources so one list cannot dominate, and store a normal playlist. */
+
+  function smartKey(entry) {
+    const key = matchKey(entry);
+    // normKey() drops non-Latin scripts, so Japanese/Cyrillic titles would all
+    // collide on "|". Fall back to the stable id in that case.
+    if (key && key.replace(/\|/g, '').trim()) return key;
+    return `id:${entry.id}`;
+  }
+
+  function smartAccept(entry, rules, lastPlayed) {
+    if (!validEntry(entry) || entry.kind === 'radio') return false;
+    if (rules.streamSafe && !streamSafe(entry)) return false;
+    if (rules.withCredit && !entry.credit) return false;
+    if (rules.excludeDislikes && (tasteTrackValue(entry) < 0 || tasteArtistValue(entry) < 0)) return false;
+    if (rules.notPlayedDays > 0) {
+      const last = lastPlayed.get(entry.id) || 0;
+      if (last && Date.now() - last < rules.notPlayedDays * DAY) return false;
+    }
+    return true;
+  }
+
+  function smartSourceGroups(rules, selfId, lastPlayed) {
+    const groups = [];
+    const add = (entries) => {
+      if (!Array.isArray(entries) || !entries.length) return;
+      const seen = new Set();
+      const list = [];
+      entries.forEach((entry) => {
+        if (!smartAccept(entry, rules, lastPlayed)) return;
+        const key = smartKey(entry);
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push(entry);
+      });
+      if (!list.length) return;
+      // tasteScore() looks into history; score each title once per dialog
+      // keystroke instead of once per comparison.
+      const scores = new Map();
+      const score = (entry) => {
+        if (!scores.has(entry.id)) scores.set(entry.id, tasteScore(entry));
+        return scores.get(entry.id);
+      };
+      list.sort(
+        (a, b) =>
+          score(b) - score(a) ||
+          String(a.title || '').localeCompare(String(b.title || ''), 'de')
+      );
+      groups.push(list);
+    };
+
+    if (rules.sources.includes('favorites')) add(state.collection.favorites);
+    if (rules.sources.includes('local')) add(state.library.entries);
+    if (rules.sources.includes('history')) add(history.map((row) => row.entry));
+    if (rules.sources.includes('playlists')) {
+      state.collection.playlists.forEach((playlist) => {
+        if (playlist.id !== selfId && !playlist.smart) add(playlist.items);
+      });
+    }
+    if (rules.sources.includes('recs')) add(state.recs.tracks);
+    if (rules.sources.includes('charts')) add(state.charts.tracks.concat(state.releases.tracks));
+    return groups;
+  }
+
+  function smartCollect(rules, selfId, options = {}) {
+    const normalized = normalizeSmartRules(rules);
+    const lastPlayed = options.lastPlayed || new Map(history.map((row) => [row.entry.id, row.last]));
+    const groups = smartSourceGroups(normalized, selfId, lastPlayed);
+    const out = [];
+    const seenIds = new Set();
+    const seenKeys = new Set();
+    const cursors = groups.map(() => 0);
+    let added = true;
+
+    while (out.length < normalized.limit && added) {
+      added = false;
+      for (let index = 0; index < groups.length && out.length < normalized.limit; index += 1) {
+        const list = groups[index];
+        while (cursors[index] < list.length) {
+          const entry = list[cursors[index]];
+          cursors[index] += 1;
+          const key = smartKey(entry);
+          if (seenIds.has(entry.id) || seenKeys.has(key)) continue;
+          seenIds.add(entry.id);
+          seenKeys.add(key);
+          out.push(entry);
+          added = true;
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  function smartBuild(playlist) {
+    if (!playlist || !playlist.smart) return [];
+    return smartCollect(playlist.smart, playlist.id).map((entry) => storable(entry));
+  }
+
+  function rebuildSmartPlaylist(playlist, options = {}) {
+    if (!playlist || !playlist.smart) return 0;
+    playlist.items = smartBuild(playlist);
+    playlist.smart = normalizeSmartRules(playlist.smart);
+    playlist.smart.updatedAt = Date.now();
+    playlist.updatedAt = Date.now();
+    if (!options.quiet) {
+      onCollectionChanged({ playlists: true });
+      if (state.currentPlaylist === playlist.id) renderPlaylist();
+    }
+    return playlist.items.length;
+  }
+
+  function smartRuleChips(smart) {
+    const rules = normalizeSmartRules(smart);
+    const chips = rules.sources.map(
+      (id) => (SMART_SOURCES.find((source) => source.id === id) || {}).label || id
+    );
+    if (rules.streamSafe) chips.push('Nur stream-sicher');
+    if (rules.withCredit) chips.push('Nur mit Credit');
+    if (rules.notPlayedDays) chips.push(`${rules.notPlayedDays} Tage nicht gehört`);
+    if (rules.excludeDislikes) chips.push('Ohne Dislikes');
+    chips.push(`Max. ${rules.limit}`);
+    return chips.map((label) => `<span class="smart-chip">${esc(label)}</span>`).join('');
+  }
+
+  function smartUpdatedLabel(value) {
+    const at = Number(value) || 0;
+    if (!at) return 'noch nicht aktualisiert';
+    const date = new Date(at).toLocaleString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return `aktualisiert ${date}`;
   }
 
   /* Automatic playlist extension: Deezer (and the source plugin, if it can
@@ -935,6 +1133,10 @@
   async function extendPlaylist(id) {
     const playlist = playlistById(id);
     if (!playlist || playlistExtendBusy.has(id)) return;
+    if (playlist.smart) {
+      toast('Smart-Playlists werden aus Regeln gebaut – ändere die Regeln.');
+      return;
+    }
     if (!bridge.recommendations) {
       toast('Vorschläge sind gerade nicht verfügbar.');
       return;
@@ -1004,6 +1206,173 @@
     if (entries.length) addToPlaylist(playlist.id, entries);
     else toast(`Playlist „${playlist.name}“ erstellt`);
     return playlist;
+  }
+
+  function smartPlaylistDialog(existing) {
+    const rules = normalizeSmartRules(existing ? existing.smart : {});
+    const name = existing ? existing.name : uniquePlaylistName('Smart-Playlist', 'Smart-Playlist');
+    const sourceRows = SMART_SOURCES.map(
+      (source) => `
+        <label class="smart-check">
+          <input type="checkbox" data-smart-source="${source.id}" ${
+            rules.sources.includes(source.id) ? 'checked' : ''
+          } />
+          <span><strong>${esc(source.label)}</strong><small>${esc(source.help)}</small></span>
+        </label>`
+    ).join('');
+    const dayOptions = SMART_DAYS.map(
+      (days) =>
+        `<option value="${days}" ${rules.notPlayedDays === days ? 'selected' : ''}>${
+          days ? `${days} Tagen` : 'Egal'
+        }</option>`
+    ).join('');
+    const html = `
+      <div class="smart-form">
+        <label class="smart-field">
+          <span>Name</span>
+          <input id="smart-name" type="text" maxlength="80" value="${esc(name)}" spellcheck="false" />
+        </label>
+        <fieldset class="smart-group">
+          <legend>Quellen</legend>
+          <div class="smart-checks">${sourceRows}</div>
+        </fieldset>
+        <div class="smart-row">
+          <label class="smart-field">
+            <span>Höchstens</span>
+            <input id="smart-limit" type="number" min="${SMART_LIMIT_MIN}" max="${SMART_LIMIT_MAX}" step="5" value="${rules.limit}" />
+          </label>
+          <label class="smart-field">
+            <span>Nicht gehört seit</span>
+            <select id="smart-days">${dayOptions}</select>
+          </label>
+        </div>
+        <div class="smart-checks">
+          <label class="smart-check">
+            <input type="checkbox" id="smart-safe" ${rules.streamSafe ? 'checked' : ''} />
+            <span><strong>Nur stream-sicher</strong><small>NCS, CC0, CC BY und bestätigte Plugin-Lizenzen.</small></span>
+          </label>
+          <label class="smart-check">
+            <input type="checkbox" id="smart-with-credit" ${rules.withCredit ? 'checked' : ''} />
+            <span><strong>Nur mit Credit</strong><small>Titel, für die eine Lizenz-Notiz vorliegt.</small></span>
+          </label>
+          <label class="smart-check">
+            <input type="checkbox" id="smart-no-dislikes" ${rules.excludeDislikes ? 'checked' : ''} />
+            <span><strong>Ohne Dislikes</strong><small>„Weniger davon“ und abgelehnte Artists bleiben draußen.</small></span>
+          </label>
+        </div>
+        <p class="smart-preview" id="smart-preview"></p>
+      </div>`;
+
+    const promise = openDialog({
+      title: existing ? 'Regeln bearbeiten' : 'Smart-Playlist',
+      html,
+      input: false,
+      confirm: existing ? 'Speichern' : 'Erstellen',
+      className: 'smart-dialog',
+    });
+
+    const root = $('#dialog');
+    const form = $('#dialog-form');
+    const ok = $('#dialog-ok');
+
+    const read = () => ({
+      name: String((root.querySelector('#smart-name') || {}).value || '').trim().slice(0, 80),
+      rules: {
+        sources: Array.from(root.querySelectorAll('[data-smart-source]:checked')).map(
+          (input) => input.dataset.smartSource
+        ),
+        limit: Number((root.querySelector('#smart-limit') || {}).value) || 30,
+        streamSafe: Boolean((root.querySelector('#smart-safe') || {}).checked),
+        withCredit: Boolean((root.querySelector('#smart-with-credit') || {}).checked),
+        notPlayedDays: Number((root.querySelector('#smart-days') || {}).value) || 0,
+        excludeDislikes: Boolean((root.querySelector('#smart-no-dislikes') || {}).checked),
+      },
+    });
+
+    const update = () => {
+      const values = read();
+      const hasSources = values.rules.sources.length > 0;
+      const count = hasSources
+        ? smartCollect(values.rules, existing ? existing.id : '').length
+        : 0;
+      const safeRules = Object.assign({}, values.rules, { streamSafe: true });
+      const safe =
+        !hasSources
+          ? 0
+          : values.rules.streamSafe
+            ? count
+            : smartCollect(safeRules, existing ? existing.id : '').length;
+      const preview = root.querySelector('#smart-preview');
+      if (preview) {
+        preview.textContent = !hasSources
+          ? 'Wähle mindestens eine Quelle.'
+          : count
+            ? `${count} Titel passen${count !== safe ? ` · ${safe} davon stream-sicher` : ''}.`
+            : 'Keine Treffer – lockere die Filter oder wähle mehr Quellen.';
+      }
+      ok.disabled = !values.name || !hasSources;
+    };
+
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    update();
+    requestAnimationFrame(() => {
+      const field = root.querySelector('#smart-name');
+      if (field) {
+        field.focus();
+        field.select();
+      }
+    });
+
+    return promise.then((accepted) => {
+      form.removeEventListener('input', update);
+      form.removeEventListener('change', update);
+      return accepted ? read() : null;
+    });
+  }
+
+  async function promptSmartPlaylist(existing = null) {
+    const answer = await smartPlaylistDialog(existing);
+    if (!answer) return null;
+    if (!answer.name) {
+      toast('Bitte gib der Smart-Playlist einen Namen.');
+      return null;
+    }
+    if (!answer.rules.sources.length) {
+      toast('Bitte wähle mindestens eine Quelle.');
+      return null;
+    }
+
+    let playlist = existing && playlistById(existing.id);
+    if (!playlist) {
+      playlist = createPlaylist(answer.name, '', answer.rules);
+    } else {
+      playlist.name = answer.name;
+      playlist.smart = normalizeSmartRules(answer.rules);
+    }
+
+    rebuildSmartPlaylist(playlist, { quiet: true });
+    onCollectionChanged({ playlists: true });
+    openPlaylist(playlist.id);
+    toast(
+      existing
+        ? `Regeln gespeichert – ${playlist.items.length} Titel`
+        : `Smart-Playlist „${playlist.name}“ mit ${playlist.items.length} Titeln`
+    );
+    return playlist;
+  }
+
+  function refreshSmartPlaylist(id) {
+    const playlist = playlistById(id);
+    if (!playlist || !playlist.smart) return 0;
+    const count = rebuildSmartPlaylist(playlist);
+    toast(`Smart-Playlist aktualisiert – ${count} Titel`);
+    return count;
+  }
+
+  function editSmartPlaylist(id) {
+    const playlist = playlistById(id);
+    if (playlist && playlist.smart) promptSmartPlaylist(playlist);
   }
 
   async function renamePlaylist(id) {
@@ -1885,9 +2254,9 @@
             }"
             data-playlist="${esc(playlist.id)}"
             data-drop="playlist:${esc(playlist.id)}"
-            title="${esc(playlist.name)}"
+            title="${esc(playlist.name)}${playlist.smart ? ' · Smart-Playlist' : ''}"
           >
-            <span class="nav-ic">${ICONS.list}</span>
+            <span class="nav-ic">${playlist.smart ? ICONS.spark : ICONS.list}</span>
             <span class="svc-name">${esc(playlist.name)}</span>
             <span class="nav-count">${playlist.items.length || ''}</span>
           </button>`
@@ -3552,6 +3921,7 @@
 
     const key = `playlist:${playlist.id}`;
     const items = playlist.items;
+    const smart = Boolean(playlist.smart);
     const total = items.reduce((sum, entry) => sum + (Number(entry.duration) || 0), 0);
     const kinds = new Set(items.map((entry) => entry.sourceLabel).filter(Boolean));
 
@@ -3560,20 +3930,31 @@
         <div class="page-head playlist-head">
           <div class="playlist-cover">${coverMosaic(playlist)}</div>
           <div class="playlist-meta">
-            <div class="eyebrow">${playlist.preset ? 'Vorlage' : 'Playlist'}</div>
+            <div class="eyebrow">${smart ? 'Smart-Playlist' : playlist.preset ? 'Vorlage' : 'Playlist'}</div>
             <h2>${esc(playlist.name)}</h2>
             <p>${items.length} Titel${total ? ` · ca. ${fmtLong(total)}` : ''}${
               kinds.size ? ` · ${esc(Array.from(kinds).join(', '))}` : ''
-            }</p>
+            }${smart ? ` · ${esc(smartUpdatedLabel(playlist.smart.updatedAt))}` : ''}</p>
+            ${smart ? `<div class="smart-chips">${smartRuleChips(playlist.smart)}</div>` : ''}
           </div>
           <div class="page-actions">
+            ${
+              smart
+                ? `<button class="btn ghost small" data-pl-action="smart-rules">${ICONS.edit} Regeln</button>
+                   <button class="btn ghost small" data-pl-action="smart-refresh">${ICONS.refresh} Aktualisieren</button>`
+                : ''
+            }
             <button class="btn ghost small" data-pl-action="rename">${ICONS.edit} Umbenennen</button>
             <button class="btn ghost small danger" data-pl-action="delete">${ICONS.trash} Löschen</button>
             ${
               items.length
-                ? `<button class="btn ghost small" data-pl-action="extend" ${
-                    playlistExtendBusy.has(playlist.id) ? 'disabled' : ''
-                  }>${ICONS.plus} ${playlistExtendBusy.has(playlist.id) ? 'Sucht …' : 'Erweitern'}</button>
+                ? `${
+                    smart
+                      ? ''
+                      : `<button class="btn ghost small" data-pl-action="extend" ${
+                          playlistExtendBusy.has(playlist.id) ? 'disabled' : ''
+                        }>${ICONS.plus} ${playlistExtendBusy.has(playlist.id) ? 'Sucht …' : 'Erweitern'}</button>`
+                  }
                    <button class="btn ghost small" data-pl-action="shuffle">${ICONS.shuffle} Shuffle</button>
                    <button class="btn primary small" data-pl-action="play">${ICONS.play} Abspielen</button>`
                 : ''
@@ -3584,17 +3965,30 @@
         ${
           items.length
             ? `<div class="song-list playlist-list">${items
-                .map((entry, index) => songRow(entry, index, key, { handle: true, removable: true }))
+                .map((entry, index) =>
+                  songRow(entry, index, key, { handle: !smart, removable: !smart })
+                )
                 .join('')}</div>
-               <p class="muted small">Tipp: Titel per Drag & Drop sortieren – oder aus jeder Liste auf eine Playlist in der Seitenleiste ziehen.</p>`
-            : `<div class="empty compact">
-                 <div class="empty-icon">${ICONS.list}</div>
-                 <h3>Noch leer</h3>
-                 <p>Füge Titel über <strong>+</strong> an jedem Song hinzu oder zieh sie auf „${esc(
-                   playlist.name
-                 )}“ in der Seitenleiste.</p>
-                 <button class="btn primary" data-pl-action="search">Songs suchen</button>
-               </div>`
+               <p class="muted small">${
+                 smart
+                   ? 'Diese Liste entsteht aus Regeln. „Aktualisieren“ baut sie mit deiner aktuellen Musik neu.'
+                   : 'Tipp: Titel per Drag & Drop sortieren – oder aus jeder Liste auf eine Playlist in der Seitenleiste ziehen.'
+               }</p>`
+            : smart
+              ? `<div class="empty compact">
+                   <div class="empty-icon">${ICONS.spark}</div>
+                   <h3>Keine Treffer</h3>
+                   <p>Keine Titel passen gerade zu den Regeln. Lockere die Filter oder nimm eine Quelle dazu.</p>
+                   <button class="btn primary" data-pl-action="smart-rules">Regeln bearbeiten</button>
+                 </div>`
+              : `<div class="empty compact">
+                   <div class="empty-icon">${ICONS.list}</div>
+                   <h3>Noch leer</h3>
+                   <p>Füge Titel über <strong>+</strong> an jedem Song hinzu oder zieh sie auf „${esc(
+                     playlist.name
+                   )}“ in der Seitenleiste.</p>
+                   <button class="btn primary" data-pl-action="search">Songs suchen</button>
+                 </div>`
         }
       </div>`;
   }
@@ -10720,12 +11114,18 @@
       .filter((playlist) => playlist && typeof playlist.id === 'string')
       .forEach((playlist) => {
         const items = (Array.isArray(playlist.items) ? playlist.items : []).map(migrateEntry).filter(validEntry);
+        const smart =
+          playlist.smart && typeof playlist.smart === 'object'
+            ? normalizeSmartRules(playlist.smart)
+            : null;
         const existing = playlistById(playlist.id);
         if (existing) {
           const ids = new Set(existing.items.map((entry) => entry.id));
           items.forEach((entry) => {
             if (!ids.has(entry.id)) existing.items.push(storable(entry));
           });
+          // Rules win over old items, but nothing is rebuilt or deleted here.
+          if (smart) existing.smart = smart;
           existing.updatedAt = Date.now();
         } else {
           state.collection.playlists.push({
@@ -10736,6 +11136,7 @@
             // Templates keep their key, otherwise the Vorlagen page would
             // create a duplicate playlist after a restore.
             preset: typeof playlist.preset === 'string' ? playlist.preset.slice(0, 80) : '',
+            ...(smart ? { smart } : {}),
             items: items.map(storable),
           });
           counts.playlists += 1;
@@ -12414,6 +12815,10 @@ ${updatePanel()}
         promptNewPlaylist();
         return;
       }
+      if (event.target.closest('#btn-smart-playlist')) {
+        promptSmartPlaylist();
+        return;
+      }
 
       const playlist = event.target.closest('[data-playlist]');
       if (playlist) {
@@ -12656,6 +13061,12 @@ ${updatePanel()}
           return;
         case 'extend':
           extendPlaylist(state.currentPlaylist);
+          return;
+        case 'smart-refresh':
+          refreshSmartPlaylist(state.currentPlaylist);
+          return;
+        case 'smart-rules':
+          editSmartPlaylist(state.currentPlaylist);
           return;
         case 'rename':
           renamePlaylist(state.currentPlaylist);
@@ -13761,6 +14172,36 @@ ${updatePanel()}
     shareCurrent: () => shareEntry(currentItem()),
     toggleFavoriteAt: (key, index) => toggleFavorite(entryAt(key, index)),
     createPlaylist: (name) => createPlaylist(name).id,
+    matchKey: (entry) => matchKey(entry || {}),
+    // Smart playlists (smoke + manual verification)
+    smartPlaylist: (name, rules) => {
+      const playlist = createPlaylist(name, '', rules);
+      rebuildSmartPlaylist(playlist, { quiet: true });
+      onCollectionChanged({ playlists: true });
+      return { id: playlist.id, count: playlist.items.length };
+    },
+    smartPlaylistInfo: (id) => {
+      const playlist = playlistById(id);
+      if (!playlist) return null;
+      return {
+        id: playlist.id,
+        name: playlist.name,
+        smart: playlist.smart,
+        count: playlist.items.length,
+        titles: playlist.items.map((entry) => entry.title),
+        uniqueIds: new Set(playlist.items.map((entry) => entry.id)).size,
+        uniqueKeys: new Set(playlist.items.map((entry) => smartKey(entry))).size,
+        allValid: playlist.items.every(validEntry),
+      };
+    },
+    smartPlaylistRebuild: (id) => rebuildSmartPlaylist(playlistById(id), { quiet: true }),
+    smartPlaylistRemove: (id) => {
+      const existed = Boolean(playlistById(id));
+      state.collection.playlists = state.collection.playlists.filter((item) => item.id !== id);
+      if (state.currentPlaylist === id) state.currentPlaylist = null;
+      onCollectionChanged({ playlists: true });
+      return existed;
+    },
     playlistImportDialogSmoke: async () => {
       openPlaylistImportDialog();
       const result = {
