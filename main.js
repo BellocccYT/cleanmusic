@@ -1645,17 +1645,23 @@ function createMainWindow() {
 
               cm.setCreator('ncs', 'top');
               for (let i = 0; i < 40 && !cm.creator().items; i += 1) await wait(300);
-              document.querySelector('#creator-list .song-row').click();
               let ncs = null;
-              for (let i = 0; i < 50; i += 1) {
-                await wait(300);
-                ncs = cm.nowPlaying();
-                if (ncs && ncs.mode !== 'loading' && (ncs.time > 0.3 || ncs.mode === 'error')) break;
+              const ncsRow = document.querySelector('#creator-list .song-row');
+              if (ncsRow) {
+                ncsRow.click();
+                for (let i = 0; i < 50; i += 1) {
+                  await wait(300);
+                  ncs = cm.nowPlaying();
+                  if (ncs && ncs.mode !== 'loading' && (ncs.time > 0.3 || ncs.mode === 'error')) break;
+                }
+              } else {
+                ncs = { skipped: 'Keine NCS-Titel geladen (Netzwerk)' };
               }
 
               cm.setCreator('classics', 'lustig');
               await wait(300);
-              document.querySelector('#creator-list .song-row').click();
+              const classicRow = document.querySelector('#creator-list .song-row');
+              if (classicRow) classicRow.click();
               await wait(3000);
               const now = cm.nowPlaying();
 
@@ -2123,6 +2129,38 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_SMART:', JSON.stringify(smartSmoke));
+
+          // "Warum läuft das?" explains source, license and queue origin.
+          const whySmoke = await mainWindow.webContents.executeJavaScript(`
+            (async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              cm.playList('charts', 0);
+              await wait(900);
+              const button = document.querySelector('#btn-np-why');
+              const enabled = Boolean(button && !button.disabled);
+              if (button) button.click();
+              await wait(180);
+              const dialog = document.querySelector('#dialog');
+              const open = !dialog.hidden;
+              const title = (document.querySelector('#dialog-title') || {}).textContent || '';
+              const rows = dialog.querySelectorAll('.why-grid > div').length;
+              const text = (document.querySelector('#dialog-text') || {}).textContent || '';
+              const close = document.querySelector('#dialog-ok');
+              if (close) close.click();
+              await wait(100);
+              return {
+                enabled,
+                open,
+                title,
+                rows,
+                hasSource: /Quelle|Herkunft/.test(text),
+                hasLicense: /Lizenz/.test(text),
+                closed: dialog.hidden,
+              };
+            })()
+          `);
+          console.log('SMOKE_WHY:', JSON.stringify(whySmoke));
 
           const settingsSmoke = await mainWindow.webContents.executeJavaScript(`
             (async () => {

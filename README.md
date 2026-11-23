@@ -121,6 +121,10 @@ Suche erscheinen zusätzlich die aktuellen Deezer-Charts.
 - Der **Globus-Button** pro Titel öffnet ein Menü: „In Spotify / YouTube Music /
   Amazon Music … suchen". So springst du mit einem Klick vom 30-s-Treffer in
   den vollen Song im Dienst.
+- **Warum läuft das?** Der Info-Knopf im Player zeigt Herkunft (Playlist, Mix,
+  Charts, Suche, Radio, Songwunsch oder Autoplay), Quelle, Lizenz,
+  Stream-sicher-Status, Länge und bei lokalen Titeln den Dateipfad. Credits
+  lassen sich direkt kopieren, Links im Dienst öffnen.
 
 ### Übergänge zwischen Titeln
 

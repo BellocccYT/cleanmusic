@@ -5372,13 +5372,110 @@
     const item = currentItem();
     const fav = $('#btn-np-fav');
     const add = $('#btn-np-add');
+    const why = $('#btn-np-why');
     if (!fav || !add) return;
 
     fav.disabled = !item;
     add.disabled = !item;
+    if (why) why.disabled = !item;
     const on = Boolean(item && favIds.has(item.id));
     fav.classList.toggle('on', on);
     fav.title = on ? 'Aus Favoriten entfernen' : 'Zu Favoriten';
+  }
+
+  function whyOrigin(item) {
+    if (item.requestedBy) return `Songwunsch von ${item.requestedBy}`;
+    if (item.autoplay) return 'Autoplay – passend zum letzten Titel';
+    if (item.queued) return 'Von dir als Nächstes eingereiht';
+    const kind = String(state.queue.kind || '');
+    if (kind.startsWith('playlist:')) {
+      const playlist = playlistById(kind.slice('playlist:'.length));
+      return playlist
+        ? `Aus der Playlist „${playlist.name}“${playlist.smart ? ' (Smart-Playlist)' : ''}`
+        : 'Aus einer Playlist';
+    }
+    if (kind.startsWith('mix:')) {
+      const id = kind.slice('mix:'.length);
+      const mix = (typeof MIX_DEFS !== 'undefined' ? MIX_DEFS : []).find((entry) => entry.id === id);
+      return mix ? `Aus dem Mix „${mix.title}“` : 'Aus einem Mix';
+    }
+    if (kind === 'charts') return 'Aus Charts & Neuheiten';
+    if (kind === 'search') return 'Aus deiner Suche';
+    if (kind === 'radio') return 'Live-Radio';
+    if (kind === 'creator') return 'Aus dem Cutter-Modus';
+    if (kind === 'local') return 'Aus deiner lokalen Bibliothek';
+    if (kind === 'queue') return 'Direkt abgespielt oder eingereiht';
+    return 'Aus der aktuellen Liste';
+  }
+
+  function whyCurrent() {
+    const item = currentItem();
+    if (!item) return;
+    const kindLabel =
+      {
+        preview: '30-Sekunden-Vorschau',
+        plugin: 'Quelle-Plugin',
+        stream: 'Freier Stream',
+        local: 'Lokale Datei',
+        radio: 'Live-Radio',
+      }[item.kind] || item.sourceLabel || item.kind;
+    const license = item.license || (item.ytLicense === 'cc-by' ? 'CC BY (Plugin bestätigt)' : '');
+    const safe = streamSafe(item);
+    const rows = [
+      ['Herkunft', whyOrigin(item)],
+      ['Quelle', [item.sourceLabel, kindLabel].filter(Boolean).join(' · ')],
+      ['Lizenz', license || 'Keine Lizenzangabe'],
+      ['Stream-sicher', safe ? 'Ja – mit Credit im Stream nutzbar' : 'Nein oder unbekannt'],
+    ];
+    if (item.duration) rows.push(['Länge', fmtLong(item.duration)]);
+    if (item.path) rows.push(['Datei', item.path]);
+
+    const credit = item.credit
+      ? `<div class="why-block"><span>Credit</span><pre class="why-credit">${esc(item.credit)}</pre></div>`
+      : '';
+    const actions = [
+      item.credit ? '<button type="button" class="btn ghost small" data-why-copy>Credit kopieren</button>' : '',
+      item.link ? '<button type="button" class="btn ghost small" data-why-link>Im Dienst öffnen</button>' : '',
+    ]
+      .filter(Boolean)
+      .join('');
+    const html = `
+      <div class="why-grid">
+        ${rows
+          .map(
+            ([label, value]) =>
+              `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`
+          )
+          .join('')}
+      </div>
+      ${
+        state.queue.kind.startsWith('playlist:') &&
+        playlistById(state.queue.kind.slice('playlist:'.length))?.smart
+          ? `<div class="why-chips">${smartRuleChips(
+              playlistById(state.queue.kind.slice('playlist:'.length)).smart
+            )}</div>`
+          : ''
+      }
+      ${credit}
+      ${actions ? `<div class="why-actions">${actions}</div>` : ''}`;
+
+    const promise = openDialog({
+      title: 'Warum läuft das?',
+      html,
+      input: false,
+      confirm: 'Schließen',
+      info: true,
+      className: 'why-dialog',
+    });
+    const root = $('#dialog');
+    root.querySelector('[data-why-copy]')?.addEventListener('click', async () => {
+      const copied = await bridge.copyText(item.credit);
+      toast(copied ? 'Credit in die Zwischenablage kopiert.' : 'Kopieren fehlgeschlagen.');
+    });
+    root.querySelector('[data-why-link]')?.addEventListener('click', () => {
+      if (item.link) bridge.openExternal(item.link);
+    });
+    return promise;
   }
 
   function setTransportEnabled(enabled) {
@@ -5472,6 +5569,7 @@
 
     syncPlaybackButtons();
 
+    $('#btn-np-why').addEventListener('click', whyCurrent);
     $('#btn-np-fav').addEventListener('click', () => toggleFavorite(currentItem()));
     $('#btn-np-add').addEventListener('click', (event) => {
       event.stopPropagation();
@@ -5844,6 +5942,8 @@
   const ONBOARDING_STEPS = 5;
   let onboardingStep = 0;
   const onboardingMusic = window.CMOnboardingMusic || null;
+  const ONBOARDING_MUSIC_KEY = 'cleanmusic.onboardingmusic.v1';
+  let onboardingMusicOn = readJSON(ONBOARDING_MUSIC_KEY, true) !== false;
 
   function onboardingMusicPlaying() {
     return Boolean(onboardingMusic && onboardingMusic.isPlaying());
@@ -5954,7 +6054,9 @@
     onboardingStep = 0;
     root.hidden = false;
     renderOnboarding();
-    if (onboardingMusic && !(state.info && state.info.smoke)) onboardingMusic.start();
+    if (onboardingMusic && onboardingMusicOn && !(state.info && state.info.smoke)) {
+      onboardingMusic.start();
+    }
   }
 
   function closeOnboarding(target) {
@@ -6015,7 +6117,11 @@
     if (!action) return;
     switch (action.dataset.obAction) {
       case 'music':
-        if (onboardingMusic) onboardingMusic.toggle();
+        if (onboardingMusic) {
+          onboardingMusic.toggle();
+          onboardingMusicOn = Boolean(onboardingMusic.state().wanted);
+          writeJSON(ONBOARDING_MUSIC_KEY, onboardingMusicOn);
+        }
         return;
       case 'folder':
         await addFolder();
