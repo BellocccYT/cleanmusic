@@ -33,6 +33,10 @@
   if (!CMStorage) throw new Error('renderer/core/storage.js fehlt');
   const { readJSON, writeJSON } = CMStorage;
 
+  const CMQueue = window.CMQueue;
+  if (!CMQueue) throw new Error('renderer/audio/queue.js fehlt');
+  const { queueGroup } = CMQueue;
+
   const ICONS = {
     search:
       '<svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>',
@@ -5122,20 +5126,13 @@
    * no title repeats before the whole list has played. Turning shuffle off
    * restores the order saved when it was switched on. */
 
-  function shufflePriority(entry) {
-    return Boolean(entry && (entry.queued || entry.requestedBy));
-  }
-
   function shuffleQueueTail(snapshot = false) {
     const q = state.queue;
     if (q.index < 0 || q.items.length < 2) return;
     if (snapshot) q.shuffleBase = q.items.slice();
-    const head = q.items.slice(0, q.index + 1);
-    const tail = q.items.slice(q.index + 1);
-    const front = tail.filter(shufflePriority);
-    const mixed = shuffled(tail.filter((entry) => !shufflePriority(entry)));
-    q.items = head.concat(front, mixed);
-    q.upcoming = tail.length ? q.index + 1 : -1;
+    const result = CMQueue.shuffleTail(q.items, q.index);
+    q.items = result.items;
+    q.upcoming = result.upcoming;
   }
 
   function restoreQueueTail() {
@@ -5143,19 +5140,9 @@
     const base = Array.isArray(q.shuffleBase) ? q.shuffleBase : null;
     q.shuffleBase = null;
     if (!base || q.index < 0) return;
-
-    const current = q.items[q.index];
-    const head = q.items.slice(0, q.index + 1);
-    const tail = q.items.slice(q.index + 1);
-    const at = base.indexOf(current);
-    const baseTail = at >= 0 ? base.slice(at + 1) : [];
-    const inTail = new Set(tail);
-    const front = tail.filter(shufflePriority);
-    const ordered = baseTail.filter((entry) => inTail.has(entry) && !front.includes(entry));
-    const known = new Set([...front, ...ordered]);
-    const added = tail.filter((entry) => !known.has(entry));
-    q.items = head.concat(front, ordered, added);
-    q.upcoming = tail.length ? q.index + 1 : -1;
+    const result = CMQueue.restoreTail(q.items, q.index, base);
+    q.items = result.items;
+    q.upcoming = result.upcoming;
   }
 
   function planUpcoming() {
@@ -5172,9 +5159,7 @@
       return;
     }
 
-    if (index + 1 < items.length) state.queue.upcoming = index + 1;
-    else if (state.playback.repeat === 'all') state.queue.upcoming = 0;
-    else state.queue.upcoming = -1;
+    state.queue.upcoming = CMQueue.upcomingIndex(items, index, state.playback.repeat);
     if (state.fullscreen) renderUpNext();
   }
 
@@ -5252,14 +5237,7 @@
       }
     }
 
-    const current = state.queue.index;
-    let next;
-
-    if (direction > 0 && state.queue.upcoming >= 0 && state.queue.upcoming < items.length) {
-      next = state.queue.upcoming;
-    } else {
-      next = current < 0 ? 0 : (current + direction + items.length) % items.length;
-    }
+    const next = CMQueue.nextIndex(items.length, state.queue.index, direction, state.queue.upcoming);
 
     // A new round with shuffle gets a freshly mixed order.
     if (
@@ -8590,8 +8568,7 @@
 
   // Titles the user queued that have not played yet.
   function pendingQueued() {
-    const { items, index } = state.queue;
-    return items.slice(index + 1).filter((entry) => entry.queued);
+    return CMQueue.pendingQueued(state.queue.items, state.queue.index);
   }
 
   function queueCopy(entry, flags) {
@@ -8773,13 +8750,6 @@
     renderQueuePanel();
     if (state.fullscreen) renderUpNext();
     toast(removed ? `${removed} Titel entfernt` : 'Nichts zum Entfernen');
-  }
-
-  function queueGroup(entry) {
-    if (entry.requestedBy) return 'request';
-    if (entry.queued) return 'queued';
-    if (entry.autoplay) return 'autoplay';
-    return 'context';
   }
 
   function queueRow(entry, position, options = {}) {

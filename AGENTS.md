@@ -73,6 +73,7 @@ Mobile (eigenes Projekt außerhalb der Desktop-Releases, `mobile-1.1.0`): `mobil
 - `preload-mini.js` – stark begrenzte Bridge `window.mini` (nur Zustand und Befehle).
 - `renderer/mini.html` / `renderer/mini.js` – rahmenloser Mini-Player; `renderer/remote/` – lokale Handy-Fernbedienung.
 - `renderer/live-bg.js` – begrenzte Canvas-/Video-Hintergrundanimation; Audio wird nicht umgeleitet.
+- `renderer/audio/queue.js` – reine Queue-Helfer (`shuffleTail`, `restoreTail`, `queueGroup`, `upcomingIndex`, `nextIndex`, `pendingQueued`), geladen als `window.CMQueue`; `app.js` nutzt sie für Shuffle, Wiederherstellen, Planung und Schrittweite. Test `test/queue.test.js`.
 - `renderer/onboarding-music.js` – leise Hintergrundmusik für den Erste-Schritte-Assistenten (eigenes Audio-Element, Fade, Klick-Fallback, Mute-Knopf in `app.js`); Audiodatei und Credit unter `renderer/assets/onboarding/`.
 - `renderer/services.js` – Dienste-Registry (offizielle Web-Player und Such-URLs); `featured: true` markiert die vier sichtbaren Dienste, der Rest erscheint hinter „Weitere Dienste“.
 - `renderer/app.js` – gesamte UI und Player-Logik (groß, in Abschnitte gegliedert).
@@ -100,6 +101,7 @@ Mobile (eigenes Projekt außerhalb der Desktop-Releases, `mobile-1.1.0`): `mobil
 
 - `node --check` für geänderte JS-Dateien.
 - `npm.cmd run test:core` – reine Helfer aus `renderer/core/text.js` und `renderer/core/storage.js` ohne Electron (Formatierung, `matchKey` inkl. nicht-lateinischer Titel, `primaryArtist`, `seededShuffle`, Storage-Fehlerfälle).
+- `npm.cmd run test:unit` – zusätzlich `renderer/audio/queue.js` (Shuffle, Restore, Gruppen, nächster Index, Upcoming, eingereihte Titel); derzeit 24 Prüfungen.
 - `npm.cmd run smoke` – unsichtbares Fenster, Wegwerf-Profil. Prüft Vorschauen, Radio, Bibliothek, Cutter-Modus, Vollbild, Visualizer, die Vorlagen-Playlists (`SMOKE_PRESETS`), Shuffle, Playlist-Erweitern, die Smart Mixes (`SMOKE_TASTE`), die Smart-Playlists (`SMOKE_SMART`), die Seitenleiste (`SMOKE_SIDEBAR`), „Warum läuft das?“ (`SMOKE_WHY`) und die Update-Karte (`SMOKE_WHATS_NEW`). Ausgabezeilen beginnen mit `SMOKE_`, Fehler mit `..._FAIL`.
 - `npm.cmd run smoke:obs` – wie `smoke`, plus OBS-Overlay-Plugin aus `extras/plugins/` (Server, Ereignisse, Steuerung, Einstellungen, Textdateien).
 - `npm.cmd run smoke:visualizer` – wie `smoke`, plus OBS-Audio-Visualizer (Seite, `/visualizer.json`, SSE, 32 Bänder, Stilwechsel, Fremd-Host gesperrt, Port nach dem Ausschalten frei).

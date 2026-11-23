@@ -897,8 +897,12 @@ preload.js              schmale, sichere Bridge für den Renderer
 renderer/
   index.html            App-Shell
   styles.css            Layout und Farben (über Theme-Variablen)
-  themes.js             die zehn Farbpaletten
-  assets/               Logo und Fenster-Icon
+  themes.js             die Farbpaletten
+  assets/               Logo, Fenster-Icon und Assistenten-Musik
+  core/text.js          reine Text-/Zeit-/Format-Helfer (getestet)
+  core/storage.js       localStorage-Helfer (getestet)
+  audio/queue.js        reine Queue-Helfer: Shuffle, Restore, Upcoming (getestet)
+  onboarding-music.js   leise Hintergrundmusik im Erste-Schritte-Assistenten
   services.js           Dienste-Registry (URLs + offizielle Such-URLs)
   creator-data.js       Cutter-Modus: Kategorien, NCS-Playlists, YouTube-Klassiker
   visualizer.js         Web-Audio-Visualizer (Kreis, Balken, Welle, Mini) und

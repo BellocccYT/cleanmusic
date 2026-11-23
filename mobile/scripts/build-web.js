@@ -139,6 +139,7 @@ const mustExist = [
   'styles.css',
   'core/storage.js',
   'core/text.js',
+  'audio/queue.js',
   'onboarding-music.js',
   'assets/onboarding/thinking-music.mp3',
   'native.js',

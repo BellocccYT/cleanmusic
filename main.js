@@ -1767,7 +1767,12 @@ function createMainWindow() {
           ui.licenseNote = note ? fs.readFileSync(path.join(target, note), 'utf8').includes('Abo') : false;
           creatorDownloadFolder = '';
           console.log('SMOKE_CREATOR_SERVICES:', JSON.stringify(ui));
-          fs.rmSync(creatorDir, { recursive: true, force: true });
+          try {
+            fs.rmSync(creatorDir, { recursive: true, force: true });
+          } catch {
+            // Windows may still hold the downloaded file for a moment; the
+            // next smoke run removes the folder before it starts.
+          }
         } catch (error) {
           console.error('SMOKE_CREATOR_SERVICES_FAIL:', error.message);
         }
