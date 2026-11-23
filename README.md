@@ -901,6 +901,7 @@ renderer/
   assets/               Logo, Fenster-Icon und Assistenten-Musik
   core/text.js          reine Text-/Zeit-/Format-Helfer (getestet)
   core/storage.js       localStorage-Helfer (getestet)
+  core/persist.js       alle localStorage-Schlüssel an einer Stelle (getestet)
   audio/queue.js        reine Queue-Helfer: Shuffle, Restore, Upcoming (getestet)
   onboarding-music.js   leise Hintergrundmusik im Erste-Schritte-Assistenten
   services.js           Dienste-Registry (URLs + offizielle Such-URLs)

@@ -79,6 +79,7 @@ Mobile (eigenes Projekt außerhalb der Desktop-Releases, `mobile-1.1.0`): `mobil
 - `renderer/app.js` – gesamte UI und Player-Logik (groß, in Abschnitte gegliedert).
 - `renderer/core/text.js` – reine Helfer (`esc`, `fmtTime`, `fmtLong`, `fmtSize`, `formatList`, `uid`, `normKey`, `matchKey`, `shuffled`, `primaryArtist`, `todayKey`, `stringSeed`, `seededShuffle`), geladen vor `app.js` als `window.CMText`; Test `test/core.text.test.js`.
 - `renderer/core/storage.js` – `readJSON`/`writeJSON` mit optionalem Storage (Testbarkeit), geladen als `window.CMStorage`; Test `test/core.storage.test.js`.
+- `renderer/core/persist.js` – alle `localStorage`-Schlüssel an einer Stelle (`window.CMPersist.STORAGE`, auch `nav` und `onboardingMusic`); Test `test/persist.test.js` prüft Eindeutigkeit und Präfix.
 - `docs/room-prototype/` – eigenständiger Raum-Prototyp (`index.html`, `room.css`, `room.js`) mit Beispieldaten und vier Modi; **nicht Teil der App**, nur Design-Notiz. Entscheidung: Die bestehende Oberfläche bleibt, höchstens einzelne Ideen werden übernommen.
 - `renderer/creator-data.js` – Cutter-Kategorien; `renderer/playlist-presets.js` – Vorlagen für fertige Playlists (stream-sicher/normal); `renderer/visualizer.js` – Web-Audio-Visualizer (Analyse über `captureStream()`, ohne die Wiedergabe umzuleiten) und die optionale Audio-Kette für Angleichen/Boost. Ist die Kette einmal gebaut (`createMediaElementSource`), trägt sie den Ton bis zum Neustart: AudioContext dann nie suspendieren, Lautstärke über `setOutput` statt `audio.volume`.
 - `renderer/themes.js` – Theme-Paletten; `app.js` setzt daraus CSS-Variablen (auch `--*-rgb`-Tripel für Transparenzen). Neue Farben im Stylesheet immer über Variablen, nie fest (Ausnahme: Vollbild-Player, Markenfarben).
@@ -101,7 +102,7 @@ Mobile (eigenes Projekt außerhalb der Desktop-Releases, `mobile-1.1.0`): `mobil
 
 - `node --check` für geänderte JS-Dateien.
 - `npm.cmd run test:core` – reine Helfer aus `renderer/core/text.js` und `renderer/core/storage.js` ohne Electron (Formatierung, `matchKey` inkl. nicht-lateinischer Titel, `primaryArtist`, `seededShuffle`, Storage-Fehlerfälle).
-- `npm.cmd run test:unit` – zusätzlich `renderer/audio/queue.js` (Shuffle, Restore, Gruppen, nächster Index, Upcoming, eingereihte Titel); derzeit 24 Prüfungen.
+- `npm.cmd run test:unit` – zusätzlich `renderer/core/persist.js` und `renderer/audio/queue.js` (Schlüssel, Shuffle, Restore, Gruppen, nächster Index, Upcoming, eingereihte Titel); derzeit 28 Prüfungen.
 - `npm.cmd run smoke` – unsichtbares Fenster, Wegwerf-Profil. Prüft Vorschauen, Radio, Bibliothek, Cutter-Modus, Vollbild, Visualizer, die Vorlagen-Playlists (`SMOKE_PRESETS`), Shuffle, Playlist-Erweitern, die Smart Mixes (`SMOKE_TASTE`), die Smart-Playlists (`SMOKE_SMART`), die Seitenleiste (`SMOKE_SIDEBAR`), „Warum läuft das?“ (`SMOKE_WHY`) und die Update-Karte (`SMOKE_WHATS_NEW`). Ausgabezeilen beginnen mit `SMOKE_`, Fehler mit `..._FAIL`.
 - `npm.cmd run smoke:obs` – wie `smoke`, plus OBS-Overlay-Plugin aus `extras/plugins/` (Server, Ereignisse, Steuerung, Einstellungen, Textdateien).
 - `npm.cmd run smoke:visualizer` – wie `smoke`, plus OBS-Audio-Visualizer (Seite, `/visualizer.json`, SSE, 32 Bänder, Stilwechsel, Fremd-Host gesperrt, Port nach dem Ausschalten frei).

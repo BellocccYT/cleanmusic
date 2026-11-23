@@ -179,7 +179,8 @@ seine Fähigkeiten anzeigt.
    in `app.js` durch das Modul ersetzen.
 3. Danach `core/persist.js` und den Store angehen.
 
-**Stand:** Queue-Modul und 9 Queue-Tests sind drin; `npm run test:unit` fährt 24 Prüfungen.
+**Stand:** Queue-Modul und 9 Queue-Tests sind drin; `renderer/core/persist.js` bündelt
+alle `localStorage`-Schlüssel (4 Tests). `npm run test:unit` fährt 28 Prüfungen.
 Die Smoke-Suiten prüfen das unveränderte Verhalten (Shuffle, Restore, Queue-Reihenfolge).
 
 **Regel:** Kein Schritt ohne grüne Tests. Kein Big-Bang.

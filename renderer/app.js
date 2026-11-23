@@ -37,6 +37,10 @@
   if (!CMQueue) throw new Error('renderer/audio/queue.js fehlt');
   const { queueGroup } = CMQueue;
 
+  const CMPersist = window.CMPersist;
+  if (!CMPersist) throw new Error('renderer/core/persist.js fehlt');
+  const { STORAGE } = CMPersist;
+
   const ICONS = {
     search:
       '<svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>',
@@ -118,32 +122,6 @@
     ['80s', '80s'],
     ['90s', '90s'],
   ];
-
-  const STORAGE = {
-    settings: 'cleanmusic.settings.v1',
-    library: 'cleanmusic.library.v1',
-    volume: 'cleanmusic.volume.v1', // 0.7 and older: linear element volume
-    level: 'cleanmusic.volume.v2', // { level (slider, 0–1.5), muted }
-    playback: 'cleanmusic.playback.v1',
-    collection: 'cleanmusic.collection.v1',
-    matches: 'cleanmusic.matches.v1',
-    recs: 'cleanmusic.recs.v1',
-    credits: 'cleanmusic.credits.v1',
-    openverseCache: 'cleanmusic.ovcache.v1',
-    downloads: 'cleanmusic.downloads.v1', // entry id → { path, at }
-    creatorDownloads: 'cleanmusic.creatordl.v1', // [{ path, name, service, at }]
-    seenVersion: 'cleanmusic.seenversion.v1', // last version the user saw "what's new" for
-    creatorUsage: 'cleanmusic.creatorusage.v1', // { "tab:category": opens } for "Für dich"
-    localView: 'cleanmusic.localview.v1', // { sort }
-    localMoods: 'cleanmusic.localmoods.v1', // { folder: mood }
-    stats: 'cleanmusic.stats.v1', // { months: { "YYYY-MM": { secs, plays, hours, tracks, artists, sources } } }
-    bpm: 'cleanmusic.bpm.v1', // { entryId: bpm }
-    history: 'cleanmusic.history.v1', // [{ entry, plays, first, last }]
-    taste: 'cleanmusic.taste.v1', // { tracks, artists, skips, revision } – local taste profile
-    eq: 'cleanmusic.eq.v1',
-    cutProjects: 'cleanmusic.cutprojects.v1',
-    autoBackup: 'cleanmusic.autobackup.v1',
-  };
 
   const FIRST_RUN = (() => {
     try {
@@ -2149,7 +2127,7 @@
    * Sidebar
    * ---------------------------------------------------------------- */
 
-  const NAV_STATE_KEY = 'cleanmusic.nav.v1';
+  const NAV_STATE_KEY = STORAGE.nav;
   const savedNav = readJSON(NAV_STATE_KEY, {});
   let navState = Object.assign(
     { services: false, creator: false },
@@ -5926,7 +5904,7 @@
   const ONBOARDING_STEPS = 5;
   let onboardingStep = 0;
   const onboardingMusic = window.CMOnboardingMusic || null;
-  const ONBOARDING_MUSIC_KEY = 'cleanmusic.onboardingmusic.v1';
+  const ONBOARDING_MUSIC_KEY = STORAGE.onboardingMusic;
   let onboardingMusicOn = readJSON(ONBOARDING_MUSIC_KEY, true) !== false;
 
   function onboardingMusicPlaying() {
