@@ -2241,14 +2241,14 @@ function createMainWindow() {
               const title = () => (card.querySelector('.update-text > strong') || {}).textContent || '';
               const groups = () => card.querySelectorAll('.whatsnew-version').length;
               const items = () => card.querySelectorAll('.whatsnew-list li').length;
-              const multi = cm.whatsNew('1.20.0', '1.18.1');
+              const multi = cm.whatsNew('1.20.1', '1.18.1');
               const multiState = { title: title(), groups: groups(), items: items() };
               card.querySelector('[data-whatsnew="ok"]').click();
-              const one = cm.whatsNew('1.20.0', '1.19.0');
+              const one = cm.whatsNew('1.20.1', '1.20.0');
               const oneState = { title: title(), groups: groups(), items: items() };
               card.querySelector('[data-whatsnew="ok"]').click();
-              const same = cm.whatsNew('1.20.0', '1.20.0');
-              const current = cm.whatsNew('1.20.0', '');
+              const same = cm.whatsNew('1.20.1', '1.20.1');
+              const current = cm.whatsNew('1.20.1', '');
               const currentState = { title: title(), groups: groups(), items: items() };
               card.querySelector('[data-whatsnew="ok"]').click();
               return {
