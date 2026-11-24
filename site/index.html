@@ -49,6 +49,7 @@
     .button.primary { background: linear-gradient(105deg, var(--accent), var(--accent2)); color: var(--on-accent); border: 0; box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 22%, transparent); }
     .button.secondary { background: var(--panel); color: var(--text); }
     .button:hover, .theme-toggle:hover { transform: translateY(-1px); }
+    .button.is-soon, .button.is-soon:hover { opacity: .55; cursor: default; transform: none; }
     .hero { position: relative; padding: 88px 0 76px; overflow: hidden; }
     .hero::before, .hero::after { content: ""; position: absolute; z-index: -1; border-radius: 50%; filter: blur(2px); pointer-events: none; }
     .hero::before { width: 500px; height: 500px; top: -220px; right: -70px; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 24%, transparent), transparent 68%); }
@@ -185,7 +186,8 @@
           <p>Offizielle Musik-Web-Player, lokale Wiedergabe und praktische Werkzeuge für Stream, Schnitt und deinen Alltag – ohne so zu tun, als gäbe es keine Grenzen.</p>
           <div class="hero-actions">
             <a class="button primary" href="https://github.com/BellocccYT/cleanmusic/releases/latest" rel="noopener">CleanMusic herunterladen <span aria-hidden="true">↗</span></a>
-            <a class="button secondary" href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome-Erweiterung <span aria-hidden="true">↗</span></a>
+            <!-- Interim, bis der Store-Eintrag öffentlich ist: wieder auf den Store-Link stellen. -->
+            <span class="button secondary is-soon" aria-disabled="true" title="Der Store-Eintrag wird gerade öffentlich geschaltet">Chrome-Erweiterung · bald</span>
             <a class="button secondary" href="#features">Funktionen entdecken</a>
           </div>
           <p class="small-note">Kostenlos · kein CleanMusic-Konto · offizielle Dienste bleiben ihre eigenen Player</p>
@@ -316,7 +318,7 @@
         <div><div class="eyebrow">Open Source · Version 1.20.1</div><h2>Probier CleanMusic aus.</h2><p>Windows-Installer, portable Windows-Version und Linux-AppImage findest du bei den Releases.</p></div>
         <div class="download-actions">
           <a class="button primary" href="https://github.com/BellocccYT/cleanmusic/releases/latest" rel="noopener">Zu den Downloads <span aria-hidden="true">↗</span></a>
-          <a class="button secondary" href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome-Erweiterung <span aria-hidden="true">↗</span></a>
+          <span class="button secondary is-soon" aria-disabled="true" title="Der Store-Eintrag wird gerade öffentlich geschaltet">Chrome-Erweiterung · bald</span>
         </div>
       </div>
     </section>
@@ -327,7 +329,7 @@
         <div class="faq-list">
           <details><summary>Warum zeigt Windows SmartScreen eine Warnung?</summary><p>Die Downloads sind nicht code-signiert. Windows kann beim ersten Start deshalb „Windows hat den PC geschützt“ anzeigen. Prüfe, dass du CleanMusic aus dem offiziellen GitHub-Release geladen hast; über „Weitere Informationen“ kannst du die App starten, wenn du ihr vertraust.</p></details>
           <details><summary>Welche Daten sammelt CleanMusic?</summary><p>CleanMusic hat kein eigenes Konto und keine Cloud-Synchronisierung. Favoriten, Playlists, Einstellungen, Hör-Verlauf und Rückblick liegen lokal im App-Profil. Die App-Seite setzt keine Cookies, bindet keine externen Tracker ein und sendet keine Analysedaten. Bei eingebetteten offiziellen Web-Playern gelten zusätzlich die Datenschutz- und Cookie-Regeln des jeweiligen Anbieters.</p></details>
-          <details><summary>Gibt es eine Browser-Erweiterung?</summary><p>Ja: „CleanMusic für YouTube“ legt das laufende YouTube-Video mit einem Klick in die Warteschlange oder startet es direkt in der App. Sie ist im <a href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome Web Store</a> kostenlos erhältlich und braucht CleanMusic auf dem Rechner – ohne die App erklärt sie den Weg zur Installation.</p></details>
+          <details><summary>Gibt es eine Browser-Erweiterung?</summary><p>Ja: „CleanMusic für YouTube“ legt das laufende YouTube-Video mit einem Klick in die Warteschlange oder startet es direkt in der App. Sie ist im Chrome Web Store freigegeben und wird gerade öffentlich geschaltet – der Link steht hier, sobald der Eintrag erreichbar ist. Die Erweiterung braucht CleanMusic auf dem Rechner; ohne die App erklärt sie den Weg zur Installation.</p></details>
           <details><summary>Gibt es einen Discord?</summary><p>Ja: <a href="https://discord.gg/XqYMZJXJjA" rel="noopener">discord.gg/XqYMZJXJjA</a> – für Fragen, Ideen und Austausch untereinander. Bugs und Funktionswünsche bitte weiterhin über die GitHub-Issues, damit nichts verloren geht.</p></details>
           <details><summary>Ersetzt CleanMusic die Musikdienste?</summary><p>Nein. Die jeweiligen Anbieter laufen in ihren offiziellen Web-Playern. CleanMusic spielt lokale Dateien, Radio und verfügbare 30-Sekunden-Katalog-Vorschauen selbst ab. Ein Abo, Login oder eine Funktion eines Anbieters wird dadurch nicht ersetzt.</p></details>
           <details><summary>Sind Titel im Cutter-Modus automatisch für mein Video freigegeben?</summary><p>Nein. CleanMusic zeigt die Lizenzangabe und den erforderlichen Credit, soweit die Quelle sie bereitstellt. Prüfe die konkreten Bedingungen beim Urheber, bevor du einen Titel verwendest. Es gibt keine pauschale Copyright-Garantie.</p></details>
