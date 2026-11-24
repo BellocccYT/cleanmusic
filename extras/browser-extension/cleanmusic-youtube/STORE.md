@@ -4,10 +4,8 @@ Alles, was der Chrome-Web-Store-Dialog abfragt, plus die Begründungen für die 
 Die Angaben sind so formuliert, dass sie zum tatsächlichen Code passen – nicht mehr
 versprechen und nichts weglassen.
 
-> **Status: veröffentlicht.** Version 2.0.0, seit 24. November 2026 im Chrome Web Store.
-> Sichtbarkeit: `Öffentlich` ist eingereicht und wird nach der Freigabe aktiv; bis dahin
-> gilt `Nicht gelistet`. Solange der Eintrag nicht gelistet ist, kann die Store-URL auf die
-> Startseite umleiten – das ist ein bekanntes Verhalten und kein Fehler im Paket.
+> **Status: veröffentlicht.** Version 2.0.0, seit 24. November 2026 im Chrome Web Store,
+> Sichtbarkeit öffentlich.
 > Eintrag: https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc
 > Item-ID: `hghplimkfmogkheakonapklcfgioc`
 
