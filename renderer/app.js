@@ -5800,6 +5800,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.25.0': [
+      'Plugins mit Berechtigungen: Bevor du ein Plugin aktivierst, zeigt CleanMusic, was es darf – z. B. Wiedergabe steuern, Live-Spektrum lesen oder ins Internet. Riskante Rechte stehen ganz oben.',
+      'Was ein neues Plugin nicht angibt, bekommt es über CleanMusic auch nicht. Ältere Plugins (wie OBS-Overlay und Streamer.bot) laufen unverändert weiter.',
+      'Plugins können Auswahllisten in ihren Einstellungen jetzt selbst füllen, z. B. mit einer Geräteliste.',
+    ],
     '1.24.0': [
       'Wochenkarte mit Link: Deine Karte enthält jetzt einen Link – deine Freunde tippen drauf, CleanMusic öffnet sich und fragt, ob die Karte in die Gruppe soll.',
       'Mixes als Rezept: Der neue Funken-Knopf an jedem Mix legt eine eigene Smart-Playlist mit denselben Regeln an, die sich täglich erneuert und die du anpassen kannst.',

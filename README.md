@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.24.0**
+**Version 1.25.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -98,7 +98,7 @@ eine kleine Karte, was neu ist.
 | **Cutter-Modus** | ✅ NCS, YouTube-Klassiker (CC BY), Soundeffekte & freie Musik mit Lizenz und Credit |
 | **Vollbild-Player & Visualizer** | ✅ Cover-Farben, Beat-Puls, Kreis/Balken/Welle, Kino-Modus |
 | **Discord Rich Presence** | ⚙️ optional – eigene Discord-Application-ID nötig |
-| **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren |
+| **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren; ab 1.25.0 zeigen Plugins mit Manifest ihre Berechtigungen vor dem Aktivieren |
 | Apple Music | ✅ offizieller Web-Player; zusätzlich **MusicKit-Fenster** für volle Titel (Developer-Token nötig) |
 | Spotify, YouTube Music, TIDAL, Deezer, Amazon Music, SoundCloud | ✅ als offizieller Web-Player eingebettet |
 | Qobuz, Bandcamp, Audius | ✅ zusätzlich als offizieller Web-Player – ausklappbar unter „Weitere Dienste“ |
