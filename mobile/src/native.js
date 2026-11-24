@@ -17,7 +17,7 @@
  */
 
 (function () {
-  const MOBILE_VERSION = 'mobile-1.1.2';
+  const MOBILE_VERSION = 'mobile-1.1.3';
   const UPDATE_REPO = 'BellocccYT/cleanmusic';
   const UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
   const UPDATE_KEY = 'cleanmusic.updates.v1';
