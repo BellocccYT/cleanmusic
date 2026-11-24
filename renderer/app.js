@@ -3922,6 +3922,7 @@
                    <button class="btn ghost small" data-pl-action="smart-refresh">${ICONS.refresh} Aktualisieren</button>`
                 : ''
             }
+            ${items.length ? `<button class="btn ghost small" data-pl-action="share" title="Link kopieren – Freunde öffnen die Playlist in CleanMusic">${ICONS.copy} Teilen</button>` : ''}
             <button class="btn ghost small" data-pl-action="rename">${ICONS.edit} Umbenennen</button>
             <button class="btn ghost small danger" data-pl-action="delete">${ICONS.trash} Löschen</button>
             ${
@@ -7281,8 +7282,27 @@
       importGroupLink(link.code);
       return;
     }
+    if (link && link.action === 'playlist') {
+      importPlaylistLink(link.code);
+      return;
+    }
     if (!link || !link.src) return;
     toast(`${link.action === 'add' ? 'Song' : 'Geteilter Song'} „${link.title || 'Titel'}“ wird geladen …`);
+    const entry = await findSharedEntry(link);
+    if (!entry) {
+      toast('Der geteilte Song wurde nicht gefunden.');
+      return;
+    }
+    if (link.action === 'add') {
+      enqueue([entry], 'end');
+      return;
+    }
+    state.sharedList = [entry];
+    playList('shared', 0);
+  }
+
+  // Find a shared title again: Deezer/Apple by id, YouTube via plugin, else by name.
+  async function findSharedEntry(link) {
     let entry = null;
     try {
       if ((link.src === 'deezer' || link.src === 'apple') && bridge.requestLink) {
@@ -7303,16 +7323,70 @@
     } catch {
       entry = null;
     }
-    if (!entry) {
-      toast('Der geteilte Song wurde nicht gefunden.');
-      return;
+    return entry;
+  }
+
+  /* --- Playlists per link (no server: the code sits in the #fragment) --- */
+  const PLAYLIST_PAGE = 'https://bellocccyt.github.io/cleanmusic/p/';
+
+  async function sharePlaylist(id) {
+    const playlist = playlistById(id);
+    if (!playlist || !window.CMShare) return null;
+    const result = await window.CMShare.encodePlaylist(playlist.name, playlist.items);
+    if (!result.code) {
+      toast('In dieser Playlist ist nichts Teilbares – lokale Dateien und Radio bleiben bei dir.');
+      return result;
     }
-    if (link.action === 'add') {
-      enqueue([entry], 'end');
-      return;
+    const link = `${PLAYLIST_PAGE}#${result.code}`;
+    const text = `🎶 Playlist „${playlist.name}“ (${result.shared} Titel) – in CleanMusic öffnen:\n${link}`;
+    const ok = await bridge.copyText(text);
+    toast(
+      ok
+        ? `Link kopiert – ${result.shared} Titel${result.skipped ? `, ${result.skipped} lokale/Radio-Titel bleiben bei dir` : ''}.`
+        : 'Kopieren nicht möglich'
+    );
+    return Object.assign({ link }, result);
+  }
+
+  async function importPlaylistLink(code, options = {}) {
+    if (!window.CMShare) return null;
+    const data = await window.CMShare.decodePlaylist(code);
+    if (data.error) {
+      toast(data.error);
+      return null;
     }
-    state.sharedList = [entry];
-    playList('shared', 0);
+    if (!options.confirm) {
+      const ok = await askConfirm({
+        title: 'Geteilte Playlist übernehmen?',
+        message: `„${data.name}“ mit ${data.tracks.length} Titeln. CleanMusic sucht die Titel bei Deezer, Apple Music oder über dein Quellen-Plugin – das dauert einen Moment.`,
+        confirm: 'Übernehmen',
+      });
+      if (!ok) return null;
+    }
+    toast(`„${data.name}“ wird übernommen …`);
+    const found = new Array(data.tracks.length).fill(null);
+    let next = 0;
+    let done = 0;
+    const worker = async () => {
+      while (next < data.tracks.length) {
+        const index = next;
+        next += 1;
+        found[index] = await findSharedEntry(data.tracks[index]);
+        done += 1;
+        if (done % 10 === 0 && done < data.tracks.length) toast(`${done} von ${data.tracks.length} Titeln geprüft …`);
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    const entries = found.filter(Boolean);
+    if (!entries.length) {
+      toast('Keiner der geteilten Titel wurde gefunden.');
+      return { id: null, count: 0, total: data.tracks.length };
+    }
+    const playlist = createPlaylist(uniquePlaylistName(data.name, 'Geteilte Playlist'));
+    addToPlaylist(playlist.id, entries, { quiet: true });
+    openPlaylist(playlist.id);
+    toast(`„${playlist.name}“ übernommen: ${entries.length} von ${data.tracks.length} Titeln gefunden.`);
+    return { id: playlist.id, count: entries.length, total: data.tracks.length };
   }
 
   /* ---------------------------------------------------------------- *
@@ -11052,6 +11126,8 @@
         artwork: item.artwork,
         link: item.link,
         linkLabel: item.kind === 'radio' ? 'Sender öffnen' : 'Anhören',
+        // Friends get "In CleanMusic anhören" – never for local files or radio.
+        shareUrl: window.CMShare && window.CMShare.refOf(item) ? shareUrl(item) : '',
         playing: !audio.paused,
         live: item.kind === 'radio',
         position: audio.currentTime || 0,
@@ -12232,6 +12308,13 @@
             <small>Sonst erscheint das Bild „logo“ aus deiner Discord-Application.</small>
           </span>
           <input type="checkbox" id="opt-discord-art" ${config.showArtwork ? 'checked' : ''} />
+        </label>
+        <label class="toggle-row" style="margin-top:8px">
+          <span>
+            <strong>Knopf „In CleanMusic anhören“</strong>
+            <small>Freunde sehen in deinem Discord-Profil einen Knopf, der den Song bei ihnen in CleanMusic öffnet. Lokale Dateien und Radio werden nie geteilt. Du selbst siehst den Knopf nicht – das macht Discord so.</small>
+          </span>
+          <input type="checkbox" id="opt-discord-share" ${config.shareButton !== false ? 'checked' : ''} />
         </label>
         <details class="discord-help">
           <summary>So bekommst du eine Application-ID (2 Minuten)</summary>
@@ -13478,6 +13561,9 @@ ${updatePanel()}
         case 'extend':
           extendPlaylist(state.currentPlaylist);
           return;
+        case 'share':
+          sharePlaylist(state.currentPlaylist);
+          return;
         case 'smart-refresh':
           refreshSmartPlaylist(state.currentPlaylist);
           return;
@@ -14103,6 +14189,11 @@ ${updatePanel()}
         saveDiscord({ showArtwork: event.target.checked });
         return;
       }
+      if (event.target.id === 'opt-discord-share') {
+        saveDiscord({ shareButton: event.target.checked });
+        pushPresence(true);
+        return;
+      }
 
       if (event.target.id === 'opt-full-tracks') {
         state.settings.fullTracks = event.target.checked;
@@ -14621,6 +14712,8 @@ ${updatePanel()}
     },
     groupState: () => ({ name: group.name, members: Object.keys(group.members).length, card: ownWeekCard() }),
     groupImport: (code, options) => importGroupLink(code, options),
+    playlistShare: (id) => sharePlaylist(id),
+    playlistImportLink: (code, options) => importPlaylistLink(code, options),
     groupReset: () => {
       group = GROUP.normalizeGroup({});
       persistGroup();

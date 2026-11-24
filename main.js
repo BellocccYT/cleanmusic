@@ -2331,6 +2331,56 @@ function createMainWindow() {
             console.error('SMOKE_PLUGIN_V3_FAIL:', error.message);
           }
 
+          // Social without a server: Discord "In CleanMusic anhören", playlist links.
+          try {
+            const social = await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const cm = window.CleanMusic;
+                const made = cm.smartPlaylist('Smoke Teilen', { sources: ['charts', 'recs', 'history', 'favorites'], limit: 5 });
+                const shared = await cm.playlistShare(made.id);
+                const imported = shared && shared.code ? await cm.playlistImportLink(shared.code, { confirm: true }) : null;
+                cm.smartPlaylistRemove(made.id);
+                if (imported && imported.id) cm.smartPlaylistRemove(imported.id);
+                return {
+                  shared: shared ? shared.shared : 0,
+                  link: shared && shared.link ? shared.link.slice(0, 46) : '',
+                  code: shared ? shared.code : '',
+                  imported: imported ? imported.count : 0,
+                  total: imported ? imported.total : 0,
+                };
+              })()
+            `);
+            const parsedPlaylist = parseDeepLink('cleanmusic://playlist?d=' + encodeURIComponent(social.code));
+            const deepOk = Boolean(parsedPlaylist && parsedPlaylist.action === 'playlist' && parsedPlaylist.code === social.code) &&
+              parseDeepLink('cleanmusic://playlist?d=P1.<script>') === null;
+
+            const probe = new DiscordPresence();
+            probe.configure({ enabled: false, clientId: '', showArtwork: true, shareButton: true });
+            const shareLink = 'https://bellocccyt.github.io/cleanmusic/s/?src=deezer&id=3135553&t=One+More+Time';
+            const both = probe.buildActivity({ title: 'T', artist: 'A', playing: true, link: 'https://www.deezer.com/track/3135553', linkLabel: 'Anhören', shareUrl: shareLink });
+            const foreign = probe.buildActivity({ title: 'T', artist: 'A', playing: true, shareUrl: 'https://evil.example/s/?x' });
+            probe.configure({ enabled: false, clientId: '', showArtwork: true, shareButton: false });
+            const off = probe.buildActivity({ title: 'T', artist: 'A', playing: true, link: 'https://www.deezer.com/track/3135553', shareUrl: shareLink });
+            const discordOk = Boolean(both && both.buttons && both.buttons.length === 2 && both.buttons[0].label === 'In CleanMusic anhören') &&
+              !(foreign && foreign.buttons && foreign.buttons.length) &&
+              Boolean(off && off.buttons && off.buttons.length === 1 && off.buttons[0].label === 'Anhören');
+
+            const socialResult = {
+              shared: social.shared,
+              link: social.link,
+              imported: social.imported,
+              total: social.total,
+              deepLink: deepOk,
+              discord: discordOk,
+            };
+            const socialOk = social.shared > 0 && social.link === 'https://bellocccyt.github.io/cleanmusic/p/#P1.' &&
+              social.imported > 0 && social.total === social.shared && deepOk && discordOk;
+            if (!socialOk) throw new Error(JSON.stringify(socialResult));
+            console.log('SMOKE_SOCIAL:', JSON.stringify(socialResult));
+          } catch (error) {
+            console.error('SMOKE_SOCIAL_FAIL:', error.message);
+          }
+
           // "Warum läuft das?" explains source, license and queue origin.
           const whySmoke = await mainWindow.webContents.executeJavaScript(`
             (async () => {
@@ -4211,6 +4261,7 @@ function discordConfig() {
     enabled: Boolean(config.enabled),
     clientId: String(config.clientId || ''),
     showArtwork: config.showArtwork !== false,
+    shareButton: config.shareButton !== false,
   };
 }
 
@@ -4226,6 +4277,7 @@ ipcMain.handle('discord-set', (_event, patch) => {
   if ('enabled' in input) next.enabled = Boolean(input.enabled);
   if ('clientId' in input) next.clientId = String(input.clientId || '').replace(/\D/g, '').slice(0, 25);
   if ('showArtwork' in input) next.showArtwork = Boolean(input.showArtwork);
+  if ('shareButton' in input) next.shareButton = Boolean(input.shareButton);
   writeConfig({ discord: next });
   presence.configure(next);
   return { config: next, status: presence.status() };
@@ -4257,6 +4309,9 @@ ipcMain.on('discord-update', (_event, track) => {
     artwork: cleanUrl(track.artwork, /^https:\/\//i),
     link: cleanUrl(track.link, /^https:\/\//i),
     linkLabel: cleanText(track.linkLabel, 32),
+    shareUrl: String(track.shareUrl || '').length <= 512
+      ? cleanUrl(track.shareUrl, /^https:\/\/bellocccyt\.github\.io\/cleanmusic\/s\/\?/)
+      : '',
     playing: Boolean(track.playing),
     live: Boolean(track.live),
     position: Number(track.position) || 0,
@@ -7024,6 +7079,10 @@ function parseDeepLink(raw) {
     if (url.protocol !== 'cleanmusic:') return null;
     const host = (url.hostname || url.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
     // 1.24: group week card (renderer/core/group.js) – only the code, checked again there.
+    if (host === 'playlist') {
+      const code = String(url.searchParams.get('d') || '');
+      return /^P1\.[A-Za-z0-9_-]{8,12000}$/.test(code) ? { action: 'playlist', code } : null;
+    }
     if (host === 'group') {
       const code = String(url.searchParams.get('c') || '');
       return /^CM1-[A-Za-z0-9_-]{8,1200}-[0-9a-z]{1,8}$/.test(code) ? { action: 'group', code } : null;

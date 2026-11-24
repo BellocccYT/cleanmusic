@@ -35,6 +35,10 @@ Ausgangspunkt: CleanMusic 1.20.1.
 - Englische Oberfläche und englische README.
 - Visuelle Regressionstests.
 - Weitere freie Dienste oder Plugin-Komfort.
+- ✅ **Social ohne Server (Weg A, 1.26.0):** Discord-Knopf „In CleanMusic anhören“, Playlists per
+  Link (`site/p/#P1.…`, `renderer/core/share.js`). Als Nächstes möglich: gemeinsame
+  Gruppen-Playlist per Code, Listening-Party im WLAN, mehr Wochenkarten-Statistik.
+  Social mit Server (Konten, Live-Aktivität) bleibt bewusst außen vor.
 - ✅ **Gruppen-Wochenkarte** (1.23.0): „Wer hört diese Woche am meisten?“ ohne Server – Code
   teilen, Codes der anderen einfügen, lokale Rangliste (`renderer/core/group.js`).
   Seit 1.24.0 mit Link (`site/g/#CM1-…` → `cleanmusic://group?c=…`, Rückfrage vor dem Hinzufügen).

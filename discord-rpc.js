@@ -69,10 +69,12 @@ class DiscordPresence {
     this.lastPayload = null;
     this.pending = undefined; // undefined = nothing queued, null = clear
     this.listeningType = true; // falls back to "Playing" if Discord rejects type 2
+    this.shareButton = true; // "In CleanMusic anhören" (share page) as first button
     this.onChange = null;
   }
 
-  configure({ enabled, clientId, showArtwork }) {
+  configure({ enabled, clientId, showArtwork, shareButton }) {
+    this.shareButton = shareButton !== false;
     const id = String(clientId || '').trim();
     const nextEnabled = Boolean(enabled) && /^\d{15,25}$/.test(id);
     const changed = nextEnabled !== this.enabled || id !== this.clientId;
@@ -282,10 +284,17 @@ class DiscordPresence {
         duration > 0 && !track.live ? { start, end: Math.round(start + duration * 1000) } : { start };
     }
 
+    // Discord shows at most two buttons – to the others, not to yourself.
+    const buttons = [];
+    const share = String(track.shareUrl || '');
+    if (this.shareButton && /^https:\/\/bellocccyt\.github\.io\/cleanmusic\/s\/\?/.test(share) && share.length <= 512) {
+      buttons.push({ label: 'In CleanMusic anhören', url: share });
+    }
     const link = String(track.link || '');
     if (/^https:\/\//i.test(link) && link.length <= 512) {
-      activity.buttons = [{ label: clip(track.linkLabel || 'Anhören', 32), url: link }];
+      buttons.push({ label: clip(track.linkLabel || 'Anhören', 32), url: link });
     }
+    if (buttons.length) activity.buttons = buttons.slice(0, 2);
 
     return activity;
   }

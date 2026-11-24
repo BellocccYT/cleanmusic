@@ -164,6 +164,12 @@ Music bzw. YouTube Music, eine Spotify-Suche und den Download. Die Seite liegt i
 und wird per GitHub Pages veröffentlicht (`.github/workflows/pages.yml`); sie speichert
 nichts und hat keine Statistik.
 
+**Playlists teilen (ab 1.26.0):** In jeder Playlist gibt es **Teilen**. Der Link
+(`https://bellocccyt.github.io/cleanmusic/p/#P1.…`) enthält die Titel als komprimierten Code
+hinter dem `#` – der geht nie an einen Server. Antippen zeigt die Titelliste und öffnet
+CleanMusic, das vor dem Übernehmen nachfragt und die Titel bei Deezer, Apple Music oder über
+dein Quellen-Plugin wiederfindet. Lokale Dateien und Radio bleiben bei dir; bis zu 100 Titel.
+
 ### Chrome-Erweiterung für YouTube (2.0)
 
 Unter `extras/browser-extension/cleanmusic-youtube/` liegt eine Manifest-V3-Erweiterung,
@@ -434,7 +440,9 @@ von allen Leistungsstufen unberührt.
 
 Zeigt in deinem Discord-Profil „Hört CleanMusic“ mit Titel, Artist, Cover,
 Fortschrittsbalken und einem *Anhören*-Link. Läuft lokal über den
-Discord-Client (IPC), standardmäßig **aus**.
+Discord-Client (IPC), standardmäßig **aus**. Ab 1.26.0 sehen Freunde zusätzlich den Knopf
+**„In CleanMusic anhören“**, der den Song bei ihnen öffnet (abschaltbar; nie für lokale
+Dateien oder Radio; du selbst siehst den Knopf nicht – das macht Discord so).
 
 1. Im [Discord Developer Portal](https://discord.com/developers/applications)
    „New Application“ anlegen, Name z. B. *CleanMusic*.
