@@ -36,6 +36,7 @@
     onboardingMusic: 'cleanmusic.onboardingmusic.v1', // boolean
     schema: 'cleanmusic.schema.v1', // { version, history } – see core/migrations.js
     quarantine: 'cleanmusic.quarantine.v1', // { items: [{ key, reason, at, raw }] } unreadable values
+    group: 'cleanmusic.group.v1', // { name, members: { key: weekCard } } – see core/group.js
     schemaSnapshot: 'cleanmusic.schema.snapshot.v1', // local pre-migration snapshot (no file access)
   };
 

@@ -58,6 +58,7 @@
     schema: 'object',
     quarantine: 'object',
     schemaSnapshot: 'object',
+    group: 'object',
   };
 
   // Human-readable names for messages in the UI.

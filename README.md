@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.22.0**
+**Version 1.23.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -137,6 +137,13 @@ nächste Titel wird vorgeladen). Nicht bei Radio und „Titel wiederholen“.
 In der Seitenleiste: Hörminuten, abgespielte Titel, Top-Künstler, Top-Titel, wann du hörst
 (nach Uhrzeit und Monat) und deine meistgenutzte Quelle – für diesen Monat, das Jahr oder
 alles. Gezählt wird nur lokal (`cleanmusic.stats.v1`), ab Version 1.7.
+
+**Gruppe (ab 1.23.0):** Wer hört diese Woche am meisten? Unten im Rückblick gibst du dir
+einen Namen und kopierst deine **Wochenkarte** – ein kurzer Text mit Code (`CM1-…`),
+den du in eure WhatsApp- oder Discord-Gruppe schickst. Die Codes der anderen fügst du
+ein, CleanMusic zeigt daraus die Rangliste der Kalenderwoche. Kein Konto, kein Server:
+geteilt wird nur, was in der Karte steht (Name, Hörzeit, Titelzahl, bis zu drei
+Top-Künstler). Der Code schützt nur vor Tippfehlern, nicht vor Schummeln – es ist ein Spaß.
 
 ### Künstlerseiten
 

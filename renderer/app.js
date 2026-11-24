@@ -5778,6 +5778,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.23.0': [
+      'Neu im Rückblick: Gruppe – wer hört diese Woche am meisten? Kopiere deine Wochenkarte, schick sie in eure WhatsApp- oder Discord-Gruppe und füge die Codes der anderen ein.',
+      'Die Rangliste entsteht nur bei dir: kein Konto, kein Server. Geteilt wird nur, was in der Karte steht (Name, Hörzeit, Titelzahl, Top-Künstler).',
+      'CleanMusic zählt dafür ab jetzt auch deine Hörzeit pro Woche.',
+    ],
     '1.22.0': [
       'Smart-Playlists aktualisieren sich auf Wunsch selbst: beim Öffnen oder einmal am Tag – oder wie bisher nur per Knopf.',
       'Neue Filter: Tempo (BPM von–bis), Stimmung (Chill, Party, Workout, Fokus, Gaming, Traurig) und Art (lokal, Vorschau, volle Titel, freie Musik).',
@@ -7457,6 +7462,47 @@
 
   let stats = readJSON(STORAGE.stats, null) || { months: {} };
   if (!stats.months || typeof stats.months !== 'object') stats = { months: {} };
+  // 1.23: weeks for the group week card – { "2026-W48": { secs, plays, artists: { name: secs } } }
+  if (!stats.weeks || typeof stats.weeks !== 'object' || Array.isArray(stats.weeks)) stats.weeks = {};
+  const GROUP = window.CMGroup;
+  let group = GROUP.normalizeGroup(readJSON(STORAGE.group, {}));
+
+  function statsWeek() {
+    const key = GROUP.weekKey();
+    if (!stats.weeks[key]) {
+      stats.weeks[key] = { secs: 0, plays: 0, artists: {} };
+      Object.keys(stats.weeks)
+        .sort()
+        .slice(0, -8)
+        .forEach((old) => delete stats.weeks[old]);
+    }
+    return stats.weeks[key];
+  }
+
+  function persistGroup() {
+    writeJSON(STORAGE.group, group);
+  }
+
+  function ownWeekCard() {
+    const week = GROUP.weekKey();
+    const row = stats.weeks[week] || { secs: 0, plays: 0, artists: {} };
+    const artists = Object.entries(row.artists || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name]) => name);
+    return GROUP.normalizeCard({ name: group.name, week, secs: row.secs, plays: row.plays, artists, at: Date.now() });
+  }
+
+  function weekLabel(week) {
+    const match = /^(\d{4})-W(\d{2})$/.exec(String(week || ''));
+    return match ? `KW ${Number(match[2])}/${match[1]}` : String(week || '');
+  }
+
+  function hoursMinutes(secs) {
+    const total = Math.round((Number(secs) || 0) / 60);
+    const hours = Math.floor(total / 60);
+    return hours ? `${hours} h ${total % 60} min` : `${total} min`;
+  }
   let statsTimer = null;
   let reviewPeriod = 'year';
 
@@ -7483,6 +7529,8 @@
     const month = statsMonth();
     month.secs += secs;
     month.hours[new Date().getHours()] += secs;
+    const week = statsWeek();
+    week.secs += secs;
     const source = item.sourceLabel || (item.kind === 'local' ? 'Lokal' : item.kind) || 'Sonstige';
     month.sources[source] = (month.sources[source] || 0) + secs;
     if (item.kind !== 'radio') {
@@ -7492,6 +7540,11 @@
       if (artist) {
         const row = month.artists[artist] || (month.artists[artist] = { s: 0, p: 0 });
         row.s += secs;
+        week.artists[artist] = (week.artists[artist] || 0) + secs;
+        const names = Object.keys(week.artists);
+        if (names.length > 60) {
+          names.sort((a, b) => week.artists[a] - week.artists[b]).slice(0, names.length - 50).forEach((name) => delete week.artists[name]);
+        }
       }
       const ids = Object.keys(month.tracks);
       if (ids.length > 700) {
@@ -7505,6 +7558,7 @@
     if (!entry || entry.kind === 'radio') return;
     const month = statsMonth();
     month.plays += 1;
+    statsWeek().plays += 1;
     const track = month.tracks[entry.id] || (month.tracks[entry.id] = { s: 0, p: 0, e: storable(entry) });
     track.p += 1;
     const artist = primaryArtist(entry.artist || '');
@@ -7657,7 +7711,99 @@
         }</div>
         <div class="song-list">${data.topTracks.map((row, index) => songRow(row.e, index, 'review')).join('') || '<p class="muted">Noch keine Titel.</p>'}</div>`
         }
+        ${groupPanel()}
       </div>`;
+  }
+
+  /* Group week card: "Wer hört diese Woche am meisten?" – codes are shared by
+   * the users themselves (WhatsApp, Discord …); nothing goes to a server. */
+  function groupPanel() {
+    const week = GROUP.weekKey();
+    const own = ownWeekCard();
+    const rows = GROUP.ranking(group, group.name ? own : Object.assign({}, own, { name: 'Du' }), week);
+    const older = Object.values(group.members).filter((card) => card.week !== week).length;
+    const list = rows.length
+      ? rows
+          .map(
+            (row) => `<li class="${row.self ? 'self' : ''}">
+              <span class="rv-rank">${row.rank}</span>
+              <span class="rv-who"><strong>${row.self ? (group.name ? `${esc(row.name)} (du)` : 'Du') : esc(row.name)}</strong><small>${esc(hoursMinutes(row.secs))} · ${row.plays.toLocaleString('de-DE')} Titel${row.artists.length ? ` · ${esc(row.artists[0])}` : ''}</small></span>
+              ${row.self ? '' : `<button class="icon-btn small" data-group-remove="${esc(GROUP.memberKey(row.name))}" title="Aus der Gruppe entfernen" aria-label="${esc(row.name)} entfernen">×</button>`}
+            </li>`
+          )
+          .join('')
+      : '';
+    return `
+      <div class="panel rv-group" id="rv-group">
+        <h3>Gruppe · ${esc(weekLabel(week))}</h3>
+        <p class="muted small">Wer hört diese Woche am meisten? Schick deine Wochenkarte in eure Gruppe (WhatsApp, Discord …) und füge die Codes der anderen hier ein. Kein Konto, kein Server – geteilt wird nur, was in der Karte steht.</p>
+        <div class="rv-group-row">
+          <input id="rv-group-name" type="text" maxlength="${GROUP.NAME_MAX}" placeholder="Dein Name in der Gruppe" value="${esc(group.name)}" spellcheck="false" />
+          <button class="btn primary small" data-review-action="group-copy">Meine Wochenkarte kopieren</button>
+        </div>
+        <div class="rv-group-row">
+          <input id="rv-group-code" type="text" placeholder="Code einfügen (CM1-…)" spellcheck="false" />
+          <button class="btn ghost small" data-review-action="group-add">Hinzufügen</button>
+        </div>
+        <ol class="rv-group-list">${list}</ol>
+        ${older ? `<p class="muted small">${older} Karte${older === 1 ? '' : 'n'} aus früheren Wochen ausgeblendet – sie zählen nur in ihrer Woche.</p>` : ''}
+      </div>`;
+  }
+
+  function saveGroupName() {
+    const field = $('#rv-group-name');
+    if (!field) return group.name;
+    const name = GROUP.normalizeCard({ name: field.value }).name;
+    if (name !== group.name) {
+      group = GROUP.normalizeGroup(Object.assign({}, group, { name }));
+      persistGroup();
+    }
+    return group.name;
+  }
+
+  async function copyWeekCard() {
+    if (!saveGroupName()) {
+      toast('Gib zuerst deinen Namen für die Gruppe ein.');
+      const field = $('#rv-group-name');
+      if (field) field.focus();
+      return '';
+    }
+    const card = ownWeekCard();
+    const code = GROUP.encode(card);
+    const top = card.artists.length ? ` · Top: ${card.artists.join(', ')}` : '';
+    const text = `🎧 Meine CleanMusic-Woche (${weekLabel(card.week)}): ${hoursMinutes(card.secs)} · ${card.plays} Titel${top}\nWer hört mehr? Code in CleanMusic unter Rückblick → Gruppe einfügen:\n${code}`;
+    const ok = await bridge.copyText(text);
+    toast(ok ? 'Wochenkarte kopiert – jetzt in eure Gruppe schicken.' : 'Kopieren nicht möglich');
+    return code;
+  }
+
+  function addWeekCard() {
+    const field = $('#rv-group-code');
+    const result = GROUP.decode(field ? field.value : '');
+    if (result.error) {
+      toast(result.error);
+      return false;
+    }
+    const card = result.card;
+    if (group.name && GROUP.memberKey(card.name) === GROUP.memberKey(group.name)) {
+      toast('Das ist deine eigene Karte – die zählt schon automatisch.');
+      return false;
+    }
+    const added = GROUP.addMember(group, card);
+    if (!added.added) {
+      toast(added.older ? `Von ${card.name} gibt es schon eine neuere Karte.` : 'Karte konnte nicht übernommen werden.');
+      return false;
+    }
+    group = added.group;
+    persistGroup();
+    renderReview();
+    const week = GROUP.weekKey();
+    toast(
+      card.week === week
+        ? `${card.name} ist dabei: ${hoursMinutes(card.secs)} diese Woche.`
+        : `Karte von ${card.name} ist aus ${weekLabel(card.week)} – sie zählt nur in dieser Woche.`
+    );
+    return true;
   }
 
   async function copyReview() {
@@ -8291,6 +8437,28 @@
         if (action.dataset.reviewAction === 'play') playList('review', 0);
         if (action.dataset.reviewAction === 'share-image') shareReviewImage(false);
         if (action.dataset.reviewAction === 'copy-image') shareReviewImage(true);
+        if (action.dataset.reviewAction === 'group-copy') copyWeekCard();
+        if (action.dataset.reviewAction === 'group-add') addWeekCard();
+      });
+      view.addEventListener('click', (event) => {
+        const remove = event.target.closest('[data-group-remove]');
+        if (!remove) return;
+        const key = remove.dataset.groupRemove;
+        if (!group.members[key]) return;
+        const name = group.members[key].name;
+        delete group.members[key];
+        persistGroup();
+        renderReview();
+        toast(`${name} aus der Gruppe entfernt`);
+      });
+      view.addEventListener('change', (event) => {
+        if (event.target.id === 'rv-group-name') {
+          saveGroupName();
+          renderReview();
+        }
+      });
+      view.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && event.target.id === 'rv-group-code') addWeekCard();
       });
     }
     window.addEventListener('beforeunload', () => {
@@ -14350,6 +14518,12 @@ ${updatePanel()}
     },
     smartPlaylistRebuild: (id) => rebuildSmartPlaylist(playlistById(id), { quiet: true }),
     refreshDailyRecipes: () => refreshDailyRecipes(),
+    groupState: () => ({ name: group.name, members: Object.keys(group.members).length, card: ownWeekCard() }),
+    groupReset: () => {
+      group = GROUP.normalizeGroup({});
+      persistGroup();
+      if (state.view === 'review') renderReview();
+    },
     smartPlaylistAge: (id, ms) => {
       const playlist = playlistById(id);
       if (!playlist || !playlist.smart) return false;

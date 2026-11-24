@@ -2201,6 +2201,62 @@ function createMainWindow() {
             console.error('SMOKE_RECIPES_FAIL:', error.message);
           }
 
+          // 1.23: group week card – own card, friend codes, ranking, remove.
+          try {
+            const groupSmoke = await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const cm = window.CleanMusic;
+                const G = window.CMGroup;
+                const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                cm.groupReset();
+                cm.showView('review');
+                await wait(200);
+                const nameField = document.querySelector('#rv-group-name');
+                nameField.value = 'Smoke';
+                nameField.dispatchEvent(new Event('change', { bubbles: true }));
+                await wait(80);
+                const week = G.weekKey();
+                const friend = G.encode({ name: 'Freundin', week, secs: 7200, plays: 30, artists: ['Kevin MacLeod'], at: Date.now() });
+                const add = (text) => {
+                  const field = document.querySelector('#rv-group-code');
+                  field.value = text;
+                  document.querySelector('[data-review-action="group-add"]').click();
+                };
+                add('Schau mal: ' + friend + ' :)');
+                await wait(120);
+                add(friend.slice(0, -2) + 'zz');
+                await wait(80);
+                const own = G.encode(cm.groupState().card);
+                add(own);
+                await wait(80);
+                const rows = Array.from(document.querySelectorAll('.rv-group-list li')).map((li) => li.querySelector('strong').textContent);
+                const state = cm.groupState();
+                const removeButton = document.querySelector('[data-group-remove="freundin"]');
+                if (removeButton) removeButton.click();
+                await wait(120);
+                const after = cm.groupState();
+                const stored = JSON.parse(localStorage.getItem(window.CMPersist.STORAGE.group) || '{}');
+                cm.groupReset();
+                cm.showView('home');
+                return {
+                  name: state.name,
+                  members: state.members,
+                  rows,
+                  ownCardWeek: state.card.week === week,
+                  removed: after.members === 0,
+                  persisted: stored.name === 'Smoke',
+                };
+              })()
+            `);
+            const groupOk = groupSmoke.name === 'Smoke' && groupSmoke.members === 1 &&
+              groupSmoke.rows[0] === 'Freundin' && groupSmoke.rows.includes('Smoke (du)') &&
+              groupSmoke.rows.length === 2 && groupSmoke.ownCardWeek && groupSmoke.removed && groupSmoke.persisted;
+            if (!groupOk) throw new Error(JSON.stringify(groupSmoke));
+            console.log('SMOKE_GROUP:', JSON.stringify(groupSmoke));
+          } catch (error) {
+            console.error('SMOKE_GROUP_FAIL:', error.message);
+          }
+
           // "Warum läuft das?" explains source, license and queue origin.
           const whySmoke = await mainWindow.webContents.executeJavaScript(`
             (async () => {

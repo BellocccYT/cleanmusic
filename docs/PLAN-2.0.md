@@ -35,10 +35,9 @@ Ausgangspunkt: CleanMusic 1.20.1.
 - Englische Oberfläche und englische README.
 - Visuelle Regressionstests.
 - Weitere freie Dienste oder Plugin-Komfort.
-- **Gruppen-Wochenkarte (Idee aus 1.22):** „Wer hört diese Woche am meisten?“ ohne Server –
-  jeder teilt seine Wochen-Statistik als Code/Link (Hörminuten, Top-Artists, Titelzahl), die
-  anderen fügen ihn ein, CleanMusic zeigt lokal eine Rangliste. Kein Konto, keine Cloud,
-  nur freiwillig geteilte Zahlen.
+- ✅ **Gruppen-Wochenkarte** (1.23.0): „Wer hört diese Woche am meisten?“ ohne Server – Code
+  teilen, Codes der anderen einfügen, lokale Rangliste (`renderer/core/group.js`).
+  Später möglich: Link `cleanmusic://group?c=…` zum Einfügen mit einem Klick.
 
 ### Nicht-Ziele
 

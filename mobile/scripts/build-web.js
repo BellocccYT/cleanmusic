@@ -141,6 +141,7 @@ const mustExist = [
   'core/persist.js',
   'core/migrations.js',
   'core/recipes.js',
+  'core/group.js',
   'core/text.js',
   'audio/queue.js',
   'onboarding-music.js',
