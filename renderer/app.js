@@ -7345,6 +7345,8 @@
 
   /* --- Playlists per link (no server: the code sits in the #fragment) --- */
   const PLAYLIST_PAGE = 'https://bellocccyt.github.io/cleanmusic/p/';
+  // Voluntary support. A donation unlocks nothing – no paywall (see LEGAL.md).
+  const SUPPORT_URL = 'https://github.com/sponsors/BellocccYT';
 
   async function sharePlaylist(id) {
     const playlist = playlistById(id);
@@ -12921,6 +12923,18 @@
           </label>
         </div>
 
+        <div class="panel" id="support-panel">
+          <h3>CleanMusic unterstützen</h3>
+          <p>
+            CleanMusic ist kostenlos und Open Source – und bleibt es. Wenn du die Weiterentwicklung
+            unterstützen möchtest, geht das freiwillig über GitHub Sponsors. Eine Spende schaltet
+            nichts frei: Alle Funktionen gibt es für alle.
+          </p>
+          <div class="row">
+            <button class="btn primary small" data-support="open">${ICONS.heart} Auf GitHub Sponsors unterstützen</button>
+          </div>
+        </div>
+
 ${updatePanel()}
 
         ${downloadsPanel()}
@@ -13781,6 +13795,10 @@ ${updatePanel()}
       }
       if (event.target.closest('[data-shortcuts]')) {
         showShortcuts();
+        return;
+      }
+      if (event.target.closest('[data-support]')) {
+        bridge.openExternal(SUPPORT_URL);
         return;
       }
 

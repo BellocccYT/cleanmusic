@@ -907,6 +907,13 @@ Neue Versionen postet `.github/workflows/discord-changelog.yml` automatisch in
 `docs/releases/<tag>.md` (zugleich der Text der GitHub-Release); ohne diese Datei wird
 nichts gepostet. Nachholen: Actions → „Discord-Changelog“ → Run workflow.
 
+## Unterstützen
+
+CleanMusic ist kostenlos und Open Source – und bleibt es. Wer die Weiterentwicklung
+unterstützen möchte, kann das freiwillig über
+[GitHub Sponsors](https://github.com/sponsors/BellocccYT) tun (auch in der App unter
+*Einstellungen → System*). Eine Spende schaltet nichts frei; alle Funktionen gibt es für alle.
+
 ## Rechtliches
 
 Die eingebetteten Player sind die offiziellen Web-Angebote der Anbieter; es

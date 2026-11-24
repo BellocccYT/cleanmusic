@@ -2433,6 +2433,7 @@ function createMainWindow() {
               }
               const active = document.querySelector('#view-settings .settings-tab.active');
               return {
+                support: Boolean(document.querySelector('#view-settings #support-panel [data-support="open"]')),
                 tabs: document.querySelectorAll('#view-settings [data-settings-tab]').length,
                 active: active ? active.dataset.settingsTab : '',
                 panels,
@@ -2440,6 +2441,7 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_SETTINGS:', JSON.stringify(settingsSmoke));
+          if (!settingsSmoke.support) console.error('SMOKE_SUPPORT_FAIL: Unterstützen-Bereich fehlt im System-Tab');
 
           // First steps assistant + "what's new" card (0.12).
           const onboardingResult = await mainWindow.webContents.executeJavaScript(`
