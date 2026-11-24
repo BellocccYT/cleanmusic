@@ -1,7 +1,7 @@
-# Plugin-API (v1 und v2)
+# Plugin-API (v1, v2 und v3)
 
-CleanMusic lädt Plugins mit `apiVersion: 1` und `apiVersion: 2`. v2 ist eine
-Erweiterung: Jedes v1-Plugin läuft unverändert weiter.
+CleanMusic lädt Plugins mit `apiVersion: 1`, `2` und `3`. Jede Version erweitert die
+vorige: v1- und v2-Plugins laufen unverändert weiter.
 
 ## v1: Grundlagen und Quellen
 
@@ -215,6 +215,70 @@ async charts(limit) { return [/* Item */]; },
 Hat ein aktives Plugin `charts()`, bekommt *Trending & Neuheiten* auf der
 Startseite einen eigenen Reiter. Die Items werden wie Suchtreffer behandelt
 (abspielen über `resolve`). `charts` funktioniert auch mit `apiVersion: 1`.
+
+## v3: Manifest und Berechtigungen (CleanMusic 1.25.0+)
+
+Ein v3-Plugin beginnt mit einem **Manifest-Kopf**. CleanMusic liest ihn, **ohne das
+Plugin auszuführen**, und zeigt die Berechtigungen vor dem Aktivieren an
+(Plugin-Karte und Aktivierungs-Dialog):
+
+```js
+/* cleanmusic-plugin
+{
+  "apiVersion": 3,
+  "name": "Mein Plugin",
+  "version": "1.0.0",
+  "description": "Was es tut – in einem Satz.",
+  "permissions": ["player", "network:api.example.com", "ui:settings"]
+}
+*/
+'use strict';
+module.exports = { apiVersion: 3, name: 'Mein Plugin', /* … */ };
+```
+
+- Der Kopf muss in den ersten 8 KB der Datei stehen und gültiges JSON mit
+  `"apiVersion": 3` enthalten. Ein fehlerhafter Kopf blockiert das Laden – es gibt
+  **keinen** stillen Rückfall auf volle Rechte.
+- `module.exports.apiVersion` darf `2` bleiben, wenn das Plugin auch mit älteren
+  CleanMusic-Versionen laufen soll (die ignorieren den Kommentar). `apiVersion: 3` im
+  Modul verlangt den Manifest-Kopf.
+
+| Berechtigung | Erlaubt über die CleanMusic-Schnittstelle |
+| --- | --- |
+| `player` | `ctx.player.*` und die Ereignisse `nowplaying`/`state`/`volume` |
+| `visualizer` | `visualizer: true` – Live-Spektrum im Ereignis `visualizer` |
+| `source` | `search`, `resolve`, `lookup`, `playlist`, `charts`, `match`, `related` |
+| `downloads:cc-only` | `download` (weiterhin nur mit bestätigter CC-Lizenz) |
+| `network` | `ctx.fetch` zu jeder Adresse |
+| `network:<host>` | `ctx.fetch` nur zu diesem Host und seinen Subdomains |
+| `server:local` | nur Angabe für die Anzeige (eigener lokaler Server, z. B. für OBS) |
+| `fs:folder` | `ctx.pickFile`, `ctx.openPath` |
+| `clipboard` | `ctx.copyText` |
+| `external-links` | `ctx.openExternal` |
+| `ui:settings` | Einstellungsfelder (`settings`) |
+
+Ohne passende Berechtigung wirft die Schnittstelle einen Fehler
+(„Plugin-Berechtigung … fehlt im Manifest“), Ereignisse und Fähigkeiten bleiben aus.
+**Wichtig:** Plugins sind weiterhin Node-Code mit den Rechten des Benutzers – die
+Berechtigungen regeln, was ein Plugin *über CleanMusic* darf, und machen sichtbar, was es
+vorhat. Sie ersetzen nicht das Vertrauen in die Quelle.
+
+### Dynamische Auswahllisten
+
+Ein `select`-Feld kann seine Optionen vom Plugin holen:
+
+```js
+settings: [
+  { id: 'device', type: 'select', label: 'Gerät', options: [{ value: 'auto', label: 'Automatisch' }], optionsFrom: 'listDevices' },
+],
+listDevices: async () => [{ value: 'mic-1', label: 'USB-Mikrofon' }],
+```
+
+CleanMusic ruft `listDevices()` beim Anzeigen der Einstellungen auf (höchstens 3 s,
+höchstens 50 Einträge) und hängt die Optionen an die festen an. Gespeichert werden nur
+Werte, die in einer der beiden Listen vorkommen. Funktioniert auch mit v2.
+
+Beispiel mit Manifest: `extras/plugins/obs-visualizer.js`.
 
 ## Beispiel: OBS-Overlay
 

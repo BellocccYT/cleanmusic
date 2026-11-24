@@ -1,3 +1,12 @@
+/* cleanmusic-plugin
+{
+  "apiVersion": 3,
+  "name": "OBS-Audio-Visualizer",
+  "version": "1.2.0",
+  "description": "Echtes Live-Spektrum der laufenden Musik als OBS-Browserquelle.",
+  "permissions": ["player", "visualizer", "server:local", "clipboard", "external-links", "ui:settings"]
+}
+*/
 'use strict';
 
 /**
@@ -505,7 +514,7 @@ module.exports = {
   apiVersion: 2,
   id: 'obs-visualizer',
   name: 'OBS Audio-Visualizer',
-  version: '1.1.0',
+  version: '1.2.0',
   // Asks CleanMusic for the live spectrum (32 bands) about 25 times/second.
   visualizer: true,
   description:

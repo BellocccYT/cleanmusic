@@ -129,6 +129,13 @@ Duplikatfreiheit ab.
 **Fertig, wenn:** OBS- und Streamer.bot-Plugins unverändert laufen und ein v3-Beispiel
 seine Fähigkeiten anzeigt.
 
+**Stand:** Kern umgesetzt (`lib/plugin-manifest.js`, 5 Unit-Tests, `SMOKE_PLUGIN_V3`):
+Manifest-Kopf ohne Ausführen gelesen, Berechtigungen im Aktivierungs-Dialog und auf der
+Karte, durchgesetzt an der CleanMusic-Schnittstelle, dynamische Auswahllisten
+(`optionsFrom`). OBS-Overlay und Streamer.bot (v2) laufen unverändert, der
+OBS-Audio-Visualizer trägt ein Manifest. **Offen:** `library:read` (es gibt noch keine
+Bibliotheks-Schnittstelle) und UI-Slots (`ui:panel`).
+
 ### Phase 6 – Mobile Parität (Muss 6)
 
 - Handy/Tablet: dieselben Rezepte, Suche, Queue und Player-Zustände wie Desktop.

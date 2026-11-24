@@ -29,6 +29,7 @@ const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { DiscordPresence } = require('./discord-rpc');
+const pluginManifest = require('./lib/plugin-manifest');
 const QRCode = require('qrcode');
 
 const ROOT = __dirname;
@@ -2271,6 +2272,63 @@ function createMainWindow() {
             console.log('SMOKE_GROUP:', JSON.stringify(groupSmoke));
           } catch (error) {
             console.error('SMOKE_GROUP_FAIL:', error.message);
+          }
+
+          // Plugin-API v3: manifest read before activation, permissions enforced,
+          // dynamic select options.
+          try {
+            const pluginFolder = pluginDirs()[0];
+            fs.mkdirSync(pluginFolder, { recursive: true });
+            const v3File = path.join(pluginFolder, 'smoke-v3.js');
+            fs.writeFileSync(v3File, [
+              '/* cleanmusic-plugin',
+              '{ "apiVersion": 3, "name": "Smoke v3", "version": "0.0.1", "permissions": ["ui:settings", "network:example.com"] }',
+              '*/',
+              "'use strict';",
+              'const probe = {};',
+              'module.exports = {',
+              '  apiVersion: 3,',
+              "  name: 'Smoke v3',",
+              "  settings: [{ id: 'device', type: 'select', label: 'Gerät', options: [{ value: 'a', label: 'A' }], optionsFrom: 'listDevices' }],",
+              "  listDevices: async () => [{ value: 'b', label: 'B (dynamisch)' }],",
+              '  async setup(ctx) {',
+              "    const attempt = (fn) => { try { fn(); return 'erlaubt'; } catch (error) { return 'gesperrt'; } };",
+              '    probe.player = attempt(() => ctx.player.state());',
+              "    probe.clipboard = attempt(() => ctx.copyText('x'));",
+              "    probe.fetchOther = await ctx.fetch('https://evil.invalid/').then(() => 'erlaubt', () => 'gesperrt');",
+              "    probe.settings = Object.keys(ctx.settings.get()).join(',');",
+              '  },',
+              '  probe: () => probe,',
+              '};',
+              '',
+            ].join('\n'));
+            discoverPlugins();
+            const v3 = plugins.get('smoke-v3');
+            const before = await pluginInfo(v3, false, false);
+            await loadPlugin(v3);
+            const after = await pluginInfo(v3, true, false);
+            const probe = v3.module ? v3.module.probe() : {};
+            const deviceField = ((after.settings && after.settings.fields) || []).find((field) => field.id === 'device');
+            const v3Result = {
+              nameBefore: before.name,
+              api: before.api,
+              perms: (before.permissions || []).map((item) => item.id),
+              loaded: Boolean(v3.module),
+              error: v3.error,
+              probe,
+              dynamic: deviceField ? deviceField.options.map((option) => option.value) : [],
+            };
+            unloadPlugin(v3);
+            plugins.delete('smoke-v3');
+            fs.rmSync(v3File, { force: true });
+            const v3Ok = v3Result.nameBefore === 'Smoke v3' && v3Result.api === 3 && v3Result.perms.includes('ui:settings') &&
+              v3Result.loaded && probe.player === 'gesperrt' && probe.clipboard === 'gesperrt' &&
+              probe.fetchOther === 'gesperrt' && probe.settings === 'device' &&
+              v3Result.dynamic.includes('a') && v3Result.dynamic.includes('b');
+            if (!v3Ok) throw new Error(JSON.stringify(v3Result));
+            console.log('SMOKE_PLUGIN_V3:', JSON.stringify(v3Result));
+          } catch (error) {
+            console.error('SMOKE_PLUGIN_V3_FAIL:', error.message);
           }
 
           // "Warum läuft das?" explains source, license and queue origin.
@@ -4957,13 +5015,51 @@ function discoverPlugins() {
 
   for (const [id, info] of found) {
     const known = plugins.get(id);
-    if (known && known.file === info.file) continue;
+    const head = readPluginManifest(info.file);
+    if (known && known.file === info.file) {
+      if (!known.module) Object.assign(known, head);
+      continue;
+    }
     if (known) unloadPlugin(known);
-    plugins.set(id, { ...info, module: null, error: null });
+    plugins.set(id, { ...info, ...head, module: null, error: null });
   }
 }
 
+// Plugin-API v3: the manifest comment at the top of the file (lib/plugin-manifest.js).
+function readPluginManifest(file) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buffer = Buffer.alloc(pluginManifest.HEAD_BYTES);
+      const read = fs.readSync(fd, buffer, 0, buffer.length, 0);
+      const parsed = pluginManifest.parseManifest(buffer.subarray(0, read).toString('utf8'));
+      return { manifest: parsed.manifest, manifestError: parsed.error };
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return { manifest: null, manifestError: null };
+  }
+}
+
+function pluginAllows(plugin, permission) {
+  return pluginManifest.allows(plugin ? plugin.manifest : null, permission);
+}
+
+const SOURCE_CAPABILITIES = ['search', 'resolve', 'lookup', 'playlist', 'charts', 'match', 'related'];
+
+function permissionError(permission) {
+  return new Error(`Plugin-Berechtigung „${permission}“ fehlt im Manifest.`);
+}
+
 function pluginContext(id) {
+  const owner = plugins.get(id);
+  const manifest = owner ? owner.manifest : null;
+  const may = (permission) => pluginManifest.allows(manifest, permission);
+  const guard = (permission, fn) => (...args) => {
+    if (!may(permission)) throw permissionError(permission);
+    return fn(...args);
+  };
   const dataDir = path.join(app.getPath('userData'), 'plugin-data', id);
   return {
     apiVersion: 2,
@@ -4971,7 +5067,10 @@ function pluginContext(id) {
     platform: process.platform,
     userAgent: app.userAgentFallback,
     // Chromium's network stack – the same one the <audio> element uses.
-    fetch: (url, options) => net.fetch(url, options),
+    fetch: (url, options) =>
+      pluginManifest.allowsUrl(manifest, url)
+        ? net.fetch(url, options)
+        : Promise.reject(permissionError(`network:${(() => { try { return new URL(String(url)).hostname; } catch { return '?'; } })()}`)),
     config: {
       get: () => Object.assign({}, pluginConfig().data[id]),
       set: (patch) => {
@@ -4981,6 +5080,7 @@ function pluginContext(id) {
       },
     },
     pickFile: async (options = {}) => {
+      if (!may('fs:folder')) throw permissionError('fs:folder');
       const result = await dialog.showOpenDialog(mainWindow, {
         title: String(options.title || 'Datei auswählen'),
         properties: ['openFile'],
@@ -5001,7 +5101,9 @@ function pluginContext(id) {
     settings: {
       get: () => pluginSettingValues(id),
     },
-    player: {
+    player: !may('player')
+      ? new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : () => { throw permissionError('player'); }) })
+      : {
       state: () => JSON.parse(JSON.stringify(playerState)),
       play: () => sendPlayerCommand('play'),
       pause: () => sendPlayerCommand('pause'),
@@ -5025,14 +5127,16 @@ function pluginContext(id) {
       requests: () => callRenderer('requests'),
       removeRequest: (by) => callRenderer('removeRequest', { by: oneLine(by, 40) }),
     },
-    copyText: (text) => clipboard.writeText(String(text == null ? '' : text).slice(0, 10000)),
+    copyText: guard('clipboard', (text) => clipboard.writeText(String(text == null ? '' : text).slice(0, 10000))),
     openExternal: (url) => {
+      if (!may('external-links')) throw permissionError('external-links');
       const target = String(url || '');
       if (!/^https?:\/\//i.test(target)) return false;
       shell.openExternal(target);
       return true;
     },
     openPath: async (target) => {
+      if (!may('fs:folder')) throw permissionError('fs:folder');
       const resolved = path.resolve(String(target || ''));
       try {
         if (!fs.statSync(resolved).isDirectory()) return 'Nur Ordner können geöffnet werden.';
@@ -5076,7 +5180,7 @@ let visualizerWatchOn = false;
 
 function pluginWantsVisualizer() {
   for (const plugin of plugins.values()) {
-    if (plugin.module && plugin.module.visualizer === true) return true;
+    if (plugin.module && plugin.module.visualizer === true && pluginAllows(plugin, 'visualizer')) return true;
   }
   return false;
 }
@@ -5091,7 +5195,7 @@ function updateVisualizerWatch() {
 function emitVisualizerEvent() {
   let interested = false;
   for (const plugin of plugins.values()) {
-    if (plugin.module && plugin.module.visualizer === true && typeof plugin.module.onEvent === 'function') {
+    if (plugin.module && plugin.module.visualizer === true && pluginAllows(plugin, 'visualizer') && typeof plugin.module.onEvent === 'function') {
       interested = true;
       break;
     }
@@ -5100,6 +5204,7 @@ function emitVisualizerEvent() {
   const snapshot = JSON.parse(JSON.stringify(playerState));
   for (const plugin of plugins.values()) {
     if (!plugin.module || plugin.module.visualizer !== true) continue;
+    if (!pluginAllows(plugin, 'visualizer')) continue;
     if (typeof plugin.module.onEvent !== 'function') continue;
     try {
       const result = plugin.module.onEvent('visualizer', snapshot);
@@ -5915,6 +6020,7 @@ function emitPluginEvent(type) {
   const snapshot = JSON.parse(JSON.stringify(playerState));
   for (const plugin of plugins.values()) {
     if (!plugin.module || typeof plugin.module.onEvent !== 'function') continue;
+    if (!pluginAllows(plugin, 'player')) continue;
     try {
       const result = plugin.module.onEvent(type, snapshot);
       if (result && typeof result.catch === 'function') result.catch(() => {});
@@ -5981,7 +6087,9 @@ ipcMain.on('player-state', (_event, raw) => {
 
 const SETTING_TYPES = ['text', 'number', 'toggle', 'select', 'folder', 'password'];
 
-function pluginSettingFields(mod) {
+function pluginSettingFields(mod, plugin = null) {
+  if (plugin && !pluginAllows(plugin, 'ui:settings')) return [];
+  const dynamic = plugin && plugin.dynamicOptions ? plugin.dynamicOptions : {};
   return (mod && Array.isArray(mod.settings) ? mod.settings : [])
     .filter((field) => field && PLUGIN_ID.test(String(field.id || '').toLowerCase()) && SETTING_TYPES.includes(field.type))
     .slice(0, 24)
@@ -5993,12 +6101,53 @@ function pluginSettingFields(mod) {
       placeholder: cleanText(field.placeholder || '', 80),
       min: Number.isFinite(Number(field.min)) ? Number(field.min) : null,
       max: Number.isFinite(Number(field.max)) ? Number(field.max) : null,
-      options: (Array.isArray(field.options) ? field.options : [])
-        .filter((option) => option && option.value != null)
-        .slice(0, 20)
-        .map((option) => ({ value: cleanText(option.value, 60), label: cleanText(option.label || option.value, 60) })),
+      options: mergeOptions(
+        (Array.isArray(field.options) ? field.options : [])
+          .filter((option) => option && option.value != null)
+          .slice(0, 20)
+          .map((option) => ({ value: cleanText(option.value, 60), label: cleanText(option.label || option.value, 60) })),
+        dynamic[String(field.id)]
+      ),
+      optionsFrom: field.type === 'select' && typeof field.optionsFrom === 'string' && /^[a-zA-Z][a-zA-Z0-9_]{0,40}$/.test(field.optionsFrom)
+        ? field.optionsFrom
+        : null,
       default: field.default,
     }));
+}
+
+function mergeOptions(base, extra) {
+  const out = base.slice();
+  (Array.isArray(extra) ? extra : []).forEach((option) => {
+    if (!out.some((known) => known.value === option.value)) out.push(option);
+  });
+  return out.slice(0, 50);
+}
+
+// v3: a select field with optionsFrom: 'listDevices' asks the plugin for its
+// options when the settings are shown (max. 50, 3 s, cleaned like static ones).
+async function refreshDynamicOptions(plugin) {
+  const mod = plugin && plugin.module;
+  if (!mod) return;
+  const fields = pluginSettingFields(mod, Object.assign({}, plugin, { dynamicOptions: {} })).filter((field) => field.optionsFrom);
+  if (!fields.length) return;
+  const next = {};
+  for (const field of fields) {
+    const fn = mod[field.optionsFrom];
+    if (typeof fn !== 'function') continue;
+    try {
+      const raw = await Promise.race([
+        Promise.resolve(fn.call(mod)),
+        new Promise((resolve) => setTimeout(() => resolve([]), 3000)),
+      ]);
+      next[field.id] = (Array.isArray(raw) ? raw : [])
+        .filter((option) => option && option.value != null)
+        .slice(0, 50)
+        .map((option) => ({ value: cleanText(option.value, 60), label: cleanText(option.label || option.value, 60) }));
+    } catch {
+      next[field.id] = [];
+    }
+  }
+  plugin.dynamicOptions = next;
 }
 
 function coerceSetting(field, value) {
@@ -6023,7 +6172,7 @@ function coerceSetting(field, value) {
 
 function pluginSettingValues(id) {
   const plugin = plugins.get(id);
-  const fields = pluginSettingFields(plugin && (plugin.module || plugin.candidate));
+  const fields = pluginSettingFields(plugin && (plugin.module || plugin.candidate), plugin);
   const config = readConfig();
   const stored =
     config.pluginSettings && typeof config.pluginSettings === 'object' && config.pluginSettings[id]
@@ -6047,7 +6196,7 @@ ipcMain.handle('plugin-pick-folder', async () => {
 ipcMain.handle('plugin-settings-set', async (_event, id, patch) => {
   const plugin = readyPlugin(id);
   if (plugin && patch && typeof patch === 'object') {
-    const fields = pluginSettingFields(plugin.module);
+    const fields = pluginSettingFields(plugin.module, plugin);
     const config = readConfig();
     const all = config.pluginSettings && typeof config.pluginSettings === 'object' ? config.pluginSettings : {};
     const current = Object.assign({}, all[plugin.id]);
@@ -6078,11 +6227,17 @@ function loadPlugin(plugin) {
 
 async function loadPluginNow(plugin) {
   try {
+    Object.assign(plugin, readPluginManifest(plugin.file));
+    if (plugin.manifestError) throw new Error(`Manifest: ${plugin.manifestError}`);
     delete require.cache[require.resolve(plugin.file)];
     const mod = require(plugin.file);
     if (!mod || typeof mod !== 'object') throw new Error('Plugin exportiert kein Objekt');
-    if (mod.apiVersion !== 1 && mod.apiVersion !== 2) {
-      throw new Error('Nicht unterstützte Plugin-API (erwartet apiVersion 1 oder 2)');
+    if (mod.apiVersion !== 1 && mod.apiVersion !== 2 && mod.apiVersion !== 3) {
+      throw new Error('Nicht unterstützte Plugin-API (erwartet apiVersion 1, 2 oder 3)');
+    }
+    if (plugin.manifestError) throw new Error(`Manifest: ${plugin.manifestError}`);
+    if (mod.apiVersion === 3 && !plugin.manifest) {
+      throw new Error('Plugin-API v3 braucht den Manifest-Kopf /* cleanmusic-plugin { … } */.');
     }
     // Settings fields must already be readable inside setup().
     plugin.candidate = mod;
@@ -6130,6 +6285,8 @@ function readyPlugin(id, capability) {
   const plugin = plugins.get(String(id || ''));
   if (!plugin || !plugin.module) return null;
   if (capability && typeof plugin.module[capability] !== 'function') return null;
+  if (capability && SOURCE_CAPABILITIES.includes(capability) && !pluginAllows(plugin, 'source')) return null;
+  if (capability === 'download' && !pluginAllows(plugin, 'downloads:cc-only')) return null;
   return plugin;
 }
 
@@ -6312,6 +6469,8 @@ function cleanStream(stream) {
 async function pluginInfo(plugin, enabled, refresh) {
   const mod = plugin.module;
   let status = null;
+  if (mod) await refreshDynamicOptions(plugin);
+  const manifest = plugin.manifest || null;
 
   if (mod && typeof mod.status === 'function') {
     try {
@@ -6335,9 +6494,12 @@ async function pluginInfo(plugin, enabled, refresh) {
     enabled,
     loaded: Boolean(mod),
     error: plugin.error,
-    name: cleanText((mod && mod.name) || `${plugin.id}.js`, 80),
-    version: cleanText((mod && mod.version) || '', 30),
-    description: cleanText((mod && mod.description) || '', 600),
+    name: cleanText((mod && mod.name) || (manifest && manifest.name) || `${plugin.id}.js`, 80),
+    version: cleanText((mod && mod.version) || (manifest && manifest.version) || '', 30),
+    description: cleanText((mod && mod.description) || (manifest && manifest.description) || '', 600),
+    api: manifest ? 3 : mod && mod.apiVersion === 1 ? 1 : 2,
+    permissions: manifest ? pluginManifest.describe(manifest.permissions) : null,
+    manifestError: plugin.manifestError || null,
     help: cleanText((mod && mod.help) || '', 800),
     notice: cleanText((mod && mod.notice) || '', 800),
     source:
@@ -6358,7 +6520,7 @@ async function pluginInfo(plugin, enabled, refresh) {
       .slice(0, 6),
     settings: mod
       ? {
-          fields: pluginSettingFields(mod).map((field) => ({ ...field, default: undefined })),
+          fields: pluginSettingFields(mod, plugin).map((field) => ({ ...field, default: undefined })),
           values: pluginSettingValues(plugin.id),
         }
       : { fields: [], values: {} },

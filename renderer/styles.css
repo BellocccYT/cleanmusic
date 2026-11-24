@@ -6804,3 +6804,29 @@ html.cover-vinyl .np-art::after {
     flex-direction: column;
   }
 }
+
+/* Plugin-API v3: permission chips on the plugin card */
+.plugin-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.plugin-perm {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: var(--muted);
+  background: var(--panel-3);
+}
+.plugin-perm.high {
+  color: var(--text);
+  background: rgba(var(--warn-rgb), 0.22);
+}
+.plugin-perm.medium {
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.14);
+}
+.plugin-perm.legacy {
+  font-style: italic;
+}

@@ -165,3 +165,12 @@ Verbindung ab, versucht CleanMusic es automatisch erneut (2 s bis 30 s,
 wachsend). Der Befehl **Streamer.bot neu verbinden** in der Plugin-Karte hilft
 beim Einrichten. Die Action wird beim Verbinden einmal für den laufenden Titel
 und danach bei jedem Titelwechsel aufgerufen.
+
+## Berechtigungen (Plugin-API v3)
+
+Ab CleanMusic 1.25.0 kann ein Plugin am Dateianfang ein Manifest tragen
+(`/* cleanmusic-plugin { … } */`). CleanMusic zeigt dann **vor dem Aktivieren**, was das
+Plugin darf (z. B. Wiedergabe steuern, Live-Spektrum lesen, lokaler Server), und sperrt
+alles andere an der CleanMusic-Schnittstelle. Der OBS-Audio-Visualizer hat ein solches
+Manifest; OBS-Overlay und Streamer.bot nutzen weiter die ältere API v2. Details:
+`docs/PLUGIN-API.md`.

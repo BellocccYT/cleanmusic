@@ -12295,11 +12295,17 @@
     if (!plugin) return;
 
     if (enabled && !options.skipConfirm) {
+      if (plugin.manifestError) {
+        toast(`Plugin „${plugin.name}“ hat ein fehlerhaftes Manifest: ${plugin.manifestError}`);
+        renderSettings();
+        return;
+      }
       const ok = await askConfirm({
         title: `Plugin „${plugin.name}“ aktivieren?`,
         text:
           `${plugin.file}\n\n` +
-          'Plugins sind nicht Teil von CleanMusic und laufen mit vollen Rechten auf deinem PC. ' +
+          pluginPermissionText(plugin) +
+          '\n\nPlugins sind nicht Teil von CleanMusic und laufen als Programmcode auf deinem PC. ' +
           'Aktiviere nur Dateien aus einer Quelle, der du vertraust. Was ein Plugin tut und ob ' +
           'das bei den jeweiligen Diensten erlaubt ist, liegt in deiner Verantwortung.',
         confirm: 'Aktivieren',
@@ -12435,6 +12441,30 @@
     renderSettings();
   }
 
+  // Plugin-API v3: the manifest says what a plugin may do (lib/plugin-manifest.js).
+  function pluginPermissionText(plugin) {
+    if (!Array.isArray(plugin.permissions)) {
+      return 'Keine Angaben zu Berechtigungen – ältere Plugin-API (v' + (plugin.api || 2) + '): Das Plugin kann alles, was CleanMusic kann.';
+    }
+    if (!plugin.permissions.length) return 'Dieses Plugin möchte keine besonderen Berechtigungen.';
+    const risk = { high: '⚠ ', medium: '• ', low: '· ' };
+    return 'Dieses Plugin möchte:\n' + plugin.permissions
+      .map((item) => `${risk[item.risk] || '• '}${item.label} – ${item.detail}`)
+      .join('\n');
+  }
+
+  function pluginPermissionChips(plugin) {
+    if (plugin.manifestError) {
+      return `<div class="plugin-perms"><span class="plugin-perm high">Manifest fehlerhaft: ${esc(plugin.manifestError)}</span></div>`;
+    }
+    if (!Array.isArray(plugin.permissions)) {
+      return `<div class="plugin-perms"><span class="plugin-perm legacy" title="Ältere Plugin-API ohne Berechtigungs-Angaben">API v${esc(plugin.api || 2)} · keine Angaben</span></div>`;
+    }
+    return `<div class="plugin-perms">${plugin.permissions
+      .map((item) => `<span class="plugin-perm ${esc(item.risk)}" title="${esc(item.detail)}">${esc(item.label)}</span>`)
+      .join('') || '<span class="plugin-perm low">Keine besonderen Berechtigungen</span>'}</div>`;
+  }
+
   function pluginCard(plugin) {
     const status = plugin.status;
     const ready = isPluginReady(plugin);
@@ -12486,6 +12516,7 @@
             }</strong>
             ${plugin.description ? `<small>${esc(plugin.description)}</small>` : ''}
             <small class="plugin-file" title="${esc(plugin.file)}">${esc(plugin.file)}</small>
+            ${pluginPermissionChips(plugin)}
           </span>
           <input type="checkbox" data-plugin-toggle="${esc(plugin.id)}" ${plugin.enabled ? 'checked' : ''} ${
             busy ? 'disabled' : ''

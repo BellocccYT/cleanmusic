@@ -10,7 +10,7 @@
   "scripts": {
     "start": "electron .",
     "test:core": "node test/core.text.test.js && node test/core.storage.test.js",
-    "test:unit": "node test/core.text.test.js && node test/core.storage.test.js && node test/persist.test.js && node test/queue.test.js && node test/migrations.test.js && node test/recipes.test.js && node test/group.test.js",
+    "test:unit": "node test/core.text.test.js && node test/core.storage.test.js && node test/persist.test.js && node test/queue.test.js && node test/migrations.test.js && node test/recipes.test.js && node test/group.test.js && node test/plugin-manifest.test.js",
     "dev": "electron . --dev",
     "smoke": "electron . --smoke",
     "smoke:plugin": "electron . --smoke --smoke-plugin",
@@ -38,6 +38,7 @@
       "preload.js",
       "preload-mini.js",
       "discord-rpc.js",
+      "lib/**/*",
       "renderer/live-bg.js",
       "renderer/**/*",
       "renderer/remote/**/*",
