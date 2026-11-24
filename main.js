@@ -2178,6 +2178,12 @@ function createMainWindow() {
                 if (cancel && !document.querySelector('#dialog').hidden) cancel.click();
                 await wait(60);
 
+                const mixRecipe = cm.mixRecipe('again');
+                const mixAgain = cm.mixRecipe('again');
+                const mixOk = Boolean(mixRecipe) && mixRecipe.smart.refresh === 'daily' &&
+                  mixRecipe.smart.notPlayedDays === 14 && mixAgain && mixAgain.id === mixRecipe.id;
+                if (mixRecipe) cm.smartPlaylistRemove(mixRecipe.id);
+
                 [open.id, daily.id, bpm.id, kind.id].forEach((id) => cm.smartPlaylistRemove(id));
                 return {
                   rebuiltOnOpen: after.smart.updatedAt > before.smart.updatedAt,
@@ -2188,13 +2194,14 @@ function createMainWindow() {
                   bpmEmpty: bpmInfo.count === 0,
                   kindsLocalOnly: kindInfo.count === 0 || kindInfo.titles.length === kindInfo.count,
                   dialog: dialog && fields.refresh && fields.bpm && fields.moods === 6 && fields.kinds === 4,
+                  mixRecipe: mixOk,
                   count: after.count,
                 };
               })()
             `);
             const recipeOk = recipeSmoke.rebuiltOnOpen && recipeSmoke.refreshChip && recipeSmoke.why &&
               recipeSmoke.dailyFresh === 0 && recipeSmoke.dailyStale === 1 && recipeSmoke.bpmEmpty &&
-              recipeSmoke.kindsLocalOnly && recipeSmoke.dialog;
+              recipeSmoke.kindsLocalOnly && recipeSmoke.dialog && recipeSmoke.mixRecipe;
             if (!recipeOk) throw new Error(JSON.stringify(recipeSmoke));
             console.log('SMOKE_RECIPES:', JSON.stringify(recipeSmoke));
           } catch (error) {
@@ -2229,6 +2236,8 @@ function createMainWindow() {
                 const own = G.encode(cm.groupState().card);
                 add(own);
                 await wait(80);
+                const linked = G.encode({ name: 'Linkgast', week, secs: 60, plays: 1, artists: [], at: Date.now() });
+                const linkImport = await cm.groupImport(linked, { confirm: true });
                 const rows = Array.from(document.querySelectorAll('.rv-group-list li')).map((li) => li.querySelector('strong').textContent);
                 const state = cm.groupState();
                 const removeButton = document.querySelector('[data-group-remove="freundin"]');
@@ -2243,15 +2252,22 @@ function createMainWindow() {
                   members: state.members,
                   rows,
                   ownCardWeek: state.card.week === week,
-                  removed: after.members === 0,
+                  removed: after.members === 1,
                   persisted: stored.name === 'Smoke',
+                  linkImport,
+                  linkedCode: linked,
                 };
               })()
             `);
-            const groupOk = groupSmoke.name === 'Smoke' && groupSmoke.members === 1 &&
+            const groupOk = groupSmoke.name === 'Smoke' && groupSmoke.members === 2 &&
               groupSmoke.rows[0] === 'Freundin' && groupSmoke.rows.includes('Smoke (du)') &&
-              groupSmoke.rows.length === 2 && groupSmoke.ownCardWeek && groupSmoke.removed && groupSmoke.persisted;
-            if (!groupOk) throw new Error(JSON.stringify(groupSmoke));
+              groupSmoke.rows.length === 3 && groupSmoke.ownCardWeek && groupSmoke.removed && groupSmoke.persisted &&
+              groupSmoke.linkImport === true;
+            const parsedGroup = parseDeepLink('cleanmusic://group?c=' + encodeURIComponent(groupSmoke.linkedCode));
+            groupSmoke.deepLink = Boolean(parsedGroup && parsedGroup.action === 'group' && parsedGroup.code === groupSmoke.linkedCode) &&
+              parseDeepLink('cleanmusic://group?c=<script>') === null && parseDeepLink('cleanmusic://group') === null;
+            delete groupSmoke.linkedCode;
+            if (!groupOk || !groupSmoke.deepLink) throw new Error(JSON.stringify(groupSmoke));
             console.log('SMOKE_GROUP:', JSON.stringify(groupSmoke));
           } catch (error) {
             console.error('SMOKE_GROUP_FAIL:', error.message);
@@ -6845,6 +6861,11 @@ function parseDeepLink(raw) {
     const url = new URL(String(raw || ''));
     if (url.protocol !== 'cleanmusic:') return null;
     const host = (url.hostname || url.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase();
+    // 1.24: group week card (renderer/core/group.js) – only the code, checked again there.
+    if (host === 'group') {
+      const code = String(url.searchParams.get('c') || '');
+      return /^CM1-[A-Za-z0-9_-]{8,1200}-[0-9a-z]{1,8}$/.test(code) ? { action: 'group', code } : null;
+    }
     const action = host === 'add' ? 'add' : 'play';
     const src = String(url.searchParams.get('src') || '');
     if (!['deezer', 'apple', 'youtube', 'search'].includes(src)) return null;

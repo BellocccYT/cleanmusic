@@ -3563,6 +3563,7 @@
                  <button class="btn ghost small mix-icon-btn" data-mix-action="save" data-mix-id="${esc(def.id)}" ${
                    empty ? 'disabled' : ''
                  } title="Als Playlist speichern">${ICONS.plus}</button>
+                 <button class="btn ghost small mix-icon-btn" data-mix-action="recipe" data-mix-id="${esc(def.id)}" title="Als Rezept speichern – eigene Smart-Playlist, erneuert sich täglich" aria-label="Als Rezept speichern">${ICONS.spark}</button>
                </div>`
         }
       </article>`;
@@ -3715,6 +3716,27 @@
     if (action === 'play') playMix(id, false);
     else if (action === 'shuffle') playMix(id, true);
     else if (action === 'save') saveMix(id);
+    else if (action === 'recipe') saveMixAsRecipe(id);
+  }
+
+  // System recipe → own smart playlist with the Mix's rules (renews daily, editable).
+  function saveMixAsRecipe(id) {
+    const def = mixDef(id);
+    const rules = RECIPES.system(id);
+    if (!def || !rules) return null;
+    const name = `${def.title} (Rezept)`;
+    const existing = state.collection.playlists.find((playlist) => playlist.smart && playlist.name === name);
+    if (existing) {
+      openPlaylist(existing.id);
+      toast(`„${name}“ gibt es schon – hier kannst du die Regeln anpassen.`);
+      return existing;
+    }
+    const playlist = createPlaylist(name, '', rules);
+    rebuildSmartPlaylist(playlist, { quiet: true });
+    onCollectionChanged({ playlists: true });
+    openPlaylist(playlist.id);
+    toast(`Rezept „${name}“ angelegt – ${playlist.items.length} Titel, erneuert sich täglich. Über „Regeln“ anpassen.`);
+    return playlist;
   }
 
   /* ---------------------------------------------------------------- *
@@ -5778,6 +5800,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.24.0': [
+      'Wochenkarte mit Link: Deine Karte enthält jetzt einen Link – deine Freunde tippen drauf, CleanMusic öffnet sich und fragt, ob die Karte in die Gruppe soll.',
+      'Mixes als Rezept: Der neue Funken-Knopf an jedem Mix legt eine eigene Smart-Playlist mit denselben Regeln an, die sich täglich erneuert und die du anpassen kannst.',
+    ],
     '1.23.0': [
       'Neu im Rückblick: Gruppe – wer hört diese Woche am meisten? Kopiere deine Wochenkarte, schick sie in eure WhatsApp- oder Discord-Gruppe und füge die Codes der anderen ein.',
       'Die Rangliste entsteht nur bei dir: kein Konto, kein Server. Geteilt wird nur, was in der Karte steht (Name, Hörzeit, Titelzahl, Top-Künstler).',
@@ -7246,6 +7272,10 @@
 
   // A shared link was opened (cleanmusic://play?…): find the song and play it.
   async function openDeepLink(link) {
+    if (link && link.action === 'group') {
+      importGroupLink(link.code);
+      return;
+    }
     if (!link || !link.src) return;
     toast(`${link.action === 'add' ? 'Song' : 'Geteilter Song'} „${link.title || 'Titel'}“ wird geladen …`);
     let entry = null;
@@ -7771,7 +7801,8 @@
     const card = ownWeekCard();
     const code = GROUP.encode(card);
     const top = card.artists.length ? ` · Top: ${card.artists.join(', ')}` : '';
-    const text = `🎧 Meine CleanMusic-Woche (${weekLabel(card.week)}): ${hoursMinutes(card.secs)} · ${card.plays} Titel${top}\nWer hört mehr? Code in CleanMusic unter Rückblick → Gruppe einfügen:\n${code}`;
+    const link = `https://bellocccyt.github.io/cleanmusic/g/#${code}`;
+    const text = `🎧 Meine CleanMusic-Woche (${weekLabel(card.week)}): ${hoursMinutes(card.secs)} · ${card.plays} Titel${top}\nWer hört mehr? Link öffnen oder in CleanMusic unter Rückblick → Gruppe einfügen:\n${link}`;
     const ok = await bridge.copyText(text);
     toast(ok ? 'Wochenkarte kopiert – jetzt in eure Gruppe schicken.' : 'Kopieren nicht möglich');
     return code;
@@ -7784,7 +7815,37 @@
       toast(result.error);
       return false;
     }
+    return addDecodedCard(result.card);
+  }
+
+  // cleanmusic://group?c=… (from the web page /g/#CM1-…): ask first, then add.
+  async function importGroupLink(code, options = {}) {
+    const result = GROUP.decode(code);
+    if (result.error) {
+      toast(result.error);
+      return false;
+    }
     const card = result.card;
+    if (!options.confirm) {
+      const ok = await askConfirm({
+        title: 'Wochenkarte hinzufügen?',
+        message: `${card.name}: ${hoursMinutes(card.secs)} in ${weekLabel(card.week)} · ${card.plays} Titel. Die Karte kommt in deine Gruppe im Rückblick.`,
+        confirm: 'Hinzufügen',
+      });
+      if (!ok) return false;
+    }
+    const added = addDecodedCard(card);
+    if (added) {
+      showView('review');
+      requestAnimationFrame(() => {
+        const panel = $('#rv-group');
+        if (panel) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+    }
+    return added;
+  }
+
+  function addDecodedCard(card) {
     if (group.name && GROUP.memberKey(card.name) === GROUP.memberKey(group.name)) {
       toast('Das ist deine eigene Karte – die zählt schon automatisch.');
       return false;
@@ -14518,7 +14579,12 @@ ${updatePanel()}
     },
     smartPlaylistRebuild: (id) => rebuildSmartPlaylist(playlistById(id), { quiet: true }),
     refreshDailyRecipes: () => refreshDailyRecipes(),
+    mixRecipe: (id) => {
+      const playlist = saveMixAsRecipe(id);
+      return playlist ? { id: playlist.id, name: playlist.name, smart: playlist.smart, count: playlist.items.length } : null;
+    },
     groupState: () => ({ name: group.name, members: Object.keys(group.members).length, card: ownWeekCard() }),
+    groupImport: (code, options) => importGroupLink(code, options),
     groupReset: () => {
       group = GROUP.normalizeGroup({});
       persistGroup();

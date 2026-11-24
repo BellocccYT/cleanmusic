@@ -153,4 +153,16 @@ check('chips and explanation are readable', () => {
   assert.match(R.explain(rules, 'unbekannt'), /gewählten Quellen/);
 });
 
+check('system recipes: every Mix has valid, daily rules', () => {
+  assert.deepEqual(plain(R.SYSTEM_IDS), ['daily', 'fresh', 'discover', 'again', 'deep']);
+  R.SYSTEM_IDS.forEach((id) => {
+    const rules = R.system(id);
+    assert.equal(rules.refresh, 'daily', id);
+    assert.ok(rules.sources.length >= 2, id);
+    assert.deepEqual(plain(R.normalize(rules)), plain(rules), `${id} ist schon normalisiert`);
+  });
+  assert.equal(R.system('gibtsnicht'), null);
+  assert.notEqual(R.system('daily'), R.system('daily'), 'jedes Mal eine eigene Kopie');
+});
+
 console.log(`${checks} passed, 0 failed`);

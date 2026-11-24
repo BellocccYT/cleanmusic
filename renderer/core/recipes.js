@@ -49,6 +49,21 @@
     { id: 'traurig', label: 'Traurig' },
   ];
 
+  // System recipes: the five daily Mixes as editable smart-playlist rules.
+  // "Als Rezept speichern" turns one into an own playlist that renews daily.
+  const SYSTEM = {
+    daily: { sources: ['favorites', 'history', 'local', 'recs'], limit: 30, refresh: 'daily' },
+    fresh: { sources: ['recs', 'charts'], limit: 30, refresh: 'daily', notPlayedDays: 30 },
+    discover: { sources: ['recs', 'charts'], limit: 30, refresh: 'daily', notPlayedDays: 90 },
+    again: { sources: ['history', 'favorites'], limit: 30, refresh: 'daily', notPlayedDays: 14 },
+    deep: { sources: ['playlists', 'local'], limit: 30, refresh: 'daily', notPlayedDays: 30 },
+  };
+
+  /** Rules for a system recipe (a fresh copy), or null. */
+  function system(id) {
+    return Object.prototype.hasOwnProperty.call(SYSTEM, id) ? normalize(SYSTEM[id]) : null;
+  }
+
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   const pick = (list, values) =>
@@ -230,5 +245,7 @@
     needsRefresh,
     chips,
     explain,
+    SYSTEM_IDS: Object.keys(SYSTEM),
+    system,
   };
 })();

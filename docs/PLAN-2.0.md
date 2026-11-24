@@ -37,7 +37,7 @@ Ausgangspunkt: CleanMusic 1.20.1.
 - Weitere freie Dienste oder Plugin-Komfort.
 - ✅ **Gruppen-Wochenkarte** (1.23.0): „Wer hört diese Woche am meisten?“ ohne Server – Code
   teilen, Codes der anderen einfügen, lokale Rangliste (`renderer/core/group.js`).
-  Später möglich: Link `cleanmusic://group?c=…` zum Einfügen mit einem Klick.
+  Seit 1.24.0 mit Link (`site/g/#CM1-…` → `cleanmusic://group?c=…`, Rückfrage vor dem Hinzufügen).
 
 ### Nicht-Ziele
 
@@ -204,7 +204,10 @@ Die Smoke-Suiten prüfen das unveränderte Verhalten (Shuffle, Restore, Queue-Re
 (8 Unit-Tests), Aktualisieren manuell/beim Öffnen/täglich, Filter Tempo, Stimmung und Art
 (zusätzlich zu stream-sicher, Credit, „nicht gehört seit“, Dislikes), „Warum dieser Titel?“
 über `smart.why` und die Zeile „Rezept“ in „Warum läuft das?“, `SMOKE_RECIPES`.
-**Offen:** Mixes und Vorlagen als schreibgeschützte System-Rezepte mit „Duplizieren“;
-Lizenz-Filter jenseits von stream-sicher/Credit.
+**1.24.0:** System-Rezepte – die fünf Mixes lassen sich als eigene, täglich erneuerte
+Smart-Playlist speichern („Duplizieren“). Vorlagen bleiben eigene Playlists, weil sie im Netz
+suchen (Rezepte tun das bewusst nicht).
+**Offen:** Lizenz-Filter jenseits von stream-sicher/Credit. Damit ist Phase 3 bis auf diesen
+Punkt erledigt; nächster großer Schritt laut Plan: Phase 1 (Store) oder Phase 5 (Plugin-API v3).
 
 **Regel:** Kein Schritt ohne grüne Tests. Kein Big-Bang.

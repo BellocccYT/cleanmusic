@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.23.0**
+**Version 1.24.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -144,6 +144,9 @@ den du in eure WhatsApp- oder Discord-Gruppe schickst. Die Codes der anderen fü
 ein, CleanMusic zeigt daraus die Rangliste der Kalenderwoche. Kein Konto, kein Server:
 geteilt wird nur, was in der Karte steht (Name, Hörzeit, Titelzahl, bis zu drei
 Top-Künstler). Der Code schützt nur vor Tippfehlern, nicht vor Schummeln – es ist ein Spaß.
+Ab 1.24.0 steckt die Karte in einem Link (`…/cleanmusic/g/#CM1-…`): Antippen öffnet
+CleanMusic, das vor dem Hinzufügen nachfragt. Der Code steht hinter dem `#` und wird
+dadurch nicht an GitHub Pages übertragen.
 
 ### Künstlerseiten
 
@@ -206,7 +209,9 @@ Wunsch **nach Ordner**.
   Ab 1.22.0 kommen dazu: **Aktualisieren** nur per Knopf, bei jedem Öffnen oder
   einmal am Tag; Filter für **Tempo** (BPM von–bis, nur bereits analysierte Titel),
   **Stimmung** und **Art** (lokal, Vorschau, volle Titel, freie Musik). „Warum läuft
-  das?“ nennt Quelle und Regel, aus der ein Titel stammt.
+  das?“ nennt Quelle und Regel, aus der ein Titel stammt. Ab 1.24.0 legt der
+  Funken-Knopf an jedem **Mix** eine eigene Smart-Playlist mit den Regeln des Mixes an
+  (täglich neu, frei anpassbar).
 - **Vorlagen** (Seitenleiste): acht fertige Themen wie *Gaming & Retro*,
   *Chill & Lounge*, *Episch & Action* oder *Workout & Energy*. Jede gibt es
   **stream-sicher** – nur NCS, CC BY und CC0, also mit Credit im Stream nutzbar –
