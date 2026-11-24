@@ -304,7 +304,7 @@ offiziellen Seiten von Deezer, Apple Music, YouTube Music und Spotify.
 - **Privat:** so lassen, wie es ist. Ohne Plugins nutzt die App ausschließlich
   offizielle Player und offizielle Vorschau-APIs.
 - **Öffentlich auf GitHub:** neutraler Name, keine Logos, klarer Disclaimer,
-  keine Monetarisierung (freiwillige Spenden über GitHub Sponsors schalten nichts frei –
+  keine Monetarisierung (freiwillige Spenden über Ko-fi schalten nichts frei –
   keine Paywall, keine Lizenz-Keys), keine gebündelten Assets – und den Ordner `plugins/`
   nicht mit veröffentlichen. Dann ist es ein nachvollziehbares
   Open-Source-Projekt mit Restrisiko – kein garantierter Bestand.

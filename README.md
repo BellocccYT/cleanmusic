@@ -911,7 +911,7 @@ nichts gepostet. Nachholen: Actions → „Discord-Changelog“ → Run workflow
 
 CleanMusic ist kostenlos und Open Source – und bleibt es. Wer die Weiterentwicklung
 unterstützen möchte, kann das freiwillig über
-[GitHub Sponsors](https://github.com/sponsors/BellocccYT) tun (auch in der App unter
+[Ko-fi](https://ko-fi.com/belloccc) tun (auch in der App unter
 *Einstellungen → System*). Eine Spende schaltet nichts frei; alle Funktionen gibt es für alle.
 
 ## Rechtliches
