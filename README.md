@@ -903,7 +903,9 @@ Bugs und Funktionswünsche bitte weiterhin über die
 auffindbar und lassen sich mit Logs und Screenshots nachvollziehen.
 
 Neue Versionen postet `.github/workflows/discord-changelog.yml` automatisch in
-`#changelogs`; der Text der GitHub-Release-Notes wird zum Embed.
+`#changelogs`, sobald der Build die Dateien hochgeladen hat. Der Text kommt aus
+`docs/releases/<tag>.md` (zugleich der Text der GitHub-Release); ohne diese Datei wird
+nichts gepostet. Nachholen: Actions → „Discord-Changelog“ → Run workflow.
 
 ## Rechtliches
 

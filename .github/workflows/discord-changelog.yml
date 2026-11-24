@@ -1,21 +1,40 @@
 name: Discord-Changelog
 
-# Postet jede veröffentlichte GitHub-Release als Embed in den Discord-Kanal.
-# Die Release-Notes werden zum Text – also beim Release ruhig etwas eintragen.
+# Postet eine Desktop-Release als Embed in den Discord-Kanal #changelogs.
+#
+# Automatisch: build.yml ruft diesen Workflow auf, sobald die Release-Dateien
+# hochgeladen sind – aber nur, wenn es docs/releases/<tag>.md gibt. Diese Datei
+# ist zugleich der Text der GitHub-Release, also vor dem Tag anlegen.
+#
+# Warum kein `on: release`? Releases, die der Build mit dem GITHUB_TOKEN anlegt,
+# lösen für andere Workflows kein Ereignis aus – der Post kam deshalb nie an.
+# Hand-Releases würden sonst doppelt gepostet.
 #
 # Einrichtung:
 #   1. Discord → Server-Einstellungen → Integrationen → Webhooks → Neuer Webhook
 #      → Kanal #changelogs → URL kopieren.
 #   2. GitHub → Settings → Secrets and variables → Actions → New repository secret
 #      Name: DISCORD_WEBHOOK   Wert: die kopierte URL.
-#   3. Test: Actions → „Discord-Changelog" → Run workflow.
+#   3. Nachholen/Test: Actions → „Discord-Changelog“ → Run workflow
+#      (Tag angeben, leer = neueste Release).
 #
-# Mobile-Releases (Tag `mobile-…`) werden übersprungen, damit der Desktop-Kanal ruhig bleibt.
+# Mobile-Releases (Tag `mobile-…`) werden übersprungen.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release-Tag, z. B. v1.26.0 (leer = neueste Release)"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      DISCORD_WEBHOOK:
+        required: false
 
 permissions:
   contents: read
@@ -27,38 +46,36 @@ jobs:
       - name: Payload bauen
         id: payload
         env:
-          EVENT: ${{ github.event_name }}
-          TAG: ${{ github.event.release.tag_name }}
-          NAME: ${{ github.event.release.name }}
-          BODY: ${{ github.event.release.body }}
-          URL: ${{ github.event.release.html_url }}
+          TAG: ${{ inputs.tag }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          if [ "$EVENT" = "release" ]; then
-            # Android/TV-Releases gehören nicht in den Desktop-Changelog.
-            if [ "${TAG#mobile-}" != "$TAG" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            TITLE="${NAME:-$TAG}"
+          if [ -n "${TAG:-}" ]; then
+            gh api "repos/$REPO/releases/tags/$TAG" > release.json
           else
-            # Manueller Test: neueste Release laden.
-            gh api "repos/$REPO/releases/latest" > latest.json
-            TAG=$(jq -r '.tag_name // empty' latest.json)
-            if [ -z "$TAG" ]; then
-              echo "Keine Release gefunden." >&2
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            TITLE=$(jq -r '.name // .tag_name' latest.json)
-            BODY=$(jq -r '.body // ""' latest.json)
-            URL=$(jq -r '.html_url' latest.json)
+            gh api "repos/$REPO/releases/latest" > release.json
           fi
 
-          TITLE=$(printf '%s' "$TITLE" | sed -E 's/^v//')
+          TAG=$(jq -r '.tag_name // empty' release.json)
+          if [ -z "$TAG" ]; then
+            echo "Keine Release gefunden." >&2
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Android/TV-Releases gehören nicht in den Desktop-Changelog.
+          if [ "${TAG#mobile-}" != "$TAG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Name "CleanMusic 1.26.0" oder "v1.26.0" -> "1.26.0".
+          TITLE=$(jq -r '.name // .tag_name' release.json | sed -E 's/^CleanMusic //; s/^v//')
+          URL=$(jq -r '.html_url' release.json)
+          # Die erste Überschrift wiederholt nur den Titel – weglassen, ebenso
+          # Leerzeilen davor.
+          BODY=$(jq -r '.body // ""' release.json | tr -d '\r' | sed -E '1{/^#+ /d}' | sed -E '/./,$!d')
 
           jq -n \
             --arg title "CleanMusic $TITLE" \
