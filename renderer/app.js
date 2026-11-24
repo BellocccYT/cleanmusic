@@ -144,17 +144,13 @@
 
   // Smart playlists ("Rezepte"): the rules are stored on the playlist and the
   // items are rebuilt from music that is already on the device. No network.
-  const SMART_SOURCES = [
-    { id: 'favorites', label: 'Favoriten', help: 'Alles, was du mit ♥ gespeichert hast.' },
-    { id: 'local', label: 'Lokale Musik', help: 'Dateien aus deinen Ordnern.' },
-    { id: 'history', label: 'Verlauf', help: 'Was du zuletzt gehört hast.' },
-    { id: 'playlists', label: 'Meine Playlists', help: 'Titel aus deinen anderen Playlists.' },
-    { id: 'recs', label: 'Vorschläge', help: 'Die zuletzt geladenen Empfehlungen.' },
-    { id: 'charts', label: 'Charts & Neuheiten', help: 'Nur, wenn die Startseite sie schon geladen hat.' },
-  ];
-  const SMART_DAYS = [0, 7, 14, 30, 90];
-  const SMART_LIMIT_MIN = 5;
-  const SMART_LIMIT_MAX = 100;
+  // The pure part (rules, filters, interleaving, refresh) lives in
+  // renderer/core/recipes.js (window.CMRecipes, tested in test/recipes.test.js).
+  const RECIPES = window.CMRecipes;
+  const SMART_SOURCES = RECIPES.SOURCES;
+  const SMART_DAYS = RECIPES.DAYS;
+  const SMART_LIMIT_MIN = RECIPES.LIMIT_MIN;
+  const SMART_LIMIT_MAX = RECIPES.LIMIT_MAX;
 
   const bridge = window.cm || {
     pickFolder: async () => {
@@ -615,24 +611,7 @@
    * ---------------------------------------------------------------- */
 
   function normalizeSmartRules(raw) {
-    const input = raw && typeof raw === 'object' ? raw : {};
-    const sources = Array.from(
-      new Set(
-        (Array.isArray(input.sources) ? input.sources : []).filter((id) =>
-          SMART_SOURCES.some((source) => source.id === id)
-        )
-      )
-    );
-    const days = Number(input.notPlayedDays);
-    return {
-      sources: sources.length ? sources : ['favorites', 'local', 'history'],
-      limit: Math.min(SMART_LIMIT_MAX, Math.max(SMART_LIMIT_MIN, Math.round(Number(input.limit)) || 30)),
-      streamSafe: Boolean(input.streamSafe),
-      withCredit: Boolean(input.withCredit),
-      notPlayedDays: SMART_DAYS.includes(days) ? days : 0,
-      excludeDislikes: input.excludeDislikes !== false,
-      updatedAt: Number(input.updatedAt) || 0,
-    };
+    return RECIPES.normalize(raw);
   }
 
   function loadCollection() {
@@ -816,26 +795,31 @@
     return `id:${entry.id}`;
   }
 
-  function smartAccept(entry, rules, lastPlayed) {
-    if (!validEntry(entry) || entry.kind === 'radio') return false;
-    if (rules.streamSafe && !streamSafe(entry)) return false;
-    if (rules.withCredit && !entry.credit) return false;
-    if (rules.excludeDislikes && (tasteTrackValue(entry) < 0 || tasteArtistValue(entry) < 0)) return false;
-    if (rules.notPlayedDays > 0) {
-      const last = lastPlayed.get(entry.id) || 0;
-      if (last && Date.now() - last < rules.notPlayedDays * DAY) return false;
-    }
-    return true;
+  function smartContext(lastPlayed) {
+    return {
+      valid: validEntry,
+      streamSafe,
+      disliked: (entry) => tasteTrackValue(entry) < 0 || tasteArtistValue(entry) < 0,
+      lastPlayed: (id) => lastPlayed.get(id) || 0,
+      bpm: (entry) => Number(bpmCache[entry.id]) || 0,
+      mood: (entry) => moodOf(entry) || '',
+      now: Date.now(),
+    };
+  }
+
+  function smartAccept(entry, rules, lastPlayed, context) {
+    return !RECIPES.rejects(entry, rules, context || smartContext(lastPlayed));
   }
 
   function smartSourceGroups(rules, selfId, lastPlayed) {
     const groups = [];
-    const add = (entries) => {
+    const context = smartContext(lastPlayed);
+    const add = (entries, source) => {
       if (!Array.isArray(entries) || !entries.length) return;
       const seen = new Set();
       const list = [];
       entries.forEach((entry) => {
-        if (!smartAccept(entry, rules, lastPlayed)) return;
+        if (!smartAccept(entry, rules, lastPlayed, context)) return;
         const key = smartKey(entry);
         if (seen.has(key)) return;
         seen.add(key);
@@ -854,19 +838,19 @@
           score(b) - score(a) ||
           String(a.title || '').localeCompare(String(b.title || ''), 'de')
       );
-      groups.push(list);
+      groups.push({ source, list });
     };
 
-    if (rules.sources.includes('favorites')) add(state.collection.favorites);
-    if (rules.sources.includes('local')) add(state.library.entries);
-    if (rules.sources.includes('history')) add(history.map((row) => row.entry));
+    if (rules.sources.includes('favorites')) add(state.collection.favorites, 'favorites');
+    if (rules.sources.includes('local')) add(state.library.entries, 'local');
+    if (rules.sources.includes('history')) add(history.map((row) => row.entry), 'history');
     if (rules.sources.includes('playlists')) {
       state.collection.playlists.forEach((playlist) => {
-        if (playlist.id !== selfId && !playlist.smart) add(playlist.items);
+        if (playlist.id !== selfId && !playlist.smart) add(playlist.items, 'playlists');
       });
     }
-    if (rules.sources.includes('recs')) add(state.recs.tracks);
-    if (rules.sources.includes('charts')) add(state.charts.tracks.concat(state.releases.tracks));
+    if (rules.sources.includes('recs')) add(state.recs.tracks, 'recs');
+    if (rules.sources.includes('charts')) add(state.charts.tracks.concat(state.releases.tracks), 'charts');
     return groups;
   }
 
@@ -874,30 +858,8 @@
     const normalized = normalizeSmartRules(rules);
     const lastPlayed = options.lastPlayed || new Map(history.map((row) => [row.entry.id, row.last]));
     const groups = smartSourceGroups(normalized, selfId, lastPlayed);
-    const out = [];
-    const seenIds = new Set();
-    const seenKeys = new Set();
-    const cursors = groups.map(() => 0);
-    let added = true;
-
-    while (out.length < normalized.limit && added) {
-      added = false;
-      for (let index = 0; index < groups.length && out.length < normalized.limit; index += 1) {
-        const list = groups[index];
-        while (cursors[index] < list.length) {
-          const entry = list[cursors[index]];
-          cursors[index] += 1;
-          const key = smartKey(entry);
-          if (seenIds.has(entry.id) || seenKeys.has(key)) continue;
-          seenIds.add(entry.id);
-          seenKeys.add(key);
-          out.push(entry);
-          added = true;
-          break;
-        }
-      }
-    }
-    return out;
+    const result = RECIPES.collect(groups, normalized.limit, smartKey);
+    return options.withWhy ? result : result.items;
   }
 
   function smartBuild(playlist) {
@@ -907,8 +869,9 @@
 
   function rebuildSmartPlaylist(playlist, options = {}) {
     if (!playlist || !playlist.smart) return 0;
-    playlist.items = smartBuild(playlist);
-    playlist.smart = normalizeSmartRules(playlist.smart);
+    const result = smartCollect(playlist.smart, playlist.id, { withWhy: true });
+    playlist.items = result.items.map((entry) => storable(entry));
+    playlist.smart = normalizeSmartRules(Object.assign({}, playlist.smart, { why: result.why }));
     playlist.smart.updatedAt = Date.now();
     playlist.updatedAt = Date.now();
     if (!options.quiet) {
@@ -919,16 +882,23 @@
   }
 
   function smartRuleChips(smart) {
-    const rules = normalizeSmartRules(smart);
-    const chips = rules.sources.map(
-      (id) => (SMART_SOURCES.find((source) => source.id === id) || {}).label || id
-    );
-    if (rules.streamSafe) chips.push('Nur stream-sicher');
-    if (rules.withCredit) chips.push('Nur mit Credit');
-    if (rules.notPlayedDays) chips.push(`${rules.notPlayedDays} Tage nicht gehört`);
-    if (rules.excludeDislikes) chips.push('Ohne Dislikes');
-    chips.push(`Max. ${rules.limit}`);
-    return chips.map((label) => `<span class="smart-chip">${esc(label)}</span>`).join('');
+    return RECIPES.chips(smart)
+      .map((label) => `<span class="smart-chip">${esc(label)}</span>`)
+      .join('');
+  }
+
+  // Recipes with refresh "daily" are rebuilt once per day (start, then hourly
+  // check); "onOpen" ones when their playlist is opened.
+  function refreshDailyRecipes() {
+    let changed = 0;
+    state.collection.playlists.forEach((playlist) => {
+      if (playlist.smart && playlist.smart.refresh === 'daily' && RECIPES.needsRefresh(playlist.smart, 'start')) {
+        rebuildSmartPlaylist(playlist, { quiet: true });
+        changed += 1;
+      }
+    });
+    if (changed) onCollectionChanged({ playlists: true });
+    return changed;
   }
 
   function smartUpdatedLabel(value) {
@@ -1191,6 +1161,35 @@
             <span><strong>Ohne Dislikes</strong><small>„Weniger davon“ und abgelehnte Artists bleiben draußen.</small></span>
           </label>
         </div>
+        <div class="smart-row">
+          <label class="smart-field">
+            <span>Aktualisieren</span>
+            <select id="smart-refresh">${RECIPES.REFRESH.map(
+              (item) => `<option value="${item.id}" ${rules.refresh === item.id ? 'selected' : ''}>${esc(item.label)}</option>`
+            ).join('')}</select>
+          </label>
+          <label class="smart-field">
+            <span>Tempo (BPM)</span>
+            <span class="smart-bpm">
+              <input id="smart-bpm-min" type="number" min="0" max="${RECIPES.BPM_MAX}" step="5" placeholder="von" value="${rules.bpmMin || ''}" />
+              <span aria-hidden="true">–</span>
+              <input id="smart-bpm-max" type="number" min="0" max="${RECIPES.BPM_MAX}" step="5" placeholder="bis" value="${rules.bpmMax || ''}" />
+            </span>
+          </label>
+        </div>
+        <fieldset class="smart-group">
+          <legend>Stimmung</legend>
+          <div class="smart-pills">${RECIPES.MOODS.map(
+            (mood) => `<label class="smart-pill"><input type="checkbox" data-smart-mood="${mood.id}" ${rules.moods.includes(mood.id) ? 'checked' : ''} /><span>${esc(mood.label)}</span></label>`
+          ).join('')}</div>
+          <small class="smart-hint">Erkannt an Ordner, Titel und Artist. Leer = egal. Tempo kennt CleanMusic nur von Titeln, die schon analysiert wurden.</small>
+        </fieldset>
+        <fieldset class="smart-group">
+          <legend>Art</legend>
+          <div class="smart-pills">${RECIPES.KINDS.map(
+            (kind) => `<label class="smart-pill"><input type="checkbox" data-smart-kind="${kind.id}" ${rules.kinds.includes(kind.id) ? 'checked' : ''} /><span>${esc(kind.label)}</span></label>`
+          ).join('')}</div>
+        </fieldset>
         <p class="smart-preview" id="smart-preview"></p>
       </div>`;
 
@@ -1217,6 +1216,12 @@
         withCredit: Boolean((root.querySelector('#smart-with-credit') || {}).checked),
         notPlayedDays: Number((root.querySelector('#smart-days') || {}).value) || 0,
         excludeDislikes: Boolean((root.querySelector('#smart-no-dislikes') || {}).checked),
+        refresh: String((root.querySelector('#smart-refresh') || {}).value || 'manual'),
+        bpmMin: Number((root.querySelector('#smart-bpm-min') || {}).value) || 0,
+        bpmMax: Number((root.querySelector('#smart-bpm-max') || {}).value) || 0,
+        moods: Array.from(root.querySelectorAll('[data-smart-mood]:checked')).map((input) => input.dataset.smartMood),
+        kinds: Array.from(root.querySelectorAll('[data-smart-kind]:checked')).map((input) => input.dataset.smartKind),
+        why: existing && existing.smart ? existing.smart.why : {},
       },
     });
 
@@ -3849,8 +3854,13 @@
   }
 
   function openPlaylist(id) {
-    if (!playlistById(id)) return;
+    const playlist = playlistById(id);
+    if (!playlist) return;
     state.currentPlaylist = id;
+    if (playlist.smart && RECIPES.needsRefresh(playlist.smart, 'open')) {
+      rebuildSmartPlaylist(playlist, { quiet: true });
+      onCollectionChanged({ playlists: true });
+    }
     renderPlaylist();
     showView('playlist');
   }
@@ -5406,6 +5416,15 @@
       ['Lizenz', license || 'Keine Lizenzangabe'],
       ['Stream-sicher', safe ? 'Ja – mit Credit im Stream nutzbar' : 'Nein oder unbekannt'],
     ];
+    const recipeList = String(state.queue.kind || '').startsWith('playlist:')
+      ? playlistById(state.queue.kind.slice('playlist:'.length))
+      : null;
+    if (recipeList && recipeList.smart) {
+      rows.push(['Rezept', RECIPES.explain(recipeList.smart, item.id, {
+        bpm: Number(bpmCache[item.id]) || 0,
+        mood: moodOf(item) || '',
+      })]);
+    }
     if (item.duration) rows.push(['Länge', fmtLong(item.duration)]);
     if (item.path) rows.push(['Datei', item.path]);
 
@@ -5759,6 +5778,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.22.0': [
+      'Smart-Playlists aktualisieren sich auf Wunsch selbst: beim Öffnen oder einmal am Tag – oder wie bisher nur per Knopf.',
+      'Neue Filter: Tempo (BPM von–bis), Stimmung (Chill, Party, Workout, Fokus, Gaming, Traurig) und Art (lokal, Vorschau, volle Titel, freie Musik).',
+      '„Warum läuft das?“ zeigt bei Smart-Playlists, aus welcher Quelle und nach welcher Regel ein Titel ausgewählt wurde.',
+    ],
     '1.21.0': [
       'Datensicherung bei Updates: Muss ein Update deine gespeicherten Daten umbauen, legt CleanMusic vorher automatisch eine Sicherung an (die letzten fünf bleiben).',
       'Beschädigte Einträge werden nicht mehr stillschweigend überschrieben, sondern beiseitegelegt – CleanMusic sagt dir, was betroffen war.',
@@ -14188,6 +14212,8 @@ ${updatePanel()}
     applyVolume();
     syncDiagnosticState();
     setTimeout(reportMigrations, 1500);
+    setTimeout(refreshDailyRecipes, 5000);
+    setInterval(refreshDailyRecipes, 60 * 60 * 1000);
 
     // Plugins (API v2): player events, commands, messages.
     ['play', 'pause', 'ended', 'seeked', 'loadedmetadata', 'emptied'].forEach((name) =>
@@ -14323,6 +14349,17 @@ ${updatePanel()}
       };
     },
     smartPlaylistRebuild: (id) => rebuildSmartPlaylist(playlistById(id), { quiet: true }),
+    refreshDailyRecipes: () => refreshDailyRecipes(),
+    smartPlaylistAge: (id, ms) => {
+      const playlist = playlistById(id);
+      if (!playlist || !playlist.smart) return false;
+      playlist.smart.updatedAt = Date.now() - Number(ms || 0);
+      return true;
+    },
+    recipeWhy: (id, entryId) => {
+      const playlist = playlistById(id);
+      return playlist && playlist.smart ? RECIPES.explain(playlist.smart, entryId) : '';
+    },
     smartPlaylistRemove: (id) => {
       const existed = Boolean(playlistById(id));
       state.collection.playlists = state.collection.playlists.filter((item) => item.id !== id);

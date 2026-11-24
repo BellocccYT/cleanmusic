@@ -35,6 +35,10 @@ Ausgangspunkt: CleanMusic 1.20.1.
 - Englische Oberfläche und englische README.
 - Visuelle Regressionstests.
 - Weitere freie Dienste oder Plugin-Komfort.
+- **Gruppen-Wochenkarte (Idee aus 1.22):** „Wer hört diese Woche am meisten?“ ohne Server –
+  jeder teilt seine Wochen-Statistik als Code/Link (Hörminuten, Top-Artists, Titelzahl), die
+  anderen fügen ihn ein, CleanMusic zeigt lokal eine Rangliste. Kein Konto, keine Cloud,
+  nur freiwillig geteilte Zahlen.
 
 ### Nicht-Ziele
 
@@ -196,5 +200,12 @@ Die Smoke-Suiten prüfen das unveränderte Verhalten (Shuffle, Restore, Queue-Re
   Quarantäne, Idempotenz), `smoke:mobile` grün.
 - **Offen:** manueller Update-Test mit einem echten 1.20.1-Profil (nach dem Update muss
   `%APPDATA%\CleanMusic\backups\vor-schema-0-1-*.json` existieren und alles wie vorher da sein).
+
+**Phase 3 (Rezepte):** mit 1.22.0 größtenteils umgesetzt – `renderer/core/recipes.js`
+(8 Unit-Tests), Aktualisieren manuell/beim Öffnen/täglich, Filter Tempo, Stimmung und Art
+(zusätzlich zu stream-sicher, Credit, „nicht gehört seit“, Dislikes), „Warum dieser Titel?“
+über `smart.why` und die Zeile „Rezept“ in „Warum läuft das?“, `SMOKE_RECIPES`.
+**Offen:** Mixes und Vorlagen als schreibgeschützte System-Rezepte mit „Duplizieren“;
+Lizenz-Filter jenseits von stream-sicher/Credit.
 
 **Regel:** Kein Schritt ohne grüne Tests. Kein Big-Bang.

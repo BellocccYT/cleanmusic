@@ -2135,6 +2135,72 @@ function createMainWindow() {
           `);
           console.log('SMOKE_SMART:', JSON.stringify(smartSmoke));
 
+          // 2.0 Phase 3: recipes refresh on open / daily, new filters, "why".
+          try {
+            const recipeSmoke = await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const cm = window.CleanMusic;
+                const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const sources = ['charts', 'favorites', 'history', 'recs', 'local'];
+                const open = cm.smartPlaylist('Smoke Rezept', { sources, limit: 10, refresh: 'onOpen' });
+                const before = cm.smartPlaylistInfo(open.id);
+                await wait(30);
+                cm.openPlaylist(open.id);
+                await wait(200);
+                const after = cm.smartPlaylistInfo(open.id);
+                const chips = Array.from(document.querySelectorAll('#view-playlist .smart-chip')).map((chip) => chip.textContent);
+                const whyIds = Object.keys(after.smart.why || {});
+                const firstId = whyIds[0] || '';
+                const why = firstId ? cm.recipeWhy(open.id, firstId) : '';
+
+                const daily = cm.smartPlaylist('Smoke Täglich', { sources, limit: 8, refresh: 'daily' });
+                const dailyFresh = cm.refreshDailyRecipes();
+                cm.smartPlaylistAge(daily.id, 2 * 24 * 60 * 60 * 1000);
+                const dailyStale = cm.refreshDailyRecipes();
+
+                const bpm = cm.smartPlaylist('Smoke BPM', { sources, limit: 10, bpmMin: 300, bpmMax: 320 });
+                const bpmInfo = cm.smartPlaylistInfo(bpm.id);
+                const kind = cm.smartPlaylist('Smoke Art', { sources, limit: 10, kinds: ['local'] });
+                const kindInfo = cm.smartPlaylistInfo(kind.id);
+
+                const dialog = (() => {
+                  const edit = document.querySelector('[data-pl-action="smart-rules"]'); if (edit) edit.click();
+                  return true;
+                })();
+                await wait(150);
+                const fields = {
+                  refresh: Boolean(document.querySelector('#smart-refresh')),
+                  bpm: Boolean(document.querySelector('#smart-bpm-min')) && Boolean(document.querySelector('#smart-bpm-max')),
+                  moods: document.querySelectorAll('[data-smart-mood]').length,
+                  kinds: document.querySelectorAll('[data-smart-kind]').length,
+                };
+                const cancel = document.querySelector('#dialog-cancel');
+                if (cancel && !document.querySelector('#dialog').hidden) cancel.click();
+                await wait(60);
+
+                [open.id, daily.id, bpm.id, kind.id].forEach((id) => cm.smartPlaylistRemove(id));
+                return {
+                  rebuiltOnOpen: after.smart.updatedAt > before.smart.updatedAt,
+                  refreshChip: chips.includes('Aktualisiert beim Öffnen'),
+                  why: after.count === 0 || (whyIds.length === Math.min(after.count, 150) && /Passt ins Rezept/.test(why)),
+                  dailyFresh,
+                  dailyStale,
+                  bpmEmpty: bpmInfo.count === 0,
+                  kindsLocalOnly: kindInfo.count === 0 || kindInfo.titles.length === kindInfo.count,
+                  dialog: dialog && fields.refresh && fields.bpm && fields.moods === 6 && fields.kinds === 4,
+                  count: after.count,
+                };
+              })()
+            `);
+            const recipeOk = recipeSmoke.rebuiltOnOpen && recipeSmoke.refreshChip && recipeSmoke.why &&
+              recipeSmoke.dailyFresh === 0 && recipeSmoke.dailyStale === 1 && recipeSmoke.bpmEmpty &&
+              recipeSmoke.kindsLocalOnly && recipeSmoke.dialog;
+            if (!recipeOk) throw new Error(JSON.stringify(recipeSmoke));
+            console.log('SMOKE_RECIPES:', JSON.stringify(recipeSmoke));
+          } catch (error) {
+            console.error('SMOKE_RECIPES_FAIL:', error.message);
+          }
+
           // "Warum läuft das?" explains source, license and queue origin.
           const whySmoke = await mainWindow.webContents.executeJavaScript(`
             (async () => {

@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.21.0**
+**Version 1.22.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -92,7 +92,7 @@ eine kleine Karte, was neu ist.
 | **Beliebte Titel** | ✅ Deezer-Charts, sofort abspielbar |
 | **Live-Radio** | ✅ tausende öffentliche Sender, volle Songs, kein Login, kein DRM |
 | **Favoriten & Playlists** | ✅ ♥ und + an jedem Titel/Sender, gemischt aus allen Quellen, Drag & Drop |
-| **Smart-Playlists** (ab 1.19.0) | ✅ Regeln aus Favoriten, lokaler Musik, Verlauf, Playlists, Vorschlägen und Charts; Filter für stream-sicher, Credit, Dislikes |
+| **Smart-Playlists** (ab 1.19.0) | ✅ Regeln aus Favoriten, lokaler Musik, Verlauf, Playlists, Vorschlägen und Charts; Filter für stream-sicher, Credit, Dislikes, Tempo, Stimmung und Art; aktualisieren sich beim Öffnen oder täglich (ab 1.22.0) |
 | **Vorlagen-Playlists** | ✅ acht Themen, je **stream-sicher** (NCS, CC BY, CC0) oder **normal** (Katalog) mit einem Klick |
 | **Vorschläge „Für dich“** | ✅ aus deinen Favoriten (Deezer-Artist-Radio, verwandte Artists, optional über Plugins) |
 | **Cutter-Modus** | ✅ NCS, YouTube-Klassiker (CC BY), Soundeffekte & freie Musik mit Lizenz und Credit |
@@ -196,6 +196,10 @@ Wunsch **nach Ordner**.
   sowie ein Limit. Die Vorschau zeigt sofort, wie viele Titel passen;
   **Aktualisieren** baut die Liste mit deinem aktuellen Bestand neu. Alles
   bleibt lokal, es werden keine neuen Suchen ausgelöst.
+  Ab 1.22.0 kommen dazu: **Aktualisieren** nur per Knopf, bei jedem Öffnen oder
+  einmal am Tag; Filter für **Tempo** (BPM von–bis, nur bereits analysierte Titel),
+  **Stimmung** und **Art** (lokal, Vorschau, volle Titel, freie Musik). „Warum läuft
+  das?“ nennt Quelle und Regel, aus der ein Titel stammt.
 - **Vorlagen** (Seitenleiste): acht fertige Themen wie *Gaming & Retro*,
   *Chill & Lounge*, *Episch & Action* oder *Workout & Energy*. Jede gibt es
   **stream-sicher** – nur NCS, CC BY und CC0, also mit Credit im Stream nutzbar –
