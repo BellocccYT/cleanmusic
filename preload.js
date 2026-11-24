@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('cm', {
   diagnosticError: (message) => ipcRenderer.send('diagnostic-error', { message: String(message || '') }),
   diagnosticState: (snapshot) => ipcRenderer.send('diagnostic-state', snapshot || {}),
   backupOpen: () => ipcRenderer.invoke('backup-open'),
+  // Called synchronously by renderer/core/migrations.js before a schema migration.
+  migrationBackupSync: (text, meta) => ipcRenderer.sendSync('migration-backup', { text, meta }),
   backupFolderPick: () => ipcRenderer.invoke('backup-folder-pick'),
   backupAutoSave: (input) => ipcRenderer.invoke('backup-auto-save', input),
   projectCreditsSave: (input) => ipcRenderer.invoke('project-credits-save', input),

@@ -363,10 +363,33 @@
   function syncDiagnosticState() {
     if (!bridge.diagnosticState) return;
     const viz = window.CMVisualizer;
+    const migration = window.CMMigrations ? window.CMMigrations.report() : null;
     bridge.diagnosticState({
       audioChain: Boolean(viz && typeof viz.hasEngine === 'function' && viz.hasEngine()),
       layout: state.settings.layout,
+      schema: migration ? migration.to : 0,
+      quarantined: migration && Array.isArray(migration.quarantined) ? migration.quarantined.length : 0,
+      migration: migration ? migration.skipped || (migration.ran && migration.ran.length ? 'migriert' : '') : '',
     });
+  }
+
+  /* Data safety (2.0 Phase 2): tell the user once per start what
+   * core/migrations.js had to do – nothing is said when all is well. */
+  function reportMigrations() {
+    const report = window.CMMigrations ? window.CMMigrations.report() : null;
+    if (!report) return;
+    if (report.skipped === 'newer-schema') {
+      toast('Deine Daten stammen aus einer neueren CleanMusic-Version. Sie bleiben unverändert – bitte CleanMusic aktualisieren.');
+      return;
+    }
+    if (report.skipped === 'backup-failed') {
+      toast('Sicherung vor dem Daten-Update fehlgeschlagen – deine Daten bleiben unverändert. Details: Einstellungen → System → Diagnose.');
+    }
+    const broken = Array.isArray(report.quarantined) ? report.quarantined : [];
+    if (broken.length) {
+      const names = formatList(broken.map((item) => item.label));
+      toast(`Beschädigte Daten gefunden (${names}). Sie wurden sicher beiseitegelegt; CleanMusic startet mit allem, was lesbar war.`);
+    }
   }
 
   function pluginById(id) {
@@ -5736,6 +5759,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.21.0': [
+      'Datensicherung bei Updates: Muss ein Update deine gespeicherten Daten umbauen, legt CleanMusic vorher automatisch eine Sicherung an (die letzten fünf bleiben).',
+      'Beschädigte Einträge werden nicht mehr stillschweigend überschrieben, sondern beiseitegelegt – CleanMusic sagt dir, was betroffen war.',
+      'Backups merken sich ihre Datenversion; Sicherungen aus einer neueren CleanMusic-Version werden nicht versehentlich eingespielt.',
+      'Die Diagnose zeigt jetzt Daten-Schema und Quarantäne.',
+    ],
     '1.20.1': [
       'Neuer Info-Knopf im Player: „Warum läuft das?“ zeigt Herkunft, Quelle, Lizenz, Stream-sicher-Status und Länge – bei lokalen Titeln auch die Datei.',
       'Credits lassen sich dort direkt kopieren, Links im Dienst öffnen; Smart-Playlists zeigen ihre Regel-Chips.',
@@ -11133,6 +11162,7 @@
     BACKUP_SETTINGS.forEach((key) => { settings[key] = state.settings[key]; });
     return {
       app: 'CleanMusic', kind: 'backup', format: 1,
+      schema: window.CMMigrations ? window.CMMigrations.SCHEMA_VERSION : 1,
       version: (state.info && state.info.version) || '', exportedAt: new Date().toISOString(),
       collection: state.collection, credits: state.credits, history, settings, taste: state.taste,
     };
@@ -11334,6 +11364,11 @@
     }
     if (!data || data.app !== 'CleanMusic' || data.kind !== 'backup') {
       toast('Das ist kein CleanMusic-Backup.');
+      return null;
+    }
+    const schemaCheck = window.CMMigrations ? window.CMMigrations.checkBackup(data) : { ok: true };
+    if (!schemaCheck.ok) {
+      toast(schemaCheck.reason);
       return null;
     }
     const counts = mergeBackup(data);
@@ -14152,6 +14187,7 @@ ${updatePanel()}
     applyVisualizerVisibility();
     applyVolume();
     syncDiagnosticState();
+    setTimeout(reportMigrations, 1500);
 
     // Plugins (API v2): player events, commands, messages.
     ['play', 'pause', 'ended', 'seeked', 'loadedmetadata', 'emptied'].forEach((name) =>

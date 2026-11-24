@@ -17,7 +17,7 @@
  */
 
 (function () {
-  const MOBILE_VERSION = 'mobile-1.1.1';
+  const MOBILE_VERSION = 'mobile-1.1.2';
   const UPDATE_REPO = 'BellocccYT/cleanmusic';
   const UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
   const UPDATE_KEY = 'cleanmusic.updates.v1';
@@ -405,6 +405,8 @@
     const digest = /^sha256:[0-9a-f]{64}$/i.test(String(asset.digest || ''))
       ? String(asset.digest).slice(7).toLowerCase()
       : null;
+    // Ohne Prüfsumme kein Update – lieber gar nichts installieren als etwas Unbekanntes.
+    if (!digest) return null;
     return {
       name: String(asset.name),
       size: Number(asset.size) || 0,

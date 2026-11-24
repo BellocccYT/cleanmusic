@@ -62,6 +62,10 @@ public class UpdaterPlugin extends Plugin {
             call.reject("Unerwarteter Dateiname");
             return;
         }
+        if (sha256 == null || !sha256.toLowerCase(Locale.US).matches("^[0-9a-f]{64}$")) {
+            call.reject("Prüfsumme fehlt – Update wird nicht geladen");
+            return;
+        }
 
         io.execute(() -> {
             HttpURLConnection connection = null;
@@ -100,7 +104,7 @@ public class UpdaterPlugin extends Plugin {
                 }
 
                 if (size > 0 && received != size) throw new Exception("Download unvollständig");
-                if (sha256 != null && sha256.matches("^[0-9a-f]{64}$")) {
+                {
                     StringBuilder hex = new StringBuilder();
                     for (byte value : digest.digest()) hex.append(String.format(Locale.US, "%02x", value));
                     if (!hex.toString().equals(sha256.toLowerCase(Locale.US))) {

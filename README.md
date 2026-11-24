@@ -14,7 +14,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.20.1**
+**Version 1.21.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -482,6 +482,9 @@ ihre eigenen Optionen; die Tab-Leiste bleibt beim Scrollen oben stehen.
 - **Dein Rückblick als Bild:** Story (1080×1920) oder Post (1080×1080), speichern oder kopieren.
   Das Bild enthält Theme-Farben und Top-Listen, aber keine Cover.
 - **Wöchentliche automatische Backups** sind optional und gehen in einen selbst gewählten Ordner.
+- **Datensicherung bei Updates:** Muss ein Update gespeicherte Daten umbauen, legt CleanMusic vorher
+  automatisch eine Sicherung unter `%APPDATA%\CleanMusic\backups` an (die letzten fünf bleiben).
+  Beschädigte Einträge werden nicht gelöscht, sondern beiseitegelegt; CleanMusic sagt dir Bescheid.
   CleanMusic behält dort höchstens fünf eigene `cleanmusic-backup-*.json`-Dateien; kein Konto,
   keine Cloud-Synchronisierung.
 - **Live-Hintergründe:** Lava-Lampe, Wellen, Synthwave-Gitter, Partikel-Nebel und Regen auf Glas.

@@ -2805,6 +2805,12 @@ function createMainWindow() {
           console.error('SMOKE_REMOTE_FAIL:', error.message);
         }
 
+        try {
+          console.log('SMOKE_MIGRATIONS:', JSON.stringify(await smokeMigrations()));
+        } catch (error) {
+          console.error('SMOKE_MIGRATIONS_FAIL:', error.message);
+        }
+
         app.quit();
       }, 5000);
     });
@@ -3839,6 +3845,66 @@ ipcMain.handle('credits-save', async (_event, text) => {
   } catch (error) {
     return { error: error.message };
   }
+});
+
+/* --- Pre-migration backups (2.0 Phase 2) -------------------------------- *
+ * renderer/core/migrations.js hands over a snapshot of every cleanmusic.* key
+ * before it migrates anything. It lands in <userData>/backups as
+ * vor-schema-<from>-<to>-<timestamp>.json; only the newest five of these files
+ * are kept (other files in the folder are never touched). */
+const MIGRATION_BACKUP_PREFIX = 'vor-schema-';
+const MIGRATION_BACKUP_KEEP = 5;
+const MIGRATION_BACKUP_MAX = 100 * 1024 * 1024;
+
+function migrationBackupDir() {
+  return path.join(app.getPath('userData'), 'backups');
+}
+
+function writeMigrationBackup(text, meta) {
+  if (typeof text !== 'string' || !text.length || text.length > MIGRATION_BACKUP_MAX) {
+    return { ok: false, error: 'Ungültige Sicherung' };
+  }
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || parsed.kind !== 'schema-snapshot' || typeof parsed.keys !== 'object') {
+      return { ok: false, error: 'Ungültige Sicherung' };
+    }
+  } catch {
+    return { ok: false, error: 'Ungültige Sicherung' };
+  }
+  const from = Math.max(0, Math.min(999, Math.floor(Number(meta && meta.from) || 0)));
+  const to = Math.max(0, Math.min(999, Math.floor(Number(meta && meta.to) || 0)));
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+  const folder = migrationBackupDir();
+  const file = path.join(folder, `${MIGRATION_BACKUP_PREFIX}${from}-${to}-${stamp}.json`);
+  const temp = `${file}.tmp`;
+  try {
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(temp, text, 'utf8');
+    fs.renameSync(temp, file);
+  } catch (error) {
+    try { fs.rmSync(temp, { force: true }); } catch { /* nothing to clean */ }
+    return { ok: false, error: cleanText(error.message, 200) || 'Sicherung fehlgeschlagen' };
+  }
+  try {
+    fs.readdirSync(folder)
+      .filter((name) => name.startsWith(MIGRATION_BACKUP_PREFIX) && name.endsWith('.json'))
+      .map((name) => ({ name, at: fs.statSync(path.join(folder, name)).mtimeMs }))
+      .sort((a, b) => b.at - a.at)
+      .slice(MIGRATION_BACKUP_KEEP)
+      .forEach(({ name }) => fs.rmSync(path.join(folder, name), { force: true }));
+  } catch {
+    /* pruning is best effort */
+  }
+  return { ok: true, path: file };
+}
+
+ipcMain.on('migration-backup', (event, payload) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    event.returnValue = { ok: false, error: 'Nicht erlaubt' };
+    return;
+  }
+  event.returnValue = writeMigrationBackup(payload && payload.text, payload && payload.meta);
 });
 
 ipcMain.handle('backup-open', async () => {
@@ -5391,6 +5457,65 @@ function smokeWavDataUrl() {
   return `data:audio/wav;base64,${wav.toString('base64')}`;
 }
 
+/** 2.0 Phase 2: schema marker, pre-migration backup file and quarantine. */
+async function smokeMigrations() {
+  const broken = '{"favorites": [ kaputt';
+  const result = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      const M = window.CMMigrations;
+      if (!M || !window.CMPersist) return { error: 'CMMigrations fehlt' };
+      const first = M.report() || {};
+      const key = window.CMPersist.STORAGE.collection;
+      const keep = localStorage.getItem(key);
+      const schemaKeep = localStorage.getItem(M.SCHEMA_KEY);
+      localStorage.setItem(key, ${JSON.stringify(broken)});
+      localStorage.removeItem(M.SCHEMA_KEY);
+      const second = M.run({ appVersion: 'smoke' });
+      const box = JSON.parse(localStorage.getItem(M.QUARANTINE_KEY) || '{}');
+      const parked = Array.isArray(box.items) && box.items.some((item) => item.key === key && item.raw === ${JSON.stringify(broken)});
+      if (keep === null) localStorage.removeItem(key); else localStorage.setItem(key, keep);
+      localStorage.removeItem(M.QUARANTINE_KEY);
+      if (schemaKeep !== null) localStorage.setItem(M.SCHEMA_KEY, schemaKeep);
+      const third = M.run({ appVersion: 'smoke' });
+      return {
+        startSchema: first.to,
+        startSkipped: first.skipped || null,
+        version: M.SCHEMA_VERSION,
+        ran: second.ran,
+        backup: second.backup,
+        quarantined: second.quarantined.map((item) => item.name),
+        parked,
+        again: third.ran.length,
+        collectionKey: key,
+      };
+    })()
+  `);
+  if (!result || result.error) throw new Error((result && result.error) || 'keine Antwort');
+  let backupOk = false;
+  try {
+    const file = String(result.backup || '');
+    const inFolder = path.relative(migrationBackupDir(), file);
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    backupOk = !inFolder.startsWith('..') && !path.isAbsolute(inFolder) &&
+      data.kind === 'schema-snapshot' && data.keys[result.collectionKey] === broken;
+  } catch {
+    backupOk = false;
+  }
+  const summary = {
+    startSchema: result.startSchema,
+    ran: result.ran,
+    backupFile: backupOk,
+    quarantined: result.quarantined,
+    parked: result.parked,
+    idempotent: result.again === 0,
+  };
+  if (result.startSchema !== result.version || result.startSkipped || !backupOk || !result.parked ||
+      !result.quarantined.includes('collection') || result.ran.join() !== 'baseline' || result.again !== 0) {
+    throw new Error(JSON.stringify(summary));
+  }
+  return summary;
+}
+
 async function smokeRemote() {
   if (!isSmoke) throw new Error('Fernbedienungs-Smoke ist nur im Smoke-Profil erlaubt.');
   const defaultOff = !remoteServer && !readConfig().remoteEnabled;
@@ -5911,6 +6036,7 @@ function diagnosticText() {
     `Electron ${process.versions.electron} · Chrome ${process.versions.chrome} · Windows ${os.release()}`,
     `Plugins: ${activePluginDiagnostics().map((plugin) => `${plugin.name} ${plugin.version}`).join(', ') || 'keine'}`,
     `Audio-Kette: ${rendererDiagnosticState.audioChain ? 'an' : 'aus'} · Fernbedienung: ${config.remoteEnabled ? 'an' : 'aus'} · Layout: ${rendererDiagnosticState.layout || 'unbekannt'}`,
+    `Daten-Schema: ${rendererDiagnosticState.schema || '?'}${rendererDiagnosticState.migration ? ` (${rendererDiagnosticState.migration})` : ''} · Quarantäne: ${rendererDiagnosticState.quarantined || 0}`,
     '',
     'Letzte Fehler (maximal 30):',
   ];
@@ -5931,6 +6057,9 @@ ipcMain.on('diagnostic-state', (event, payload) => {
   rendererDiagnosticState = {
     audioChain: Boolean(payload.audioChain),
     layout: payload.layout === 'simple' ? 'Einfach' : 'Erweitert',
+    schema: Math.max(0, Math.floor(Number(payload.schema) || 0)),
+    quarantined: Math.max(0, Math.floor(Number(payload.quarantined) || 0)),
+    migration: cleanText(payload.migration || '', 40),
   };
 });
 ipcMain.handle('diagnostic-copy', (event) => (mainWindow && event.sender === mainWindow.webContents ? diagnosticText() : ''));

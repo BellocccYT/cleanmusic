@@ -183,4 +183,18 @@ seine Fähigkeiten anzeigt.
 alle `localStorage`-Schlüssel (4 Tests). `npm run test:unit` fährt 28 Prüfungen.
 Die Smoke-Suiten prüfen das unveränderte Verhalten (Shuffle, Restore, Queue-Reihenfolge).
 
+**Phase 2 (Schema & Migrationen):** umgesetzt in `renderer/core/migrations.js`.
+- `cleanmusic.schema.v1` mit Version und Verlauf; Migration 1 = „baseline“ (Bestand aus 1.20.x,
+  keine Formänderung). Neue Formänderungen kommen als weitere idempotente Schritte in `MIGRATIONS`.
+- Vor jeder Migration eine vollständige Sicherung (Desktop: Datei in `<userData>/backups`,
+  neueste 5; Handy: lokaler Snapshot). Schlägt die Sicherung fehl, wird nichts migriert.
+- Unlesbare Werte (kaputtes JSON, falscher Typ) wandern mit Rohtext in die Quarantäne statt
+  verloren zu gehen; der Nutzer bekommt eine verständliche Meldung, die Diagnose zeigt Schema und
+  Quarantäne. Daten aus einer neueren Version (Downgrade) bleiben unberührt.
+- JSON-Backups tragen `schema`; Sicherungen aus neueren Versionen werden beim Import abgelehnt.
+- Tests: `test/migrations.test.js` (13 Prüfungen), `SMOKE_MIGRATIONS` (Sicherungsdatei,
+  Quarantäne, Idempotenz), `smoke:mobile` grün.
+- **Offen:** manueller Update-Test mit einem echten 1.20.1-Profil (nach dem Update muss
+  `%APPDATA%\CleanMusic\backups\vor-schema-0-1-*.json` existieren und alles wie vorher da sein).
+
 **Regel:** Kein Schritt ohne grüne Tests. Kein Big-Bang.
