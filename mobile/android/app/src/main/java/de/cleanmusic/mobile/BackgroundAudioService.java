@@ -82,6 +82,8 @@ public class BackgroundAudioService extends Service {
     private AudioManager audioManager;
     private PowerManager.WakeLock wakeLock;
     private AudioFocusRequest focusRequest;
+    // Siehe updateAudioFocus(): der Fokus wird vom WebView verwaltet.
+    private static final boolean USE_SERVICE_AUDIO_FOCUS = false;
     private boolean hasAudioFocus = false;
     private boolean foreground = false;
 
@@ -383,8 +385,29 @@ public class BackgroundAudioService extends Service {
         }
     }
 
+    /**
+     * Audio-Fokus gehört dem WebView: Chromium (AudioFocusDelegate) fordert ihn
+     * selbst an, sobald das <audio>-Element spielt, und pausiert bei Verlust
+     * an andere Apps. Fordert der Dienst ihn zusätzlich an, nehmen sich beide
+     * gegenseitig den Fokus – der Dienst bekam AUDIOFOCUS_LOSS und schickte
+     * „Pause“ an die eigene Wiedergabe (Titel stoppten nach ~1 Minute, sobald
+     * Chromium den Fokus nach dem Nachladen neu anforderte).
+     * Deshalb fordert der Dienst keinen Fokus mehr an; ein noch gehaltener
+     * Fokus (ältere Version) wird nur freigegeben.
+     */
     private void updateAudioFocus() {
         if (audioManager == null) return;
+        if (!USE_SERVICE_AUDIO_FOCUS) {
+            if (hasAudioFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && focusRequest != null) {
+                    audioManager.abandonAudioFocusRequest(focusRequest);
+                } else {
+                    audioManager.abandonAudioFocus(focusListener);
+                }
+                hasAudioFocus = false;
+            }
+            return;
+        }
         if (playing && !hasAudioFocus) {
             int result;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

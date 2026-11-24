@@ -128,7 +128,13 @@ async function main() {
     creatorHidden: (() => { const el = document.querySelector('[data-view="creator"]'); return !el || getComputedStyle(el).display === 'none'; })(),
     serviceGridHidden: (() => { const el = document.querySelector('.services-grid'); return !el || !el.offsetParent; })(),
     deepLinks: Boolean(document.querySelector('#m-open-services')),
-    updatePanel: Boolean(document.querySelector('#update-panel')),
+    // Since 1.17 the update panel lives in the settings tab 'System'.
+    updatePanel: (() => {
+      if (window.CleanMusic && typeof window.CleanMusic.openSettings === 'function') window.CleanMusic.openSettings('system');
+      const found = Boolean(document.querySelector('#update-panel'));
+      if (window.CleanMusic && typeof window.CleanMusic.showView === 'function') window.CleanMusic.showView('home');
+      return found;
+    })(),
     hasAudio: Boolean(document.querySelector('#audio')),
     updater: Boolean(window.cm && typeof window.cm.updateCheck === 'function')
   }))()`);

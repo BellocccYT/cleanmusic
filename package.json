@@ -18,7 +18,7 @@
     "smoke:visualizer": "electron . --smoke --smoke-visualizer",
     "smoke:streamerbot": "electron . --smoke --smoke-streamerbot",
     "smoke:update": "electron . --smoke --smoke-update",
-    "smoke:mobile": "electron mobile/scripts/smoke.js",
+    "smoke:mobile": "node mobile/scripts/build-web.js && electron mobile/scripts/smoke.js",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux AppImage",
     "build:dir": "electron-builder --win dir",
