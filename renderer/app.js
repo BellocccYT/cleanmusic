@@ -6008,7 +6008,8 @@
 
   function onboardingThemes() {
     const active = currentTheme();
-    return THEMES.map((theme) => {
+    // Supporter themes are offered later in the settings, not in the first steps.
+    return THEMES.filter((theme) => !extraLocked('theme', theme.id)).map((theme) => {
       const c = theme.colors;
       const style = `--t-bg:${c.bg};--t-panel:${c.panel3};--t-text:${c.text};--t-accent:${c.accent};--t-accent-2:${c.accent2};--t-border:${c.border}`;
       return `
@@ -6397,7 +6398,7 @@
         <div class="bg-picker">
           <strong>Hintergrund</strong>
           <div class="radio-tags">${BACKGROUNDS.map(
-            (bg) => `<button class="radio-tag ${bg.id === active ? 'active' : ''}" data-bg-id="${bg.id}">${esc(bg.label)}</button>`
+            (bg) => `<button class="radio-tag ${bg.id === active ? 'active' : ''}${lockedClass('background', bg.id)}" data-bg-id="${bg.id}">${esc(bg.label)}</button>`
           ).join('')}</div>
         </div>
         <label class="toggle-row advanced-only" style="margin-top:10px">
@@ -6788,7 +6789,7 @@
             <div class="setting-line">
               <strong>Effekt</strong>
               <div class="radio-tags">${LYRIC_EFFECTS.map(
-                ([id, label]) => `<button class="radio-tag ${lyricsEffect() === id ? 'active' : ''}" data-ly-effect="${id}">${label}</button>`
+                ([id, label]) => `<button class="radio-tag ${lyricsEffect() === id ? 'active' : ''}${lockedClass('lyricsEffect', id)}" data-ly-effect="${id}">${label}</button>`
               ).join('')}</div>
             </div>
             <div class="setting-line">
@@ -7347,6 +7348,94 @@
   const PLAYLIST_PAGE = 'https://bellocccyt.github.io/cleanmusic/p/';
   // Voluntary support. A donation unlocks nothing – no paywall (see LEGAL.md).
   const SUPPORT_URL = 'https://ko-fi.com/belloccc';
+
+  /* --- Supporter extras: honest code, see core/supporter.js ------------ */
+  let supporter = null;
+
+  function supporterState() {
+    if (!supporter) {
+      const S = window.CMSupporter;
+      supporter = S
+        ? S.initial(readJSON(STORAGE.supporter, null), FIRST_RUN, Date.now())
+        : { unlocked: true, how: 'legacy', at: 0 };
+      writeJSON(STORAGE.supporter, supporter);
+    }
+    return supporter;
+  }
+
+  function extraLocked(kind, id) {
+    return Boolean(window.CMSupporter && window.CMSupporter.isLocked(kind, id, supporterState()));
+  }
+
+  function lockedClass(kind, id) {
+    return extraLocked(kind, id) ? ' extra-locked' : '';
+  }
+
+  function setSupporter(next) {
+    supporter = next;
+    writeJSON(STORAGE.supporter, supporter);
+    renderSettings();
+    if (state.fullscreen) syncFullscreen();
+  }
+
+  // The code is public: on Ko-fi, in the Discord – and behind "Ohne Spende
+  // freischalten". A donation never buys anything exclusive.
+  async function askUnlockExtras(label) {
+    const S = window.CMSupporter;
+    if (!S) return true;
+    const text = $('#dialog-text');
+    const field = $('#dialog-input');
+    const placeholder = field.placeholder;
+    let free = false;
+    const onClick = (event) => {
+      const button = event.target.closest('[data-unlock]');
+      if (!button) return;
+      event.preventDefault();
+      if (button.dataset.unlock === 'kofi') {
+        bridge.openExternal(SUPPORT_URL);
+        return;
+      }
+      free = true;
+      field.value = S.CODE;
+      $('#dialog-form').requestSubmit();
+    };
+    text.addEventListener('click', onClick);
+    field.placeholder = 'Freischalt-Code';
+    let answer = null;
+    try {
+      answer = await openDialog({
+        title: 'Supporter-Extra',
+        html: `
+          <p><strong>${esc(label)}</strong> gehört zu den Supporter-Extras (mit ♥ markiert).</p>
+          <p>CleanMusic ist kostenlos und bleibt es. Wenn dir die App gefällt, kannst du sie freiwillig
+          auf Ko-fi unterstützen. Den Code bekommt <strong>jeder</strong> – er steht offen auf der
+          Ko-fi-Seite und im Discord. Eine Spende ist keine Bedingung.</p>
+          <div class="row">
+            <button type="button" class="btn primary small" data-unlock="kofi">${ICONS.heart} Ko-fi öffnen</button>
+            <button type="button" class="btn ghost small" data-unlock="free">Ohne Spende freischalten</button>
+          </div>
+          <p class="muted small">Gilt danach für alle Extras auf diesem Gerät.</p>`,
+        value: '',
+        confirm: 'Freischalten',
+      });
+    } finally {
+      text.removeEventListener('click', onClick);
+      field.placeholder = placeholder;
+    }
+    if (answer === null) return false;
+    if (!S.checkCode(answer)) {
+      toast('Der Code passt nicht. Er steht offen auf ko-fi.com/belloccc – oder „Ohne Spende freischalten“.');
+      return false;
+    }
+    setSupporter(S.unlock(free ? 'free' : 'code', Date.now()));
+    toast('Alle Supporter-Extras sind freigeschaltet – danke, dass du CleanMusic nutzt ♥');
+    return true;
+  }
+
+  async function guardExtra(kind, id, label) {
+    if (!extraLocked(kind, id)) return true;
+    return askUnlockExtras(label);
+  }
 
   async function sharePlaylist(id) {
     const playlist = playlistById(id);
@@ -10766,6 +10855,7 @@
           ? !state.settings.visualizer || !fsVisualizerOn()
           : state.settings.visualizer && fsVisualizerOn() && state.settings.vizStyle === style
       );
+      button.classList.toggle('extra-locked', extraLocked('vizStyle', style));
     });
 
     updateFsProgress();
@@ -11087,7 +11177,7 @@
             const c = theme.colors;
             const style = `--t-bg:${c.bg};--t-panel:${c.panel3};--t-text:${c.text};--t-accent:${c.accent};--t-accent-2:${c.accent2};--t-border:${c.border}`;
             return `
-              <button class="theme-card ${active && active.id === theme.id ? 'active' : ''}" data-theme-id="${esc(theme.id)}" style="${style}" title="${esc(theme.name)}">
+              <button class="theme-card ${active && active.id === theme.id ? 'active' : ''}${lockedClass('theme', theme.id)}" data-theme-id="${esc(theme.id)}" style="${style}" title="${esc(theme.name)}">
                 <span class="theme-preview" aria-hidden="true">
                   <i class="tp-side"></i><i class="tp-line"></i><i class="tp-line short"></i><i class="tp-dot"></i><i class="tp-dot two"></i>
                 </span>
@@ -12256,7 +12346,7 @@
           ${styles
             .map(
               ([value, label]) =>
-                `<button class="radio-tag ${state.settings.vizStyle === value ? 'active' : ''}" data-viz-style="${value}" ${
+                `<button class="radio-tag ${state.settings.vizStyle === value ? 'active' : ''}${lockedClass('vizStyle', value)}" data-viz-style="${value}" ${
                   state.settings.visualizer ? '' : 'disabled'
                 }>${label}</button>`
             )
@@ -12927,11 +13017,17 @@
           <h3>CleanMusic unterstützen</h3>
           <p>
             CleanMusic ist kostenlos und Open Source – und bleibt es. Wenn du die Weiterentwicklung
-            unterstützen möchtest, geht das freiwillig über Ko-fi. Eine Spende schaltet
-            nichts frei: Alle Funktionen gibt es für alle.
+            unterstützen möchtest, geht das freiwillig über Ko-fi. Die mit ♥ markierten
+            Supporter-Extras schaltest du mit einem Code frei, den jeder bekommt – mit oder ohne Spende.
           </p>
+          <p class="muted small">${
+            supporterState().unlocked
+              ? `♥ Supporter-Extras sind freigeschaltet${supporterState().how === 'legacy' ? ' – du warst schon vorher dabei' : ''}.`
+              : `${window.CMSupporter ? window.CMSupporter.lockedCount() : 0} Supporter-Extras (Themes, Live-Hintergründe, Songtext-Effekte, Visualizer-Stile) warten noch.`
+          }</p>
           <div class="row">
             <button class="btn primary small" data-support="open">${ICONS.heart} Auf Ko-fi unterstützen</button>
+            ${supporterState().unlocked ? '' : '<button class="btn ghost small" data-support="unlock">Extras freischalten</button>'}
           </div>
         </div>
 
@@ -13768,7 +13864,10 @@ ${updatePanel()}
       }
       const lyEffect = event.target.closest('[data-ly-effect]');
       if (lyEffect) {
-        setLyricsOption({ lyricsEffect: lyEffect.dataset.lyEffect });
+        const id = lyEffect.dataset.lyEffect;
+        guardExtra('lyricsEffect', id, `Songtext-Effekt „${lyEffect.textContent.trim()}“`).then((ok) => {
+          if (ok) setLyricsOption({ lyricsEffect: id });
+        });
         return;
       }
       const lyAlign = event.target.closest('[data-ly-align]');
@@ -13785,7 +13884,10 @@ ${updatePanel()}
 
       const bgButton = event.target.closest('[data-bg-id]');
       if (bgButton) {
-        setBackground(bgButton.dataset.bgId);
+        const id = bgButton.dataset.bgId;
+        guardExtra('background', id, `Hintergrund „${bgButton.textContent.trim()}“`).then((ok) => {
+          if (ok) setBackground(id);
+        });
         return;
       }
 
@@ -13797,8 +13899,10 @@ ${updatePanel()}
         showShortcuts();
         return;
       }
-      if (event.target.closest('[data-support]')) {
-        bridge.openExternal(SUPPORT_URL);
+      const supportButton = event.target.closest('[data-support]');
+      if (supportButton) {
+        if (supportButton.dataset.support === 'unlock') askUnlockExtras('Alle Supporter-Extras');
+        else bridge.openExternal(SUPPORT_URL);
         return;
       }
 
@@ -13879,13 +13983,20 @@ ${updatePanel()}
 
       const themeCard = event.target.closest('[data-theme-id]');
       if (themeCard) {
-        setTheme(themeCard.dataset.themeId);
+        const id = themeCard.dataset.themeId;
+        const theme = THEMES.find((entry) => entry.id === id);
+        guardExtra('theme', id, `Theme „${theme ? theme.name : id}“`).then((ok) => {
+          if (ok) setTheme(id);
+        });
         return;
       }
 
       const vizStyle = event.target.closest('[data-viz-style]');
       if (vizStyle) {
-        setVisualizerStyle(vizStyle.dataset.vizStyle);
+        const id = vizStyle.dataset.vizStyle;
+        guardExtra('vizStyle', id, `Visualizer-Stil „${vizStyle.textContent.trim()}“`).then((ok) => {
+          if (ok) setVisualizerStyle(id);
+        });
         return;
       }
 
@@ -14404,7 +14515,10 @@ ${updatePanel()}
 
       const style = event.target.closest('[data-fs-style]');
       if (style) {
-        setVisualizerStyle(style.dataset.fsStyle);
+        const id = style.dataset.fsStyle;
+        guardExtra('vizStyle', id, `Visualizer-Stil „${style.textContent.trim()}“`).then((ok) => {
+          if (ok) setVisualizerStyle(id);
+        });
         return;
       }
 
@@ -14560,6 +14674,7 @@ ${updatePanel()}
     buildRadio();
     renderLocal();
     renderFavorites();
+    supporterState();
     renderSettings();
     wirePlayer();
     wireQueuePanel();
@@ -14748,6 +14863,12 @@ ${updatePanel()}
     groupState: () => ({ name: group.name, members: Object.keys(group.members).length, card: ownWeekCard() }),
     groupImport: (code, options) => importGroupLink(code, options),
     playlistShare: (id) => sharePlaylist(id),
+    supporterState: () => Object.assign({}, supporterState()),
+    supporterSet: (unlocked) => {
+      setSupporter(unlocked ? window.CMSupporter.unlock('code', Date.now()) : { unlocked: false, how: '', at: 0 });
+      return Object.assign({}, supporter);
+    },
+    extraLocked: (kind, id) => extraLocked(kind, id),
     playlistImportLink: (code, options) => importPlaylistLink(code, options),
     groupReset: () => {
       group = GROUP.normalizeGroup({});

@@ -143,6 +143,7 @@ const mustExist = [
   'core/recipes.js',
   'core/group.js',
   'core/share.js',
+  'core/supporter.js',
   'core/text.js',
   'audio/queue.js',
   'onboarding-music.js',

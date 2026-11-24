@@ -912,7 +912,12 @@ nichts gepostet. Nachholen: Actions → „Discord-Changelog“ → Run workflow
 CleanMusic ist kostenlos und Open Source – und bleibt es. Wer die Weiterentwicklung
 unterstützen möchte, kann das freiwillig über
 [Ko-fi](https://ko-fi.com/belloccc) tun (auch in der App unter
-*Einstellungen → System*). Eine Spende schaltet nichts frei; alle Funktionen gibt es für alle.
+*Einstellungen → System*).
+
+**Supporter-Extras:** Ein paar optische Extras – 6 Themes, die Live-Hintergründe,
+4 Songtext-Effekte und 2 Visualizer-Stile – sind mit ♥ markiert und fragen einmal nach
+einem Code. Den Code bekommt **jeder, auch ohne Spende**: `DANKE-CLEANMUSIC` (oder im Dialog
+„Ohne Spende freischalten“). Wer CleanMusic schon vorher genutzt hat, hat alles bereits frei.
 
 ## Rechtliches
 

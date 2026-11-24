@@ -6830,3 +6830,22 @@ html.cover-vinyl .np-art::after {
 .plugin-perm.legacy {
   font-style: italic;
 }
+
+/* Supporter extras: the heart marks what asks once for the (public) code. */
+.extra-locked::after {
+  content: ' ♥';
+  color: var(--accent);
+}
+.theme-card.extra-locked {
+  position: relative;
+}
+.theme-card.extra-locked::after {
+  content: '♥';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 13px;
+}
+.fs-styles button.extra-locked::after {
+  color: rgb(var(--fs-a));
+}

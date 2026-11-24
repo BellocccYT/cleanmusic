@@ -34,6 +34,11 @@
         'cleanmusic.settings.v1',
         JSON.stringify({ layout: 'simple', onboarded: true, background: 'none', lyrics: true })
       );
+      // Frische Installation: Supporter-Extras starten gesperrt (öffentlicher Code).
+      // Wer die App schon hatte, behält alles (core/supporter.js, Bestandsschutz).
+      if (localStorage.getItem('cleanmusic.supporter.v1') === null) {
+        localStorage.setItem('cleanmusic.supporter.v1', JSON.stringify({ unlocked: false, how: '', at: 0 }));
+      }
     }
     if (localStorage.getItem('cleanmusic.seenversion.v1') === null) {
       localStorage.setItem('cleanmusic.seenversion.v1', JSON.stringify(MOBILE_VERSION));

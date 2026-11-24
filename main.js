@@ -2381,6 +2381,48 @@ function createMainWindow() {
             console.error('SMOKE_SOCIAL_FAIL:', error.message);
           }
 
+          // Supporter extras: fresh profile locked, public code, "Ohne Spende freischalten".
+          try {
+            const sup = await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const cm = window.CleanMusic;
+                const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const before = cm.supporterState();
+                cm.supporterSet(false);
+                cm.openSettings('look');
+                await wait(150);
+                const card = () => document.querySelector('#view-settings [data-theme-id="synthwave"]');
+                const marked = Boolean(card() && card().classList.contains('extra-locked'));
+                const freeOpen = Boolean(document.querySelector('#view-settings [data-theme-id="nacht"]:not(.extra-locked)'));
+                // Wrong code: stays locked.
+                card().click();
+                await wait(120);
+                const dialog = !document.querySelector('#dialog').hidden && document.querySelector('#dialog-title').textContent === 'Supporter-Extra';
+                document.querySelector('#dialog-input').value = 'falsch';
+                document.querySelector('#dialog-form').requestSubmit();
+                await wait(120);
+                const wrongLocked = !cm.supporterState().unlocked && cm.extraLocked('theme', 'synthwave');
+                // "Ohne Spende freischalten" unlocks everything and applies the theme.
+                card().click();
+                await wait(120);
+                document.querySelector('#dialog-text [data-unlock="free"]').click();
+                await wait(200);
+                const after = cm.supporterState();
+                const applied = Boolean(card() && card().classList.contains('active') && !card().classList.contains('extra-locked'));
+                const allOpen = !cm.extraLocked('lyricsEffect', 'neon') && !cm.extraLocked('background', 'lava');
+                cm.setTheme('nacht');
+                cm.supporterSet(before.unlocked);
+                return { before: before.how || (before.unlocked ? 'open' : 'locked'), marked, freeOpen, dialog, wrongLocked, how: after.how, applied, allOpen };
+              })()
+            `);
+            const supOk = sup.before === 'locked' && sup.marked && sup.freeOpen && sup.dialog && sup.wrongLocked &&
+              sup.how === 'free' && sup.applied && sup.allOpen;
+            if (!supOk) throw new Error(JSON.stringify(sup));
+            console.log('SMOKE_SUPPORTER:', JSON.stringify(sup));
+          } catch (error) {
+            console.error('SMOKE_SUPPORTER_FAIL:', error.message);
+          }
+
           // "Warum läuft das?" explains source, license and queue origin.
           const whySmoke = await mainWindow.webContents.executeJavaScript(`
             (async () => {
