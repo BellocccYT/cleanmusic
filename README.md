@@ -173,10 +173,11 @@ dein Quellen-Plugin wiederfindet. Lokale Dateien und Radio bleiben bei dir; bis 
 ### Chrome-Erweiterung für YouTube (2.0)
 
 Unter `extras/browser-extension/cleanmusic-youtube/` liegt eine Manifest-V3-Erweiterung,
-die für den Chrome Web Store vorbereitet ist: Knopf unter dem Titel, in den
-Player-Steuerungen und schwebend auf YouTube Music/Shorts; Popup mit Vorschau und
-Katalogsuche; drei Rechtsklick-Einträge; drei Tastenkürzel; Einstellungen, Einrichtungs-
-und Datenschutzseite. Sie schickt nur Video-ID, Titel und Channel an die lokale App –
+die im Chrome Web Store veröffentlicht ist
+([Eintrag](https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc)):
+Knopf unter dem Titel, in den Player-Steuerungen und schwebend auf YouTube Music/Shorts;
+Popup mit Vorschau und Katalogsuche; drei Rechtsklick-Einträge; drei Tastenkürzel;
+Einstellungen, Einrichtungs- und Datenschutzseite. Sie schickt nur Video-ID, Titel und Channel an die lokale App –
 über `cleanmusic://add` bzw. `cleanmusic://play`, geprüft von `parseDeepLink` in
 `main.js`. Keine Netzwerkanfragen, kein Remote-Code, Einstellungen nur lokal.
 Installation per „Entpackte Erweiterung laden“ in `chrome://extensions`; Store-Texte,
@@ -892,6 +893,17 @@ Damit läuft echte In-App-Wiedergabe über Apples Player-SDK. Der Token bleibt
 lokal in `localStorage` des MusicKit-Fensters.
 
 ---
+ 
+## Community
+
+Fragen, Ideen und Austausch: **Discord** → https://discord.gg/XqYMZJXJjA
+
+Bugs und Funktionswünsche bitte weiterhin über die
+[GitHub-Issues](https://github.com/BellocccYT/cleanmusic/issues) – dort bleiben sie
+auffindbar und lassen sich mit Logs und Screenshots nachvollziehen.
+
+Neue Versionen postet `.github/workflows/discord-changelog.yml` automatisch in
+`#changelogs`; der Text der GitHub-Release-Notes wird zum Embed.
 
 ## Rechtliches
 

@@ -1,0 +1,94 @@
+name: Discord-Changelog
+
+# Postet jede veröffentlichte GitHub-Release als Embed in den Discord-Kanal.
+# Die Release-Notes werden zum Text – also beim Release ruhig etwas eintragen.
+#
+# Einrichtung:
+#   1. Discord → Server-Einstellungen → Integrationen → Webhooks → Neuer Webhook
+#      → Kanal #changelogs → URL kopieren.
+#   2. GitHub → Settings → Secrets and variables → Actions → New repository secret
+#      Name: DISCORD_WEBHOOK   Wert: die kopierte URL.
+#   3. Test: Actions → „Discord-Changelog" → Run workflow.
+#
+# Mobile-Releases (Tag `mobile-…`) werden übersprungen, damit der Desktop-Kanal ruhig bleibt.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Payload bauen
+        id: payload
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          NAME: ${{ github.event.release.name }}
+          BODY: ${{ github.event.release.body }}
+          URL: ${{ github.event.release.html_url }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "release" ]; then
+            # Android/TV-Releases gehören nicht in den Desktop-Changelog.
+            if [ "${TAG#mobile-}" != "$TAG" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            TITLE="${NAME:-$TAG}"
+          else
+            # Manueller Test: neueste Release laden.
+            gh api "repos/$REPO/releases/latest" > latest.json
+            TAG=$(jq -r '.tag_name // empty' latest.json)
+            if [ -z "$TAG" ]; then
+              echo "Keine Release gefunden." >&2
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            TITLE=$(jq -r '.name // .tag_name' latest.json)
+            BODY=$(jq -r '.body // ""' latest.json)
+            URL=$(jq -r '.html_url' latest.json)
+          fi
+
+          TITLE=$(printf '%s' "$TITLE" | sed -E 's/^v//')
+
+          jq -n \
+            --arg title "CleanMusic $TITLE" \
+            --arg url "$URL" \
+            --arg body "$BODY" \
+            --arg repo "$REPO" \
+            '{
+              username: "CleanMusic",
+              avatar_url: "https://bellocccyt.github.io/cleanmusic/icon.png",
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: (if ($body | length) > 0 then $body[0:3800] else "Neue Version veröffentlicht." end),
+                color: 5999871,
+                footer: { text: $repo },
+                timestamp: (now | todate)
+              }]
+            }' > payload.json
+
+      - name: An Discord senden
+        if: steps.payload.outputs.skip != 'true'
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "::warning::DISCORD_WEBHOOK ist nicht gesetzt – nichts gesendet."
+            exit 0
+          fi
+          curl -sS -f -X POST \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "$WEBHOOK"

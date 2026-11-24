@@ -104,6 +104,7 @@
     .download-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; padding: 34px 38px; border: 1px solid var(--border); border-radius: 24px; background: linear-gradient(115deg, color-mix(in srgb, var(--accent) 10%, var(--panel)), var(--panel)); }
     .download-card h2 { margin: 0 0 6px; font-size: 30px; letter-spacing: -.04em; }
     .download-card p { margin: 0; color: var(--muted); }
+    .download-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     .faq { border-top: 1px solid var(--border); }
     .faq-list { display: grid; gap: 10px; max-width: 860px; }
     details { border: 1px solid var(--border); border-radius: 15px; background: var(--panel); }
@@ -148,6 +149,7 @@
       .download { padding: 58px 0; }
       .download-card { padding: 25px 22px; }
       .download-card .button { width: 100%; }
+      .download-actions { width: 100%; flex-direction: column; }
       .trustline-inner { justify-content: flex-start; gap: 9px 18px; font-size: 12px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -183,6 +185,7 @@
           <p>Offizielle Musik-Web-Player, lokale Wiedergabe und praktische Werkzeuge für Stream, Schnitt und deinen Alltag – ohne so zu tun, als gäbe es keine Grenzen.</p>
           <div class="hero-actions">
             <a class="button primary" href="https://github.com/BellocccYT/cleanmusic/releases/latest" rel="noopener">CleanMusic herunterladen <span aria-hidden="true">↗</span></a>
+            <a class="button secondary" href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome-Erweiterung <span aria-hidden="true">↗</span></a>
             <a class="button secondary" href="#features">Funktionen entdecken</a>
           </div>
           <p class="small-note">Kostenlos · kein CleanMusic-Konto · offizielle Dienste bleiben ihre eigenen Player</p>
@@ -311,7 +314,10 @@
     <section class="download" id="download">
       <div class="download-card wrap">
         <div><div class="eyebrow">Open Source · Version 1.20.1</div><h2>Probier CleanMusic aus.</h2><p>Windows-Installer, portable Windows-Version und Linux-AppImage findest du bei den Releases.</p></div>
-        <a class="button primary" href="https://github.com/BellocccYT/cleanmusic/releases/latest" rel="noopener">Zu den Downloads <span aria-hidden="true">↗</span></a>
+        <div class="download-actions">
+          <a class="button primary" href="https://github.com/BellocccYT/cleanmusic/releases/latest" rel="noopener">Zu den Downloads <span aria-hidden="true">↗</span></a>
+          <a class="button secondary" href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome-Erweiterung <span aria-hidden="true">↗</span></a>
+        </div>
       </div>
     </section>
 
@@ -321,6 +327,8 @@
         <div class="faq-list">
           <details><summary>Warum zeigt Windows SmartScreen eine Warnung?</summary><p>Die Downloads sind nicht code-signiert. Windows kann beim ersten Start deshalb „Windows hat den PC geschützt“ anzeigen. Prüfe, dass du CleanMusic aus dem offiziellen GitHub-Release geladen hast; über „Weitere Informationen“ kannst du die App starten, wenn du ihr vertraust.</p></details>
           <details><summary>Welche Daten sammelt CleanMusic?</summary><p>CleanMusic hat kein eigenes Konto und keine Cloud-Synchronisierung. Favoriten, Playlists, Einstellungen, Hör-Verlauf und Rückblick liegen lokal im App-Profil. Die App-Seite setzt keine Cookies, bindet keine externen Tracker ein und sendet keine Analysedaten. Bei eingebetteten offiziellen Web-Playern gelten zusätzlich die Datenschutz- und Cookie-Regeln des jeweiligen Anbieters.</p></details>
+          <details><summary>Gibt es eine Browser-Erweiterung?</summary><p>Ja: „CleanMusic für YouTube“ legt das laufende YouTube-Video mit einem Klick in die Warteschlange oder startet es direkt in der App. Sie ist im <a href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome Web Store</a> kostenlos erhältlich und braucht CleanMusic auf dem Rechner – ohne die App erklärt sie den Weg zur Installation.</p></details>
+          <details><summary>Gibt es einen Discord?</summary><p>Ja: <a href="https://discord.gg/XqYMZJXJjA" rel="noopener">discord.gg/XqYMZJXJjA</a> – für Fragen, Ideen und Austausch untereinander. Bugs und Funktionswünsche bitte weiterhin über die GitHub-Issues, damit nichts verloren geht.</p></details>
           <details><summary>Ersetzt CleanMusic die Musikdienste?</summary><p>Nein. Die jeweiligen Anbieter laufen in ihren offiziellen Web-Playern. CleanMusic spielt lokale Dateien, Radio und verfügbare 30-Sekunden-Katalog-Vorschauen selbst ab. Ein Abo, Login oder eine Funktion eines Anbieters wird dadurch nicht ersetzt.</p></details>
           <details><summary>Sind Titel im Cutter-Modus automatisch für mein Video freigegeben?</summary><p>Nein. CleanMusic zeigt die Lizenzangabe und den erforderlichen Credit, soweit die Quelle sie bereitstellt. Prüfe die konkreten Bedingungen beim Urheber, bevor du einen Titel verwendest. Es gibt keine pauschale Copyright-Garantie.</p></details>
           <details><summary>Ist Streamer.bot oder das OBS-Overlay enthalten?</summary><p>Nein. Die Plugins sind optionale Dateien im Repository, werden nicht mit der App ausgeliefert und erst nach manuellem Hinzufügen und Aktivieren geladen. Songwünsche sind standardmäßig ausgeschaltet. Der KI-Filter kann nur bekannte Kennzeichnungen erkennen.</p></details>
@@ -336,6 +344,7 @@
         <a class="brand" href="#top"><img src="logo.svg" width="36" height="36" alt="" /><span>CleanMusic</span></a>
         <a class="text-link" href="changelog/">Changelog</a>
         <a class="text-link" href="privacy/">Datenschutz</a>
+        <a class="text-link" href="https://discord.gg/XqYMZJXJjA" rel="noopener">Discord-Community ↗</a>
         <a class="text-link" href="https://github.com/BellocccYT/cleanmusic/issues" rel="noopener">Kontakt & Fehler melden: GitHub-Issues ↗</a>
       </div>
       <p class="footer-copy">CleanMusic ist ein inoffizielles Projekt und nicht verbunden mit Spotify, Apple, Google/YouTube, Amazon, TIDAL, Deezer, SoundCloud, Twitch oder OBS. Namen der Anbieter und Produkte dienen nur der Beschreibung. Eingebettete Player sind Angebote ihrer jeweiligen Anbieter. Marken und Dienste gehören ihren Rechteinhabern. Freie Lizenzen sind keine pauschale Rechtsgarantie; prüfe Lizenz und Credit pro Werk. <a href="https://github.com/BellocccYT/cleanmusic">Quellcode, README & rechtliche Hinweise</a>.</p>
