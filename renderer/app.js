@@ -6489,13 +6489,16 @@
 
   /* --- Lyrics (LRCLIB) ------------------------------------------------- */
 
-  const lyricsState = { key: '', lines: [], plain: '', loading: false, error: null, index: -1 };
+  // shownSynced: which view renderLyrics drew last (running list or static preview text).
+  const lyricsState = { key: '', lines: [], plain: '', loading: false, error: null, index: -1, shownSynced: null };
+  let lyricsHold = false; // smoke test only: keep injected lines
 
   function lyricsOn() {
     return Boolean(state.settings.lyrics);
   }
 
   async function ensureLyrics(refresh = false) {
+    if (lyricsHold) return;
     const item = currentItem();
     // Radio, local "no lyrics" or switched off: drop the previous title's
     // lyrics instead of leaving them (and the remote's lyric) on screen.
@@ -6540,6 +6543,7 @@
   }
 
   function renderLyrics() {
+    lyricsState.shownSynced = lyricsSynced();
     const host = $('#fs-lyrics');
     const button = $('#fs-lyrics-btn');
     if (button) button.classList.toggle('active', lyricsOn());
@@ -6556,7 +6560,7 @@
     }
     if (lyricsState.lines.length && !lyricsSynced()) {
       host.innerHTML =
-        '<p class="lyrics-note">30-Sekunden-Vorschau – der Songtext läuft nur bei vollen Titeln mit (Quellen-Plugin).</p>' +
+        '<p class="lyrics-note">30-Sekunden-Vorschau – sie beginnt mitten im Song, deshalb läuft der Songtext nur bei vollen Titeln und eigenen Dateien mit.</p>' +
         lyricsState.lines.map((line) => `<p class="static">${esc(line.text) || '♪'}</p>`).join('') +
         '<p class="lyrics-note">Songtext: LRCLIB</p>';
       return;
@@ -6591,7 +6595,15 @@
   }
 
   function updateLyricLine(force = false) {
-    if (!lyricsOn() || !lyricsState.lines.length || !lyricsSynced()) return;
+    if (!lyricsOn() || !lyricsState.lines.length) return;
+    // The lyrics often arrive before the source is known (cache, slow resolve).
+    // If the title then turns out to be a preview (or a full title after all),
+    // redraw: otherwise a running list stands still without any hint.
+    if (lyricsState.shownSynced !== lyricsSynced()) {
+      renderLyrics();
+      return;
+    }
+    if (!lyricsSynced()) return;
     const time = (audio.currentTime || 0) + lyricsOffset();
     let index = -1;
     for (let at = 0; at < lyricsState.lines.length; at += 1) {
@@ -15010,6 +15022,38 @@ ${updatePanel()}
         words: host ? host.querySelectorAll('.ly-k-line span').length : 0,
         dur: ((host && host.querySelector(`[data-ly="${index}"]`)) || { style: { getPropertyValue: () => '' } }).style.getPropertyValue('--dur'),
       };
+    },
+    lyricsModeTest: () => {
+      const saved = {
+        lyrics: state.settings.lyrics,
+        effect: state.settings.lyricsEffect,
+        mode: state.nowMode,
+        data: Object.assign({}, lyricsState),
+      };
+      lyricsHold = true;
+      try {
+        state.settings.lyrics = true;
+        state.settings.lyricsEffect = 'pop';
+        Object.assign(lyricsState, { key: 'smoke|modus', lines: [{ time: 0, text: 'Eins' }, { time: 2, text: 'Zwei' }, { time: 4, text: 'Drei' }], plain: '', loading: false, error: null, index: -1 });
+        const host = $('#fs-lyrics');
+        state.nowMode = 'loading';
+        renderLyrics();
+        const before = host ? host.querySelectorAll('p[data-ly]').length : 0;
+        state.nowMode = 'preview';
+        updateLyricLine();
+        const preview = Boolean(host && host.querySelectorAll('p.static').length === 3 && !host.querySelector('p[data-ly]'));
+        state.nowMode = 'plugin';
+        updateLyricLine();
+        const full = host ? host.querySelectorAll('p[data-ly]').length : 0;
+        return { before, preview, full };
+      } finally {
+        lyricsHold = false;
+        state.settings.lyrics = saved.lyrics;
+        state.settings.lyricsEffect = saved.effect;
+        state.nowMode = saved.mode;
+        Object.assign(lyricsState, saved.data);
+        renderLyrics();
+      }
     },
     lyricsScrollTest: (index) => {
       state.nowMode = 'plugin';

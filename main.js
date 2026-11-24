@@ -2594,6 +2594,17 @@ function createMainWindow() {
           `);
           console.log('SMOKE_V15:', JSON.stringify(v15));
 
+          // Lyrics: a title that turns out to be a 30-s preview gets the static view (and back).
+          try {
+            const lyricMode = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsModeTest()');
+            if (!(lyricMode && lyricMode.before === 3 && lyricMode.preview && lyricMode.full === 3)) {
+              throw new Error(JSON.stringify(lyricMode));
+            }
+            console.log('SMOKE_LYRICS_MODE:', JSON.stringify(lyricMode));
+          } catch (error) {
+            console.error('SMOKE_LYRICS_MODE_FAIL:', error.message);
+          }
+
           // 1.6: artist page, share link, deep link (cleanmusic://).
           const deepOk = parseDeepLink('cleanmusic://play?src=deezer&id=3135553&t=One%20More%20Time&a=Daft%20Punk');
           const deepAdd = parseDeepLink('cleanmusic://add?src=youtube&id=dQw4w9WgXcQ&t=Never%20Gonna%20Give%20You%20Up&a=Rick%20Astley');
