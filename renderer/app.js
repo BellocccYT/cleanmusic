@@ -5801,6 +5801,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.26.0': [
+      'Playlists teilen: Der neue Knopf „Teilen“ in jeder Playlist kopiert einen Link. Deine Freunde tippen drauf, sehen die Titelliste und übernehmen die Playlist in ihr CleanMusic – ohne Konto, ohne Server.',
+      'Discord: Wer dein Profil ansieht, bekommt den Knopf „In CleanMusic anhören“ und öffnet den Song direkt bei sich. Lokale Dateien und Radio werden nie geteilt; abschaltbar unter Einstellungen → Verbindungen.',
+      'Songtexte: Bei 30-Sekunden-Vorschauen steht jetzt dran, warum der Text nicht mitläuft – vorher blieb die Liste manchmal einfach stehen.',
+    ],
     '1.25.0': [
       'Plugins mit Berechtigungen: Bevor du ein Plugin aktivierst, zeigt CleanMusic, was es darf – z. B. Wiedergabe steuern, Live-Spektrum lesen oder ins Internet. Riskante Rechte stehen ganz oben.',
       'Was ein neues Plugin nicht angibt, bekommt es über CleanMusic auch nicht. Ältere Plugins (wie OBS-Overlay und Streamer.bot) laufen unverändert weiter.',
