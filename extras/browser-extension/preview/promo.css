@@ -1,0 +1,262 @@
+/* Store promo tiles – preview only, never shipped. */
+
+:root {
+  --accent: #5b8cff;
+  --accent-2: #35e0c0;
+  --text: #e8ecf3;
+  --muted: #99a5b7;
+  --muted-2: #6d7889;
+  --on-accent: #06121a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  position: relative;
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(680px 420px at 8% -20%, rgba(91, 140, 255, 0.3), transparent 62%),
+    radial-gradient(560px 380px at 100% 120%, rgba(53, 224, 192, 0.22), transparent 62%),
+    #07090d;
+}
+
+body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.4;
+}
+
+.brand {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand img {
+  display: block;
+  border-radius: 9px;
+}
+
+.brand span {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.brand em {
+  display: block;
+  color: var(--accent-2);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Small tile 440 × 280 ------------------------------------------------------ */
+
+body.small {
+  width: 440px;
+  height: 280px;
+  padding: 24px 26px;
+}
+
+body.small .brand img {
+  width: 32px;
+  height: 32px;
+}
+
+body.small .brand span {
+  font-size: 16px;
+}
+
+body.small .brand em {
+  font-size: 8.5px;
+  margin-top: 1px;
+}
+
+body.small h1 {
+  position: relative;
+  z-index: 1;
+  margin: 26px 0 0;
+  font-size: 30px;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+
+body.small h1 b {
+  display: block;
+  background: linear-gradient(100deg, #9db9ff, var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 850;
+}
+
+body.small p {
+  position: relative;
+  z-index: 1;
+  margin: 12px 0 0;
+  max-width: 300px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+body.small .ring {
+  position: absolute;
+  right: -46px;
+  bottom: -58px;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  border: 1px solid rgba(53, 224, 192, 0.24);
+  background: radial-gradient(circle at 40% 35%, rgba(53, 224, 192, 0.16), transparent 65%);
+}
+
+body.small .pill {
+  position: absolute;
+  left: 26px;
+  bottom: 22px;
+  z-index: 1;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* Large marquee 1400 × 560 -------------------------------------------------- */
+
+body.large {
+  width: 1400px;
+  height: 560px;
+  padding: 58px 72px;
+}
+
+body.large .brand img {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+}
+
+body.large .brand span {
+  font-size: 24px;
+}
+
+body.large .brand em {
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+body.large .grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 780px 1fr;
+  align-items: center;
+  gap: 40px;
+  height: 360px;
+  margin-top: 18px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+body.large h1 {
+  margin: 14px 0 16px;
+  font-size: 72px;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+body.large h1 b {
+  display: block;
+  background: linear-gradient(100deg, #a8c0ff, var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+body.large .lead {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 19px;
+  line-height: 1.55;
+}
+
+body.large .chips {
+  display: flex;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+body.large .chips span {
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  color: #cfd7e4;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+body.large .chips span::before {
+  content: "✓";
+  margin-right: 7px;
+  color: var(--accent-2);
+  font-weight: 900;
+}
+
+.mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  width: 330px;
+  height: 330px;
+}
+
+.mark img {
+  position: relative;
+  z-index: 2;
+  width: 208px;
+  height: 208px;
+  border-radius: 48px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+
+.mark::before,
+.mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(91, 140, 255, 0.24);
+}
+
+.mark::after {
+  inset: 42px;
+  border-color: rgba(53, 224, 192, 0.22);
+  background: radial-gradient(circle at 40% 32%, rgba(53, 224, 192, 0.14), transparent 68%);
+}

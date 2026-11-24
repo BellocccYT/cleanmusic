@@ -4,6 +4,11 @@ Alles, was der Chrome-Web-Store-Dialog abfragt, plus die Begründungen für die 
 Die Angaben sind so formuliert, dass sie zum tatsächlichen Code passen – nicht mehr
 versprechen und nichts weglassen.
 
+> **Status: veröffentlicht.** Version 2.0.0, seit 24. November 2026 im Chrome Web Store,
+> Sichtbarkeit öffentlich.
+> Eintrag: https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc
+> Item-ID: `hghplimkfmogkheakonapklcfgioc`
+
 ## Basisdaten
 
 | Feld | Wert |
@@ -12,7 +17,7 @@ versprechen und nichts weglassen.
 | Kurzbeschreibung (max. 132 Zeichen) | `YouTube-Videos mit einem Klick in die CleanMusic-Warteschlange legen oder direkt in der Desktop-App abspielen.` |
 | Kategorie | `Fun` |
 | Sprache | Deutsch |
-| Sichtbarkeit | erst `unlisted`, nach dem Test `public` |
+| Sichtbarkeit | öffentlich (zuerst `unlisted`, dann umgestellt) |
 | Homepage | https://bellocccyt.github.io/cleanmusic/ |
 | Support | https://github.com/BellocccYT/cleanmusic/issues |
 | Datenschutz-URL | https://bellocccyt.github.io/cleanmusic/privacy/ |
@@ -45,6 +50,10 @@ Kanal der geöffneten YouTube-Seite – und nur in dem Moment, in dem du einen
 CleanMusic-Knopf drückst. Diese Angaben gehen an die lokal installierte App, sonst
 nirgendwohin. Keine Konten, keine Cookies, kein Verlauf, keine Analyse, kein Code aus
 dem Internet. Einstellungen liegen nur auf deinem Gerät.
+
+COMMUNITY
+Fragen und Austausch: https://discord.gg/XqYMZJXJjA
+Bugs bitte über die GitHub-Issues: https://github.com/BellocccYT/cleanmusic/issues
 
 VORAUSSETZUNG
 CleanMusic (Windows, kostenlos, Open Source) muss installiert sein. Ohne die App zeigt
@@ -82,7 +91,61 @@ CleanMusic ist ein inoffizielles Projekt und nicht mit YouTube oder Google verbu
 > Send the YouTube video the user is currently watching to the locally installed CleanMusic
 > desktop app, either into its queue or straight to playback.
 
-## Angaben im Daten-Tab
+## Copy-Paste für das Datenschutz-Formular
+
+Diese vier Texte gehören in die Felder unter **Datenschutz** (englisch, weil das
+Prüfteam international sitzt; Deutsch wird ebenfalls akzeptiert):
+
+**Alleiniger Zweck**
+
+```text
+Send the YouTube video the user is currently watching to the locally installed CleanMusic desktop app: add it to the app's queue or start playback there. The extension has no server, no account and no other purpose.
+```
+
+**Begründung für contextMenus**
+
+```text
+Three right-click entries hand content to the local app: the current YouTube video, a right-clicked YouTube link, or selected text as a catalog search. The entries only appear on YouTube pages and YouTube links.
+```
+
+**Begründung für storage**
+
+```text
+Stores six local UI preferences (which buttons are shown, feedback on/off) in chrome.storage.local. No personal data, no sync, nothing is transmitted.
+```
+
+**Begründung für Hostberechtigung**
+
+```text
+Content script on youtube.com, m.youtube.com and music.youtube.com: it adds the CleanMusic buttons to the player and reads the current video id, title and channel name to build the cleanmusic:// link the user asked for. No other sites are accessed; nothing is stored or sent to a server.
+```
+
+## Store-Eintrag: weitere Felder
+
+| Feld | Wert |
+| --- | --- |
+| Offizielle URL | leer lassen (nur verifizierte Domains; `github.io` lässt sich nicht verifizieren) |
+| URL der Startseite | `https://bellocccyt.github.io/cleanmusic/` |
+| Support-URL | `https://github.com/BellocccYT/cleanmusic/issues` |
+| Nicht jugendfreie Inhalte | aus |
+| Sichtbarkeit | erst `Nur mit Link`, nach dem Test `Öffentlich` |
+
+## Testanweisungen (Tab „Testanweisungen“)
+
+Das Feld ist auf **500 Zeichen** begrenzt. Anmeldung: keine, beide Felder leer lassen.
+
+```text
+CleanMusic is a free Windows app (github.com/BellocccYT/cleanmusic); this extension is its bridge.
+
+Test: open youtube.com/watch?v=dQw4w9WgXcQ.
+CleanMusic buttons appear under the title and in the player (reload once if not).
+Open the popup: thumbnail, title, Queue/Play.
+A click sends cleanmusic://add?... to the local app.
+
+Without the app nothing opens - expected; the in-page notice links to onboarding.html with install steps. No network requests, no remote code.
+```
+
+
 
 | Frage | Antwort |
 | --- | --- |
@@ -122,40 +185,81 @@ The extension makes no network requests of its own. Thumbnails in the popup are 
 
 ## Screenshots (1280 × 800 PNG, oder 640 × 400)
 
-| # | Motiv | Bildunterschrift |
+Der Store erlaubt **maximal fünf**. Empfohlene Reihenfolge – das erste Bild ist das
+Vorschaubild in der Suche:
+
+| # | Datei | Motiv | Bildunterschrift | Quelle |
+| --- | --- | --- | --- | --- |
+| 1 | `01-youtube-knopf-1280x800.png` | YouTube-Videoseite mit CleanMusic-Knopf unter dem Titel | „Ein Klick unter dem Titel“ | selbst aufnehmen |
+| 2 | `02-popup-1280x800.png` | Popup mit Thumbnail, Titel und beiden Aktionen | „Warteschlange oder direkt abspielen“ | erzeugt |
+| 3 | `03-einstellungen-1280x800.png` | Einstellungen mit den Knopf-Schaltern | „Du entscheidest, wo der Knopf erscheint“ | erzeugt |
+| 4 | `04-einrichtung-1280x800.png` | Einrichtungsseite mit den drei Schritten | „Ohne App? Die Erweiterung erklärt den Weg“ | erzeugt |
+| 5 | `05-uebergabe-1280x800.png` | Übergabeseite mit Video-Vorschau | „Erst zeigen, dann senden“ | erzeugt |
+| – | `06-rechtsklick-1280x800.png` | Rechtsklick-Menü auf einem YouTube-Link | „Auch per Rechtsklick und Tastenkürzel“ | optional, ersetzt eins der fünf |
+
+Die vier erzeugten Bilder liegen in `../store-assets/` und entstehen aus dem echten
+Popup, den echten Einstellungen und den echten Hilfeseiten:
+
+```powershell
+node extras/browser-extension/preview/build.js
+node extras/browser-extension/preview/serve.js      # zweites Terminal
+node extras/browser-extension/preview/shoot.js
+```
+
+Für Bild 1 ein YouTube-Video öffnen, den CleanMusic-Knopf unter dem Titel zeigen und bei
+1280 × 800 aufnehmen. Bild 6 ist optional. Keine YouTube-Logos in eigene Grafiken einbauen.
+
+## Werbekacheln (optional)
+
+| Datei | Größe | Inhalt |
 | --- | --- | --- |
-| 1 | YouTube-Videoseite mit CleanMusic-Knopf unter dem Titel | „Ein Klick unter dem Titel“ |
-| 2 | Popup mit Thumbnail, Titel und beiden Aktionen | „Warteschlange oder direkt abspielen“ |
-| 3 | Einstellungen mit den drei Knopf-Schaltern | „Du entscheidest, wo der Knopf erscheint“ |
-| 4 | Einrichtungsseite mit den drei Schritten | „Ohne App? Die Erweiterung erklärt den Weg“ |
-| 5 | Rechtsklick-Menü auf einem YouTube-Link | „Auch per Rechtsklick und Tastenkürzel“ |
+| `../store-assets/promo-klein-440x280.png` | 440 × 280 | Logo, „YouTube → CleanMusic“, „Kostenlos · kein Konto“ |
+| `../store-assets/promo-gross-1400x560.png` | 1400 × 560 | große Kachel mit drei Merkmalen |
 
-Kleine Kachel (440 × 280) optional: Logo, Schriftzug „CleanMusic“, Unterzeile
-„YouTube → Warteschlange“. Keine YouTube-Logos, keine Google-Marken verwenden.
+Beide 24-Bit-RGB-PNG ohne Alpha. Erzeugen mit laufendem Preview-Server:
 
-## Prüfliste vor dem Einreichen
+```powershell
+node extras/browser-extension/preview/promo.js
+```
+
+## Prüfliste für jede neue Version
 
 - [ ] `node extras/browser-extension/test/extension.test.js` → 0 Fehler
 - [ ] Auf frischem Chrome-Profil geladen, ohne CleanMusic installiert: Onboarding erscheint
 - [ ] Mit installierter App: alle drei Knöpfe, Popup, Rechtsklick, alle drei Kürzel
 - [ ] Popup auf einer Nicht-YouTube-Seite: klare Meldung, Suche funktioniert
 - [ ] Nach App-Update: Protokoll greift nach einmaligem Start der App
-- [ ] `README.md`, `STORE.md` und `test/` NICHT im ZIP
+- [ ] `README.md`, `STORE.md`, `test/`, `preview/` NICHT im ZIP
 - [ ] Datenschutz-URL erreichbar (GitHub Pages deployt `site/` bei Push)
 - [ ] Version in `manifest.json` und hier gleich
 - [ ] Screenshots zeigen die aktuelle Oberfläche
-- [ ] Sichtbarkeit zunächst `unlisted`, Test mit 2–3 Personen, dann `public`
+- [ ] Sichtbarkeit passt (öffentlich lassen oder bewusst ändern)
+
+## Neue Version einreichen
+
+1. `version` in `manifest.json` erhöhen (z. B. `2.0.1`) und oben in dieser Datei nachziehen.
+2. Prüfliste abarbeiten, `node extras/browser-extension/test/extension.test.js` laufen lassen.
+3. ZIP bauen (siehe unten).
+4. Dashboard → Artikel → **Paket** → neues ZIP hochladen. Die Store-Seite bleibt live,
+   bis die neue Version freigegeben ist.
+5. **„Neu in dieser Version"** ausfüllen, **„Prüfen lassen"**.
+6. Nach der Freigabe im Store prüfen, ob die neue Version installiert wird
+   (Chrome aktualisiert automatisch, manuell geht es über `chrome://extensions`).
 
 ## ZIP bauen
 
 ```powershell
+$version = "2.0.0"
 $src = "extras\browser-extension\cleanmusic-youtube"
-$stage = Join-Path $env:TEMP "cmx-store"
+$stage = Join-Path $env:TEMP "cmx-store-$version"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $stage | Out-Null
-Copy-Item "$src\*" $stage -Recurse
-Remove-Item "$stage\README.md","$stage\STORE.md" -Force
-Compress-Archive -Path "$stage\*" -DestinationPath "cleanmusic-youtube-2.0.0.zip" -CompressionLevel Optimal
+Get-ChildItem $src -File |
+  Where-Object { $_.Name -notin @('README.md', 'STORE.md') } |
+  Copy-Item -Destination $stage
+Compress-Archive -Path "$stage\*" `
+  -DestinationPath "extras\browser-extension\cleanmusic-youtube-$version.zip" `
+  -CompressionLevel Optimal
 ```
 
 `manifest.json` muss im Wurzelverzeichnis des ZIP liegen.

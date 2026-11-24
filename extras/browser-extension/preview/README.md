@@ -8,11 +8,13 @@ Nur für Entwicklung und Store-Screenshots. **Nicht Teil des Store-ZIPs** – da
 - `chrome-stub.js` beantwortet die Chrome-Aufrufe von Popup und Einstellungen mit
   Beispieldaten (Video-ID `dQw4w9WgXcQ`, Titel, Kanal, Playlist-Flag, drei Kürzel).
 - `build.js` kopiert die Erweiterung nach `build/` und hängt den Stub vor `shared.js`.
-  Die echten Dateien werden nie verändert.
+  Die echten Dateien werden nie verändert. Für Offline-Vorschauen wird außerdem
+  `CMX.thumbnailUrl` auf das mitgelieferte `sample-thumb.jpg` umgebogen.
 - `shot-*.html` sind fertige 1280 × 800-Kompositionen mit Überschrift, Nutzen-Argumenten
   und der echten Oberfläche im Browser-Rahmen.
+- `shoot.js` rendert daraus die fertigen PNGs in `../store-assets/`.
 
-## Benutzen
+## Ansehen
 
 ```powershell
 node extras/browser-extension/preview/build.js
@@ -21,26 +23,29 @@ node extras/browser-extension/preview/serve.js
 
 Dann <http://127.0.0.1:8790/preview/index.html> öffnen.
 
-## Screenshots aufnehmen
+## Screenshots erzeugen
 
-1. Server starten, `shot-*.html` öffnen.
-2. Fenster auf 1280 × 800 bringen (oder Full-Page-Screenshot).
-3. Als PNG speichern.
+```powershell
+# Server läuft im zweiten Terminal
+node extras/browser-extension/preview/shoot.js
+node extras/browser-extension/preview/promo.js
+```
 
-Fertig abgelegt liegen die Bilder in `../store-assets/`:
+Ergebnis: `../store-assets/02-popup-1280x800.png`, `03-einstellungen-…`,
+`04-einrichtung-…`, `05-uebergabe-…` sowie die beiden Werbekacheln
+`promo-klein-440x280.png` und `promo-gross-1400x560.png`.
 
-| Datei | Inhalt |
-| --- | --- |
-| `02-popup-1280x800.png` | Popup mit Beispielvideo |
-| `03-einstellungen-1280x800.png` | Einstellungen |
-| `04-einrichtung-1280x800.png` | Einrichtung ohne App |
-| `05-uebergabe-1280x800.png` | Übergabeseite |
+Warum zwei Durchläufe: Chromium liefert bei `capturePage()` keine Bilder, die in einem
+`iframe` liegen. `shoot.js` fotografiert deshalb zuerst die echte Seite in ihrer Größe ab
+und setzt dieses Bild in einem zweiten Durchlauf in die 1280 × 800-Komposition ein.
+Das Fenster ist dabei auf Deckkraft 0 – sichtbar wird nichts.
 
-Die beiden YouTube-Motive (`01-youtube-knopf`, `06-rechtsklick`) müssen von Hand
-aufgenommen werden – sie zeigen echte YouTube-Oberfläche. Details in `../cleanmusic-youtube/STORE.md`.
+Die beiden YouTube-Motive (`01-youtube-knopf`, `06-rechtsklick`) lassen sich so nicht
+erzeugen: Sie zeigen echte YouTube-Oberfläche und werden von Hand aufgenommen. Details
+stehen in `../cleanmusic-youtube/STORE.md`.
 
 ## Wenn sich die Oberfläche ändert
 
-`build.js` neu laufen lassen reicht; die Shot-Seiten lesen nur `build/`. Nur wenn eine
-Seite andere Maße braucht, die `width`/`height`-Werte in der jeweiligen `shot-*.html`
+`build.js` und danach `shoot.js` neu laufen lassen. Nur wenn eine Seite andere Maße
+braucht, die `width`/`height`-Werte in der jeweiligen `shot-*.html` und in `shoot.js`
 anpassen.

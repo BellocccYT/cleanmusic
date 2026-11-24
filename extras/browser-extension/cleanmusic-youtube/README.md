@@ -9,7 +9,8 @@ keine Telemetrie. Alles bleibt auf dem Rechner.
 
 ## Installieren
 
-**Aus dem Chrome Web Store** (nach der Veröffentlichung): Seite öffnen → *Hinzufügen*.
+**Aus dem Chrome Web Store:** [CleanMusic für YouTube](https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc)
+öffnen → *Hinzufügen*. Kostet nichts, keine Anmeldung.
 
 **Entpackt (Entwicklung):**
 
@@ -114,6 +115,16 @@ node extras/browser-extension/test/extension.test.js
 Der Test prüft die reinen Helfer (URL-Erkennung, Deep-Link-Regeln, Textbereinigung,
 Einstellungen) und die Struktur: Manifest, Berechtigungen, vorhandene Dateien, keine
 Fremdskripte, keine Inline-Handler, keine `fetch`/`eval`-Aufrufe.
+
+**Vorschau und Store-Screenshots** (Beispieldaten, ohne die App):
+
+```powershell
+node extras/browser-extension/preview/build.js
+node extras/browser-extension/preview/serve.js   # zweites Terminal
+node extras/browser-extension/preview/shoot.js   # schreibt store-assets/*.png
+```
+
+Der Ordner `preview/` liegt bewusst neben der Erweiterung und ist nie Teil des ZIPs.
 
 **ZIP für den Store** (ohne Test- und Doku-Dateien):
 

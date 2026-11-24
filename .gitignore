@@ -7,3 +7,5 @@ release/
 .DS_Store
 Thumbs.db
 extras/browser-extension/preview/build/
+extras/browser-extension/preview/captures/
+extras/browser-extension/*.zip

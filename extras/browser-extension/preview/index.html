@@ -48,6 +48,12 @@
       <a class="card" href="shot-launch.html"><strong>Übergabe</strong><span>shot-launch.html</span></a>
     </div>
 
+    <h2>Werbekacheln</h2>
+    <div class="grid">
+      <a class="card" href="promo-small.html"><strong>Kleine Kachel</strong><span>440 × 280</span></a>
+      <a class="card" href="promo-large.html"><strong>Große Kachel</strong><span>1400 × 560</span></a>
+    </div>
+
     <h2>Direkt ansehen</h2>
     <div class="grid">
       <a class="card" href="build/popup.html"><strong>Popup</strong><span>mit Beispielvideo</span></a>
@@ -60,7 +66,8 @@
     <ol>
       <li><code>node extras/browser-extension/preview/build.js</code> – baut <code>preview/build/</code> mit Stub.</li>
       <li><code>node extras/browser-extension/preview/serve.js</code> – Server auf <code>127.0.0.1:8790</code>.</li>
-      <li>Eine <code>shot-*.html</code> öffnen und bei 1280 × 800 als PNG speichern.</li>
+      <li><code>node extras/browser-extension/preview/shoot.js</code> – schreibt die PNGs nach <code>../store-assets/</code>.</li>
+      <li><code>node extras/browser-extension/preview/promo.js</code> – rendert die beiden Werbekacheln.</li>
     </ol>
 
     <div class="note">
