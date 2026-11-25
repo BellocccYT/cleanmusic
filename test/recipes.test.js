@@ -51,6 +51,7 @@ check('normalize: defaults for empty input', () => {
   assert.equal(rules.excludeDislikes, true);
   assert.deepEqual(rules.moods, []);
   assert.deepEqual(rules.kinds, []);
+  assert.deepEqual(rules.licenses, []);
   assert.equal(rules.bpmMin, 0);
 });
 
@@ -108,6 +109,16 @@ check('rejects: mood filter', () => {
   assert.equal(R.rejects(entry('ohne'), rules, ctx()), 'mood');
 });
 
+check('rejects: explicit licence filter', () => {
+  const licenseCtx = ctx({ license: (item) => ({ CC0: 'free', 'CC BY 4.0': 'by', NCS: 'ncs' })[item.license] || 'other' });
+  assert.equal(R.rejects(entry('x', { license: 'CC0' }), R.normalize({ licenses: ['free'] }), licenseCtx), '');
+  assert.equal(R.rejects(entry('x', { license: 'CC BY 4.0' }), R.normalize({ licenses: ['free'] }), licenseCtx), 'license');
+  assert.equal(R.rejects(entry('x', { license: 'CC BY 4.0' }), R.normalize({ licenses: ['by', 'ncs'] }), licenseCtx), '');
+  assert.equal(R.rejects(entry('x'), R.normalize({ licenses: [] }), licenseCtx), '', 'leer = egal');
+  // Unknown licences are dropped from the rules.
+  assert.deepEqual(plain(R.normalize({ licenses: ['free', 'quatsch'] }).licenses), ['free']);
+});
+
 check('collect: interleaves sources, no duplicates, respects limit, remembers why', () => {
   const groups = [
     { source: 'favorites', list: [entry('a'), entry('b'), entry('c')] },
@@ -138,6 +149,7 @@ check('chips and explanation are readable', () => {
     bpmMax: 140,
     moods: ['workout'],
     kinds: ['local'],
+    licenses: ['free', 'by'],
     refresh: 'daily',
     why: { x: 'favorites' },
   });
@@ -145,6 +157,7 @@ check('chips and explanation are readable', () => {
   assert.ok(chips.includes('120–140 BPM'));
   assert.ok(chips.includes('Stimmung: Workout'));
   assert.ok(chips.includes('Lokale Dateien'));
+  assert.ok(chips.includes('Lizenz: CC0 / Public Domain, CC BY'));
   assert.ok(chips.includes('Täglich neu'));
   const text = R.explain(rules, 'x', { bpm: 128, mood: 'workout' });
   assert.match(text, /aus „Favoriten“/);

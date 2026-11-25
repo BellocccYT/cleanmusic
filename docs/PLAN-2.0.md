@@ -230,7 +230,10 @@ Die Smoke-Suiten prüfen das unveränderte Verhalten (Shuffle, Restore, Queue-Re
 **1.24.0:** System-Rezepte – die fünf Mixes lassen sich als eigene, täglich erneuerte
 Smart-Playlist speichern („Duplizieren“). Vorlagen bleiben eigene Playlists, weil sie im Netz
 suchen (Rezepte tun das bewusst nicht).
-**Offen:** Lizenz-Filter jenseits von stream-sicher/Credit. Damit ist Phase 3 bis auf diesen
-Punkt erledigt; nächster großer Schritt laut Plan: Phase 1 (Store) oder Phase 5 (Plugin-API v3).
+**Lizenz-Filter (2.0.0):** zusätzlich zu stream-sicher/Credit gibt es jetzt einen
+expliziten Lizenz-Filter (CC0/Public Domain, CC BY, NCS, andere) in den Rezept-Regeln
+(`rules.licenses`, `CMRecipes.LICENSES`, `licenseCategory` in app.js, Test in
+`test/recipes.test.js`). Damit ist Phase 3 erledigt; nächster großer Schritt laut Plan:
+Phase 1 (Store) oder Phase 5 (Plugin-API v3).
 
 **Regel:** Kein Schritt ohne grüne Tests. Kein Big-Bang.

@@ -544,6 +544,13 @@
     return 'other';
   }
 
+  // Licence filter category for a recipe. Plugin-confirmed CC counts as CC BY.
+  function licenseCategory(entry) {
+    const key = licenseKey(entry && entry.license);
+    if (key === 'other' && entry && entry.ytLicense === 'cc-by') return 'by';
+    return key;
+  }
+
   function localEntry(track) {
     return {
       id: `local:${track.path}`,
@@ -805,6 +812,7 @@
       lastPlayed: (id) => lastPlayed.get(id) || 0,
       bpm: (entry) => Number(bpmCache[entry.id]) || 0,
       mood: (entry) => moodOf(entry) || '',
+      license: (entry) => licenseCategory(entry),
       now: Date.now(),
     };
   }
@@ -1192,6 +1200,13 @@
             (kind) => `<label class="smart-pill"><input type="checkbox" data-smart-kind="${kind.id}" ${rules.kinds.includes(kind.id) ? 'checked' : ''} /><span>${esc(kind.label)}</span></label>`
           ).join('')}</div>
         </fieldset>
+        <fieldset class="smart-group">
+          <legend>Lizenz</legend>
+          <div class="smart-pills">${(RECIPES.LICENSES || []).map(
+            (lic) => `<label class="smart-pill"><input type="checkbox" data-smart-license="${lic.id}" ${rules.licenses.includes(lic.id) ? 'checked' : ''} /><span>${esc(lic.label)}</span></label>`
+          ).join('')}</div>
+          <small class="smart-hint">Leer = jede Lizenz. „Nur stream-sicher“ oben ist strenger (CC0/CC BY/NCS/Plugin-CC).</small>
+        </fieldset>
         <p class="smart-preview" id="smart-preview"></p>
       </div>`;
 
@@ -1223,6 +1238,7 @@
         bpmMax: Number((root.querySelector('#smart-bpm-max') || {}).value) || 0,
         moods: Array.from(root.querySelectorAll('[data-smart-mood]:checked')).map((input) => input.dataset.smartMood),
         kinds: Array.from(root.querySelectorAll('[data-smart-kind]:checked')).map((input) => input.dataset.smartKind),
+        licenses: Array.from(root.querySelectorAll('[data-smart-license]:checked')).map((input) => input.dataset.smartLicense),
         why: existing && existing.smart ? existing.smart.why : {},
       },
     });

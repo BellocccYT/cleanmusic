@@ -49,6 +49,15 @@
     { id: 'traurig', label: 'Traurig' },
   ];
 
+  // Licence categories for the explicit licence filter. The ids match
+  // licenseKey()/licenseCategory() in app.js.
+  const LICENSES = [
+    { id: 'free', label: 'CC0 / Public Domain' },
+    { id: 'by', label: 'CC BY' },
+    { id: 'ncs', label: 'NCS' },
+    { id: 'other', label: 'Andere / unklar' },
+  ];
+
   // System recipes: the five daily Mixes as editable smart-playlist rules.
   // "Als Rezept speichern" turns one into an own playlist that renews daily.
   const SYSTEM = {
@@ -104,6 +113,7 @@
       bpmMax,
       moods: pick(MOODS, input.moods),
       kinds: pick(KINDS, input.kinds),
+      licenses: pick(LICENSES, input.licenses),
       updatedAt: Number(input.updatedAt) || 0,
       why,
     };
@@ -122,6 +132,10 @@
     if (rules.streamSafe && !(ctx.streamSafe && ctx.streamSafe(entry))) return 'streamSafe';
     if (rules.withCredit && !entry.credit) return 'credit';
     if (rules.excludeDislikes && ctx.disliked && ctx.disliked(entry)) return 'dislike';
+    if (rules.licenses && rules.licenses.length) {
+      const license = ctx.license ? ctx.license(entry) : 'other';
+      if (!rules.licenses.includes(license)) return 'license';
+    }
     if (rules.notPlayedDays > 0) {
       const last = ctx.lastPlayed ? Number(ctx.lastPlayed(entry.id)) || 0 : 0;
       const now = Number(ctx.now) || Date.now();
@@ -206,6 +220,7 @@
     else if (r.bpmMax) out.push(`bis ${r.bpmMax} BPM`);
     if (r.streamSafe) out.push('Nur stream-sicher');
     if (r.withCredit) out.push('Nur mit Credit');
+    if (r.licenses.length) out.push(`Lizenz: ${r.licenses.map((id) => (LICENSES.find((item) => item.id === id) || {}).label || id).join(', ')}`);
     if (r.notPlayedDays) out.push(`${r.notPlayedDays} Tage nicht gehört`);
     if (r.excludeDislikes) out.push('Ohne Dislikes');
     out.push(`Max. ${r.limit}`);
@@ -239,6 +254,7 @@
     REFRESH,
     KINDS,
     MOODS,
+    LICENSES,
     normalize,
     rejects,
     collect,
