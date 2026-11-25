@@ -23,7 +23,8 @@ seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
 mit gespeichertem Login. Lokale Musik, Radio und **30-Sekunden-Vorschauen**
 spielt CleanMusic **selbst** ab – dazu kommen **Favoriten, Playlists und
 Vorschläge** über alle Quellen hinweg, ein **Cutter-Modus** mit Musik und
-Soundeffekten für Videos, ein **Vollbild-Player mit Visualizer** und optional
+Soundeffekten für Videos und einem **Studio** für mehrteilige Schnitte, ein
+**Vollbild-Player mit Visualizer** und optional **Freunde und Gruppen** sowie
 **Discord Rich Presence**.
 
 Optional lassen sich **Quellen-Plugins** einbinden: einzelne Dateien, die du
@@ -94,14 +95,14 @@ eine kleine Karte, was neu ist.
 | **Beliebte Titel** | ✅ Deezer-Charts, sofort abspielbar |
 | **Live-Radio** | ✅ tausende öffentliche Sender, volle Songs, kein Login, kein DRM |
 | **Favoriten & Playlists** | ✅ ♥ und + an jedem Titel/Sender, gemischt aus allen Quellen, Drag & Drop |
-| **Smart-Playlists** (ab 1.19.0) | ✅ Regeln aus Favoriten, lokaler Musik, Verlauf, Playlists, Vorschlägen und Charts; Filter für stream-sicher, Credit, Dislikes, Tempo, Stimmung und Art; aktualisieren sich beim Öffnen oder täglich (ab 1.22.0) |
+| **Smart-Playlists** (ab 1.19.0) | ✅ Regeln aus Favoriten, lokaler Musik, Verlauf, Playlists, Vorschlägen und Charts; Filter für stream-sicher, Credit, Dislikes, Tempo, Stimmung, Art und Lizenz (ab 2.0); aktualisieren sich beim Öffnen oder täglich (ab 1.22.0) |
 | **Vorlagen-Playlists** | ✅ acht Themen, je **stream-sicher** (NCS, CC BY, CC0) oder **normal** (Katalog) mit einem Klick |
 | **Vorschläge „Für dich“** | ✅ aus deinen Favoriten (Deezer-Artist-Radio, verwandte Artists, optional über Plugins) |
 | **Cutter-Modus** | ✅ NCS, YouTube-Klassiker (CC BY), Soundeffekte & freie Musik mit Lizenz und Credit |
 | **Vollbild-Player & Visualizer** | ✅ Cover-Farben, Beat-Puls, Kreis/Balken/Welle, Kino-Modus |
 | **Discord Rich Presence** | ⚙️ optional – eigene Discord-Application-ID nötig; ab 1.26.0 mit Knopf „In CleanMusic anhören“ für Freunde |
-| **Freunde (Social, Beta)** | ⚙️ optional, standardmäßig **aus** – braucht einen eigenen kleinen Server (`server/social/`): Zufallsname, Freundescode statt Suche, „Freunde hören gerade“, Emoji-Reaktionen, Blockieren/Melden, Konto löschen |
-| **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren; ab 1.25.0 zeigen Plugins mit Manifest ihre Berechtigungen vor dem Aktivieren |
+| **Freunde & Gruppen (Social, Beta, ab 2.0)** | ⚙️ optional, standardmäßig **aus** – über den CleanMusic-Social-Server (Cloudflare, Daten in der EU): Zufallsname, Freundescode statt Suche, „Freunde hören gerade“, Emoji-Reaktionen, Gruppen mit Wochenkarte und gemeinsamer Playlist, Blockieren/Melden, Konto löschen |
+| **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren; ab 1.25.0 zeigen Plugins mit Manifest ihre Berechtigungen vor dem Aktivieren, ab 2.0 auch Bibliothek lesen und eigene Panels |
 | Apple Music | ✅ offizieller Web-Player; zusätzlich **MusicKit-Fenster** für volle Titel (Developer-Token nötig) |
 | Spotify, YouTube Music, TIDAL, Deezer, Amazon Music, SoundCloud | ✅ als offizieller Web-Player eingebettet |
 | Qobuz, Bandcamp, Audius | ✅ zusätzlich als offizieller Web-Player – ausklappbar unter „Weitere Dienste“ |
@@ -221,7 +222,8 @@ Wunsch **nach Ordner**.
   **Stimmung** und **Art** (lokal, Vorschau, volle Titel, freie Musik). „Warum läuft
   das?“ nennt Quelle und Regel, aus der ein Titel stammt. Ab 1.24.0 legt der
   Funken-Knopf an jedem **Mix** eine eigene Smart-Playlist mit den Regeln des Mixes an
-  (täglich neu, frei anpassbar).
+  (täglich neu, frei anpassbar). Ab 2.0 gibt es einen **Lizenz-Filter** (CC0/Public
+  Domain, CC BY, NCS, andere/unklar) – Lizenz und Credit trotzdem je Titel prüfen.
 - **Vorlagen** (Seitenleiste): acht fertige Themen wie *Gaming & Retro*,
   *Chill & Lounge*, *Episch & Action* oder *Workout & Energy*. Jede gibt es
   **stream-sicher** – nur NCS, CC BY und CC0, also mit Credit im Stream nutzbar –
@@ -293,7 +295,8 @@ bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import v
 > Clip setzen, die Reihenfolge per ↑/↓ ändern. **„▶ Vorschau“** spielt die Timeline grob ab
 > (Original-Clips, ohne Übergänge), **„Als WAV exportieren“** rendert alle Clips in ihrer
 > Reihenfolge (Übergänge werden überblendet) zu einer Datei und schreibt eine Credit-.txt
-> mit Lizenz und Änderungen (nur stream-sicher: CC0, CC BY, Public Domain, NCS).
+> mit Lizenz und Änderungen. Exportiert wird nur, wenn alle Clips CC0, CC BY oder Public
+> Domain sind; Ausgabe vorerst nur als WAV.
 
 > **Für dich (ab 1.5):** Vorschläge aus den Kategorien, die du am meisten nutzt – ohne
 > Titel, die du schon gecreditet hast (Mix, nur Musik, nur Sounds).
@@ -461,9 +464,9 @@ Radio, und nach 10 Minuten verfällt es. Antippen spielt den Song bei dir. **Gru
 Gruppencode, bis 30 Leute): Die Wochenkarten aktualisieren sich von selbst zu einer Rangliste, dazu
 eine gemeinsame Gruppen-Playlist (bis 200 Titel), die du auch als eigene Playlist übernehmen kannst.
 
-Dafür braucht es einen kleinen Server (Cloudflare Worker, Daten in der EU) – Code und
-Anleitung in [`server/social/README.md`](server/social/README.md). Solange keiner eingetragen
-ist, bleibt die Ansicht **Freunde** leer. Was gespeichert wird:
+Ab 2.0 ist der CleanMusic-Social-Server fest eingetragen (Cloudflare Worker, Daten in der EU);
+die Ansicht **Freunde** erscheint dann in der Seitenleiste. Code und Anleitung für einen eigenen
+Server stehen in [`server/social/README.md`](server/social/README.md). Was gespeichert wird:
 [Datenschutz für Social](https://bellocccyt.github.io/cleanmusic/privacy/social/).
 
 ### Discord Rich Presence (optional)
@@ -634,7 +637,10 @@ Ein Plugin mit `charts()` bekommt auf der Startseite unter *Trending & Neuheiten
 einen eigenen Reiter (z. B. Top-Listen seiner Quelle).
 Seit **API v2** können Plugins auf Titelwechsel reagieren, den Player steuern
 und eigene Einstellungsfelder in ihrer Plugin-Karte anzeigen; v1-Plugins laufen
-unverändert. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
+unverändert. Seit **API v3** (1.25.0) nennt ein Manifest-Kopf die Berechtigungen,
+und das Plugin bekommt nur diese; ab 2.0 kommen `library:read` (Favoriten,
+Playlists, Verlauf, Warteschlange, lokale Titel ohne Dateipfade lesen) und
+`ui:panel` (eigene Panels in der Plugin-Karte oder auf der Startseite) dazu. Siehe auch die Hinweise zu Plugins in [LEGAL.md](LEGAL.md).
 
 ### Streamer.bot (optionales Plugin)
 
@@ -1013,9 +1019,11 @@ THIRD-PARTY-NOTICES.md  Lizenzhinweise der Theme-Paletten
 ## Nächste sinnvolle Schritte
 
 Der Fahrplan zu **1.0** steht in [docs/PLAN-1.0.md](docs/PLAN-1.0.md) (Warteschlange + Autoplay,
-Epidemic Sound und Artlist, Erste-Schritte-Assistent, Installer – fertig). Als Nächstes:
+Epidemic Sound und Artlist, Erste-Schritte-Assistent, Installer – fertig), der zu **2.0** in
+[docs/PLAN-2.0.md](docs/PLAN-2.0.md). Als Nächstes:
 
-- **1.1: Englische Oberfläche** (Deutsch/Englisch umschaltbar, README auf Englisch).
+- **2.1: Gemeinsam hören** (Social S3, Plan in [docs/PLAN-SOCIAL.md](docs/PLAN-SOCIAL.md)).
+- **Englische Oberfläche** (Deutsch/Englisch umschaltbar, README auf Englisch).
 
 0. ~~**Streamer.bot Phase 2:** Titelwechsel als WebSocket-Ereignis~~ – erledigt in
    Plugin 1.3.0 (Action mit Argumenten, Action-Liste, Passwort, Auto-Reconnect). Plan:
