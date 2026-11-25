@@ -65,6 +65,9 @@
   const CMTaste = window.CMTaste;
   if (!CMTaste) throw new Error('renderer/core/taste.js fehlt');
 
+  const CMMixes = window.CMMixes;
+  if (!CMMixes) throw new Error('renderer/core/mixes.js fehlt');
+
   const CMStudio = window.CMStudio || null;
 
   const ICONS = {
@@ -2924,49 +2927,9 @@
    * nothing is uploaded; only artist names go to the public catalogue API.
    * ---------------------------------------------------------------- */
 
-  const MIX_LIMIT = 30;
-  const MIX_DEFS = [
-    {
-      id: 'daily',
-      title: 'Dein Mix',
-      subtitle: 'dein Geschmack, frisch gemischt',
-      desc: 'Favoriten, was du oft hörst – und Titel, die genau dazu passen.',
-      icon: 'spark',
-      tone: 'daily',
-    },
-    {
-      id: 'fresh',
-      title: 'Neu für dich',
-      subtitle: 'neue Titel deiner Artists',
-      desc: 'Frische Vorschläge abseits deiner Favoriten und der letzten Tage.',
-      icon: 'star',
-      tone: 'fresh',
-    },
-    {
-      id: 'discover',
-      title: 'Entdecken',
-      subtitle: 'neue Artists, neue Richtungen',
-      desc: 'Titel von Artists, die du noch nicht hörst – aber mögen könntest.',
-      icon: 'search',
-      tone: 'discover',
-    },
-    {
-      id: 'again',
-      title: 'Nochmal',
-      subtitle: 'was du früher gern gehört hast',
-      desc: 'Titel mit vielen Plays, die in den letzten Wochen nicht dran waren.',
-      icon: 'refresh',
-      tone: 'again',
-    },
-    {
-      id: 'deep',
-      title: 'Tiefe Schnitte',
-      subtitle: 'Perlen aus deinen Playlists',
-      desc: 'Selten gehörte Titel aus deinen Playlists und deiner lokalen Musik.',
-      icon: 'list',
-      tone: 'deep',
-    },
-  ];
+  // Definitions and scoring: renderer/core/mixes.js
+  const MIX_DEFS = CMMixes.DEFS;
+  const MIX_LIMIT = CMMixes.LIMIT;
 
   const mixState = { day: '', revision: -1, nonce: 0, lists: null };
 
@@ -3058,114 +3021,24 @@
   }
 
   function mixNoise(entry, id) {
-    const value = stringSeed(`${mixState.day}:${id}:${entry.id}:${mixState.nonce}`);
-    return ((value % 1000) / 1000 - 0.5) * 1.1;
+    return CMMixes.noise(entry, id, mixState.day, mixState.nonce);
+  }
+
+  // Mix context for renderer/core/mixes.js (it owns scoring and filters).
+  function mixRules(ctx) {
+    return Object.assign({}, ctx, { artistKey: tasteArtistKey, excluded: mixExcluded });
+  }
+
+  function mixSeed() {
+    return { day: mixState.day, nonce: mixState.nonce };
   }
 
   function mixScore(entry, id, ctx) {
-    const base = ctx.baseScore(entry) + mixNoise(entry, id);
-    const days = ctx.days(entry);
-    const recent = days < 1 ? 2.2 : days < 3 ? 1.1 : 0;
-    const artistKey = tasteArtistKey(entry.artist);
-
-    if (id === 'daily') {
-      const known = ctx.favoriteIds.has(entry.id) ? 0.9 : 0;
-      const local = entry.kind === 'local' ? 0.25 : 0;
-      const playlist = ctx.playlistIds.has(entry.id) ? 0.25 : 0;
-      return base + known + local + playlist - recent;
-    }
-
-    if (id === 'fresh') {
-      return (
-        base +
-        (ctx.recIds.has(entry.id) ? 1.6 : 0) +
-        (artistKey && ctx.knownArtists.has(artistKey) ? 0.35 : 0) -
-        (days < 7 ? 3 : 0) -
-        (ctx.favoriteIds.has(entry.id) ? 2.5 : 0)
-      );
-    }
-
-    if (id === 'discover') {
-      const unknown = artistKey && !ctx.knownArtists.has(artistKey) ? 2.2 : -0.4;
-      return (
-        base * 0.85 +
-        unknown +
-        (ctx.recIds.has(entry.id) ? 0.5 : 0) -
-        (days < 14 ? 2 : 0) -
-        (ctx.favoriteIds.has(entry.id) ? 4 : 0)
-      );
-    }
-
-    if (id === 'again') {
-      return (
-        base +
-        Math.min(ctx.plays(entry), 8) * 0.45 +
-        (ctx.favoriteIds.has(entry.id) ? 0.6 : 0) +
-        (days > 45 ? 0.8 : 0) -
-        (days < 14 ? 2.5 : 0)
-      );
-    }
-
-    if (id === 'deep') {
-      const plays = ctx.plays(entry);
-      return (
-        base +
-        (plays === 0 ? 1.4 : plays < 3 ? 0.6 : 0) +
-        (days > 30 ? 0.9 : 0) +
-        (entry.kind === 'local' ? 0.25 : 0) -
-        (days < 14 ? 2 : 0)
-      );
-    }
-
-    return base;
+    return CMMixes.score(entry, id, mixRules(ctx), mixSeed());
   }
 
   function buildMixList(id, pool, ctx) {
-    let candidates = pool.filter((entry) => !mixExcluded(entry));
-
-    if (id === 'fresh') {
-      candidates = candidates.filter(
-        (entry) =>
-          !ctx.favoriteIds.has(entry.id) &&
-          !ctx.favoriteKeys.has(matchKey(entry)) &&
-          !ctx.playlistIds.has(entry.id) &&
-          ctx.days(entry) > 7
-      );
-    }
-
-    if (id === 'discover') {
-      candidates = candidates.filter((entry) => {
-        const key = tasteArtistKey(entry.artist);
-        return (
-          key &&
-          !ctx.knownArtists.has(key) &&
-          !ctx.favoriteIds.has(entry.id) &&
-          ctx.days(entry) > 14
-        );
-      });
-    }
-
-    if (id === 'again') {
-      candidates = candidates.filter(
-        (entry) => (ctx.favoriteIds.has(entry.id) || ctx.plays(entry) > 0) && ctx.days(entry) > 7
-      );
-    }
-
-    if (id === 'deep') {
-      candidates = candidates.filter(
-        (entry) =>
-          (ctx.playlistIds.has(entry.id) || entry.kind === 'local') &&
-          !ctx.favoriteIds.has(entry.id)
-      );
-    }
-
-    const scored = candidates
-      .map((entry) => ({ entry, score: mixScore(entry, id, ctx) }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, MIX_LIMIT)
-      .map((row) => row.entry);
-
-    return seededShuffle(scored, stringSeed(`${mixState.day}:${id}:${mixState.nonce}`));
+    return CMMixes.build(id, pool, mixRules(ctx), mixSeed(), MIX_LIMIT);
   }
 
   function ensureMixes(force = false) {
@@ -16865,6 +16738,34 @@ ${updatePanel()}
         skipped: skipped === true && penalty > 0,
         artists: Array.isArray(artists),
         stats: CMTaste.stats(taste, { now: 8000 }).skips === 1,
+      };
+    },
+    mixesSliceTest: () => {
+      const lists = ensureMixes(true);
+      const keys = Object.keys(lists);
+      const pool = Array.from({ length: 5 }, (_, index) => ({
+        id: `mx${index}`,
+        title: `T${index}`,
+        artist: 'Artist',
+        kind: 'preview',
+      }));
+      const ctx = {
+        baseScore: () => 0,
+        days: () => 99,
+        plays: () => 0,
+        favoriteIds: new Set(),
+        favoriteKeys: new Set(),
+        playlistIds: new Set(),
+        recIds: new Set(),
+        knownArtists: new Set(),
+      };
+      const first = CMMixes.build('daily', pool, mixRules(ctx), mixSeed(), 3);
+      const second = CMMixes.build('daily', pool, mixRules(ctx), mixSeed(), 3);
+      return {
+        five: keys.length === 5 && keys.every((key) => Array.isArray(lists[key]) && lists[key].length <= MIX_LIMIT),
+        deterministic: first.map((row) => row.id).join(',') === second.map((row) => row.id).join(','),
+        limited: first.length === 3,
+        defs: MIX_DEFS.length === 5 && Boolean(MIX_DEFS[0].title) && MIX_LIMIT === CMMixes.LIMIT,
       };
     },
     shareUrl: (entry) => shareUrl(entry || {}),

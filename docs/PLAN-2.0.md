@@ -154,6 +154,13 @@ Skips), `artistScores`/`artists` für Empfehlungs-Seeds, `trimMap` (600 Zeilen),
 5-s-Dedupe, max. 300 Einträge). app.js behält Zustand, Toasts und Neuzeichnen.
 Test `test/taste.test.js` (9), Smoke `SMOKE_TASTE_RULES`.
 
+**Smart Mixes (2.0.0):** `renderer/core/mixes.js` (`window.CMMixes`) enthält die
+fünf Mix-Definitionen (`DEFS`, `LIMIT` 30), `def`, `noise` (deterministisch je Tag
+und Nonce), `score` je Mix, `accepts` (Filter für Fresh/Discover/Again/Deep),
+`build` (filtern, bewerten, auf 30 begrenzen, `seededShuffle`) und `buildAll`.
+app.js baut weiterhin Pool und Kontext (`mixPool`, `mixContext`) und reicht
+`mixRules`/`mixSeed` hinein. Test `test/mixes.test.js` (8), Smoke `SMOKE_MIXES`.
+
 **Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.
 
