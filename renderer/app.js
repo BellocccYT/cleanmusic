@@ -62,6 +62,9 @@
   const CMEntries = window.CMEntries;
   if (!CMEntries) throw new Error('renderer/core/entries.js fehlt');
 
+  const CMTaste = window.CMTaste;
+  if (!CMTaste) throw new Error('renderer/core/taste.js fehlt');
+
   const CMStudio = window.CMStudio || null;
 
   const ICONS = {
@@ -2161,128 +2164,43 @@
    * suggestions (same as favourites already were).
    * ---------------------------------------------------------------- */
 
-  const TASTE_SKIP_DAYS = 45;
-
-  function tasteArtistKey(value) {
-    return normKey(primaryArtist(value));
-  }
-
-  function tasteEntryKey(entry) {
-    return entry ? matchKey(entry) : '';
-  }
+  // Rules live in renderer/core/taste.js; this is the state wiring.
+  const {
+    artistKey: tasteArtistKey,
+    trackKey: tasteEntryKey,
+    trimMap: trimTasteMap,
+    feedback: tasteFeedback,
+    skip: tasteSkipRaw,
+    stats: tasteStatsRaw,
+  } = CMTaste;
 
   function tasteTrackValue(entry) {
-    const key = tasteEntryKey(entry);
-    const row = key ? state.taste.tracks[key] : null;
-    return row ? Number(row.value) || 0 : 0;
+    return CMTaste.trackValue(state.taste, entry);
   }
 
   function tasteArtistValue(entry) {
-    const key = tasteArtistKey(entry && entry.artist);
-    const row = key ? state.taste.artists[key] : null;
-    return row ? Number(row.value) || 0 : 0;
+    return CMTaste.artistValue(state.taste, entry);
   }
 
   function tasteSkipPenalty(entry) {
-    const artist = tasteArtistKey(entry && entry.artist);
-    const track = tasteEntryKey(entry);
-    if (!artist && !track) return 0;
-    const now = Date.now();
-    let penalty = 0;
-    state.taste.skips.forEach((row) => {
-      const age = (now - (Number(row.at) || 0)) / DAY;
-      if (age > TASTE_SKIP_DAYS) return;
-      const decay = Math.exp(-age / 30);
-      if (artist && row.a === artist) penalty += 0.5 * decay;
-      else if (track && row.t === track) penalty += 0.3 * decay;
-    });
-    return Math.min(2.6, penalty);
+    return CMTaste.skipPenalty(state.taste, entry, Date.now());
   }
 
   function tasteScore(entry) {
-    if (!entry || entry.kind === 'radio') return 0;
-    let score = 0;
-
-    const track = tasteTrackValue(entry);
-    if (track > 0) score += 3.2;
-    else if (track < 0) score -= 4.4;
-
-    const artist = tasteArtistValue(entry);
-    if (artist > 0) score += 2.4;
-    else if (artist < 0) score -= 3.4;
-
-    if (favIds.has(entry.id)) score += 1.2;
-
-    const played = history.find((row) => row.entry.id === entry.id);
-    if (played) {
-      const age = (Date.now() - played.last) / DAY;
-      score += Math.min(2.2, played.plays * 0.4) * Math.exp(-age / 120);
-    }
-
-    score -= tasteSkipPenalty(entry);
-    return Math.max(-8, Math.min(8, score));
-  }
-
-  // One list of artist seeds for recommendations: explicit taste first,
-  // then favourites, plays, playlist titles and skips.
-  function artistScores() {
-    const scores = new Map();
-    const add = (name, weight, deezerId = null) => {
-      const clean = primaryArtist(name);
-      const key = clean ? normKey(clean) : '';
-      if (!key || clean.length < 2 || !Number.isFinite(weight) || weight === 0) return;
-      const seed = scores.get(key) || { name: clean, score: 0, deezerId: null };
-      seed.score += weight;
-      if (!seed.deezerId && deezerId) seed.deezerId = deezerId;
-      scores.set(key, seed);
-    };
-
-    Object.values(state.taste.artists).forEach((row) =>
-      add(row.n, row.value > 0 ? 4 : -6.5, row.dz)
-    );
-    Object.values(state.taste.tracks).forEach((row) =>
-      add(row.n, row.value > 0 ? 2.2 : -3.4, row.dz)
-    );
-
-    const now = Date.now();
-    state.collection.favorites.forEach((entry, index) =>
-      add(entry.artist, 1 + Math.max(0, 1 - index / 15), entry.source === 'deezer' ? entry.artistId : null)
-    );
-    history.forEach((row) => {
-      const age = (now - row.last) / DAY;
-      add(
-        row.entry.artist,
-        Math.min(row.plays, 6) * 0.3 * Math.exp(-age / 30),
-        row.entry.source === 'deezer' ? row.entry.artistId : null
-      );
-    });
-    state.collection.playlists.forEach((playlist) =>
-      playlist.items.forEach((entry) => add(entry.artist, 0.35))
-    );
-    state.taste.skips.forEach((row) => {
-      const age = (now - row.at) / DAY;
-      if (age > TASTE_SKIP_DAYS) return;
-      add(row.n, -0.55 * Math.exp(-age / 30), row.dz);
-    });
-
-    return scores;
+    return CMTaste.score(state.taste, entry, { favoriteIds: favIds, history, now: Date.now() });
   }
 
   function tasteArtists(limit = 5) {
-    return Array.from(artistScores().values())
-      .filter((artist) => artist.score > 0.05)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map(({ name, deezerId }) => ({ name, deezerId }));
-  }
-
-  function trimTasteMap(map) {
-    const keys = Object.keys(map || {});
-    if (keys.length <= 600) return;
-    keys
-      .sort((a, b) => (Number(map[a].at) || 0) - (Number(map[b].at) || 0))
-      .slice(0, keys.length - 600)
-      .forEach((key) => delete map[key]);
+    return CMTaste.artists(
+      {
+        taste: state.taste,
+        favorites: state.collection.favorites,
+        playlists: state.collection.playlists,
+        history,
+        now: Date.now(),
+      },
+      limit
+    );
   }
 
   function persistTaste() {
@@ -2295,48 +2213,7 @@
   function setTasteFeedback(entries, target, value) {
     const list = (Array.isArray(entries) ? entries : [entries]).filter(Boolean);
     if (!list.length) return;
-    const now = Date.now();
-    let changed = 0;
-    let toggledOff = 0;
-
-    list.forEach((entry) => {
-      if (!entry || entry.kind === 'radio') return;
-      if (target === 'artist') {
-        const key = tasteArtistKey(entry.artist);
-        if (!key) return;
-        const row = state.taste.artists[key];
-        if (row && row.value === value) {
-          delete state.taste.artists[key];
-          toggledOff += 1;
-        } else {
-          state.taste.artists[key] = {
-            value,
-            at: now,
-            n: primaryArtist(entry.artist),
-            dz: entry.source === 'deezer' ? entry.artistId || null : null,
-          };
-        }
-        changed += 1;
-      } else {
-        const key = tasteEntryKey(entry);
-        if (!key) return;
-        const row = state.taste.tracks[key];
-        if (row && row.value === value) {
-          delete state.taste.tracks[key];
-          toggledOff += 1;
-        } else {
-          state.taste.tracks[key] = {
-            value,
-            at: now,
-            n: primaryArtist(entry.artist),
-            a: tasteArtistKey(entry.artist),
-            dz: entry.source === 'deezer' ? entry.artistId || null : null,
-          };
-        }
-        changed += 1;
-      }
-    });
-
+    const { changed, toggledOff } = tasteFeedback(state.taste, list, target, value, Date.now());
     if (!changed) return;
     persistTaste();
     invalidateMixes();
@@ -2355,42 +2232,25 @@
   }
 
   function noteSkip(entry) {
-    if (!entry || entry.kind === 'radio' || audio.paused) return;
-    const played = Number(audio.currentTime) || 0;
-    const duration = Number(audio.duration) || 0;
-    const limit = Math.min(20, duration ? duration * 0.55 : 20);
-    if (played < 3 || played >= limit) return;
-
-    const track = tasteEntryKey(entry);
-    const artist = tasteArtistKey(entry.artist);
-    if (!track && !artist) return;
-    const skips = state.taste.skips;
-    const last = skips[skips.length - 1];
-    if (last && last.t === track && Date.now() - last.at < 5000) return;
-
-    skips.push({
-      a: artist,
-      t: track,
-      n: primaryArtist(entry.artist),
-      dz: entry.source === 'deezer' ? entry.artistId || null : null,
-      at: Date.now(),
+    const added = tasteSkipRaw(state.taste, entry, {
+      played: Number(audio.currentTime) || 0,
+      duration: Number(audio.duration) || 0,
+      paused: audio.paused,
+      now: Date.now(),
     });
-    state.taste.skips = skips.slice(-300);
+    if (!added) return;
     persistTaste();
     invalidateMixes();
   }
 
   function tasteStats() {
-    const trackRows = Object.values(state.taste.tracks);
-    const artistRows = Object.values(state.taste.artists);
-    const cutoff = Date.now() - 30 * DAY;
-    return {
-      likes: trackRows.filter((row) => row.value > 0).length + artistRows.filter((row) => row.value > 0).length,
-      dislikes:
-        trackRows.filter((row) => row.value < 0).length + artistRows.filter((row) => row.value < 0).length,
-      skips: state.taste.skips.filter((row) => row.at >= cutoff).length,
-      artists: tasteArtists(6).map((artist) => artist.name),
-    };
+    return tasteStatsRaw(state.taste, {
+      favorites: state.collection.favorites,
+      playlists: state.collection.playlists,
+      history,
+      now: Date.now(),
+      limit: 6,
+    });
   }
 
   function trackListening() {
@@ -16986,6 +16846,25 @@ ${updatePanel()}
         review: review.secs === 30 && review.topSource[0] === 'Deezer',
         real: Array.isArray(real.months) && real.months.length === 12 && Array.isArray(real.hours),
         total: CMStats.totalSeconds(fixture.months) === 30,
+      };
+    },
+    tasteSliceTest: () => {
+      const taste = { tracks: {}, artists: {}, skips: [], revision: 0 };
+      const item = { id: 'smoke-taste', title: 'Smoke Song', artist: 'Smoke Artist', kind: 'preview' };
+      const set = CMTaste.feedback(taste, [item], 'track', 1, 1000);
+      const liked = CMTaste.trackValue(taste, item) === 1;
+      const scored = CMTaste.score(taste, item, { now: 1000 }) > 3;
+      const cleared = CMTaste.feedback(taste, [item], 'track', 1, 2000).toggledOff === 1;
+      const skipped = CMTaste.skip(taste, item, { played: 8, duration: 200, now: 5000 });
+      const penalty = CMTaste.skipPenalty(taste, item, 6000);
+      const artists = CMTaste.artists({ taste, now: 7000 }, 3);
+      return {
+        set: set.changed === 1 && liked,
+        scored,
+        cleared,
+        skipped: skipped === true && penalty > 0,
+        artists: Array.isArray(artists),
+        stats: CMTaste.stats(taste, { now: 8000 }).skips === 1,
       };
     },
     shareUrl: (entry) => shareUrl(entry || {}),

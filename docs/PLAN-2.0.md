@@ -146,6 +146,14 @@ Lizenz-Kategorien (`licenseKey`, `licenseCategory`). app.js bindet sie per
 Destructuring – keine Aufrufstelle ändert sich, app.js verliert ~170 Zeilen. Test
 `test/entries.test.js` (9).
 
+**Geschmacksprofil (2.0.0):** `renderer/core/taste.js` (`window.CMTaste`) enthält
+die Regeln: Schlüssel über `CMText`, Werte, `skipPenalty` (45 Tage, Abklingen über
+30 Tage, Deckel 2,6), `score` (−8 … 8 aus Feedback, Favoriten, Hörverlauf und
+Skips), `artistScores`/`artists` für Empfehlungs-Seeds, `trimMap` (600 Zeilen),
+`feedback` (Mehr/Weniger inkl. Ausschalten) und `skip` (3 s bis 20 s bzw. 55 %,
+5-s-Dedupe, max. 300 Einträge). app.js behält Zustand, Toasts und Neuzeichnen.
+Test `test/taste.test.js` (9), Smoke `SMOKE_TASTE_RULES`.
+
 **Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.
 

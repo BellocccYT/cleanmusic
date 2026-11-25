@@ -3019,6 +3019,17 @@ function createMainWindow() {
             console.error('SMOKE_STATS_FAIL:', error.message);
           }
 
+          // Taste rules (2.0 Phase 1): feedback, score, skips, artists, stats.
+          try {
+            const tasteSmoke = await mainWindow.webContents.executeJavaScript('window.CleanMusic.tasteSliceTest()');
+            const tasteOk =
+              tasteSmoke && tasteSmoke.set && tasteSmoke.scored && tasteSmoke.cleared && tasteSmoke.skipped && tasteSmoke.artists && tasteSmoke.stats;
+            if (!tasteOk) throw new Error(JSON.stringify(tasteSmoke));
+            console.log('SMOKE_TASTE_RULES:', JSON.stringify(tasteSmoke));
+          } catch (error) {
+            console.error('SMOKE_TASTE_RULES_FAIL:', error.message);
+          }
+
           // 1.6: artist page, share link, deep link (cleanmusic://).
           const deepOk = parseDeepLink('cleanmusic://play?src=deezer&id=3135553&t=One%20More%20Time&a=Daft%20Punk');
           const deepAdd = parseDeepLink('cleanmusic://add?src=youtube&id=dQw4w9WgXcQ&t=Never%20Gonna%20Give%20You%20Up&a=Rick%20Astley');

@@ -144,6 +144,7 @@ const mustExist = [
   'core/collection.js',
   'core/stats.js',
   'core/entries.js',
+  'core/taste.js',
   'core/recipes.js',
   'core/group.js',
   'core/share.js',
