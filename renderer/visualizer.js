@@ -545,6 +545,9 @@ window.CMVisualizer = (function () {
 
     const gap = (target.mini ? 2 : 4) * ratio;
     const barWidth = (width - gap * (count - 1)) / count;
+    // A canvas narrower than its gaps (hidden or still laying out) has no
+    // room for bars; roundRect would throw on the negative radius.
+    if (!(barWidth > 0)) return;
     const maxHeight = target.mini ? height : height * 0.36;
     const gradient = g.createLinearGradient(0, height, 0, height - maxHeight);
     gradient.addColorStop(0, rgba(colorA, target.mini ? 0.9 : 0.7));
@@ -753,12 +756,18 @@ window.CMVisualizer = (function () {
       watchdog(t);
 
       active.forEach(([canvas, target]) => {
-        const ratio = fit(canvas);
-        if (target.style === 'radial') drawRadial(canvas, target, t, ratio);
-        else if (target.style === 'wave') drawWave(canvas, target, t, ratio);
-        else if (target.style === 'mirror') drawMirror(canvas, target, t, ratio);
-        else if (target.style === 'particles') drawParticles(canvas, target, t, ratio);
-        else drawBars(canvas, target, t, ratio);
+        // One broken canvas must never stop the loop (the next frame is
+        // only scheduled at the end of tick).
+        try {
+          const ratio = fit(canvas);
+          if (target.style === 'radial') drawRadial(canvas, target, t, ratio);
+          else if (target.style === 'wave') drawWave(canvas, target, t, ratio);
+          else if (target.style === 'mirror') drawMirror(canvas, target, t, ratio);
+          else if (target.style === 'particles') drawParticles(canvas, target, t, ratio);
+          else drawBars(canvas, target, t, ratio);
+        } catch {
+          /* skip this canvas for this frame */
+        }
       });
 
       frameListeners.forEach((listener) => {

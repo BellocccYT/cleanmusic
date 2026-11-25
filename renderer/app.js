@@ -61,6 +61,25 @@
 
   const CMEntries = window.CMEntries;
   if (!CMEntries) throw new Error('renderer/core/entries.js fehlt');
+  // Entry shape: one object for every playable thing. Bound here, before
+  // `state` is built – restoreRecs() needs migrateEntry/validEntry at once
+  // (otherwise a stored recs list crashes app.js: temporal dead zone).
+  const {
+    previewEntry,
+    pluginEntry,
+    migrateEntry,
+    ncsEntry,
+    classicEntry,
+    openverseEntry,
+    licenseKey,
+    licenseCategory,
+    localEntry,
+    radioEntry,
+    storable,
+    validEntry,
+    KINDS: ENTRY_KINDS,
+    FIELDS: ENTRY_FIELDS,
+  } = CMEntries;
 
   const CMTaste = window.CMTaste;
   if (!CMTaste) throw new Error('renderer/core/taste.js fehlt');
@@ -414,23 +433,9 @@
    * Entries – one shape for every playable thing
    * ---------------------------------------------------------------- */
 
-  // Entry shape (renderer/core/entries.js): one object for every playable thing.
-  const {
-    previewEntry,
-    pluginEntry,
-    migrateEntry,
-    ncsEntry,
-    classicEntry,
-    openverseEntry,
-    licenseKey,
-    licenseCategory,
-    localEntry,
-    radioEntry,
-    storable,
-    validEntry,
-    KINDS: ENTRY_KINDS,
-    FIELDS: ENTRY_FIELDS,
-  } = CMEntries;
+  // Entry shape (renderer/core/entries.js): bound right after the module
+  // check at the top – `state` below already needs migrateEntry/validEntry
+  // (restoreRecs) while it is being built.
 
   /* ---------------------------------------------------------------- *
    * Collection: favourites + playlists
@@ -5358,6 +5363,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.0.1': [
+      'Behoben: CleanMusic 2.0.0 blieb bei vielen bestehenden Profilen leer – Startseite, Suche und Player reagierten nicht. Deine Daten waren nie betroffen, sie sind alle wieder da.',
+      'Behoben: Der Visualizer konnte bei sehr schmalem Fenster stehen bleiben.',
+    ],
     '2.0.0': [
       'Freunde: Du siehst jetzt, was deine Freunde gerade hören, und reagierst mit einem Emoji. Kontakt nur per Freundescode – kein Chat, keine Suche nach Personen.',
       'Gruppen: Eine gemeinsame Wochenkarte (wer hört am meisten?) und eine geteilte Gruppen-Playlist – beitreten nur per Gruppencode.',

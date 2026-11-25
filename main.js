@@ -3656,6 +3656,44 @@ function createMainWindow() {
           console.error('SMOKE_MIGRATIONS_FAIL:', error.message);
         }
 
+        // Restart with stored data: the run above starts from an empty
+        // profile, so code that only runs while restoring saved state
+        // (recs, favorites, playlists, history …) was never executed at
+        // load time. 2.0.0 shipped a TDZ crash in restoreRecs() that way.
+        try {
+          await mainWindow.webContents.executeJavaScript(`
+            localStorage.setItem('cleanmusic.recs.v1', JSON.stringify({
+              tracks: [{ id: 'deezer:3135553', kind: 'preview', source: 'deezer', title: 'One More Time', artist: 'Daft Punk', preview: 'https://cdnt-preview.dzcdn.net/x.mp3' }],
+              seeds: ['Daft Punk'], seedKey: 'smoke', at: Date.now(),
+            }));
+            true;
+          `);
+          const errors = [];
+          const onConsole = (...args) => {
+            const details = args[1];
+            const level = details && typeof details === 'object' ? details.level : args[1];
+            const message = details && typeof details === 'object' ? details.message : args[2];
+            if (level === 'error' || level === 3) errors.push(String(message).slice(0, 200));
+          };
+          mainWindow.webContents.on('console-message', onConsole);
+          await new Promise((resolve) => {
+            mainWindow.webContents.once('did-finish-load', resolve);
+            mainWindow.webContents.reload();
+          });
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          mainWindow.webContents.removeListener('console-message', onConsole);
+          const reload = await mainWindow.webContents.executeJavaScript(`({
+            api: Boolean(window.CleanMusic),
+            home: document.querySelector('#view-home') ? document.querySelector('#view-home').children.length : 0,
+            recs: (() => { try { return JSON.parse(localStorage.getItem('cleanmusic.recs.v1')).tracks.length; } catch { return -1; } })(),
+          })`);
+          reload.errors = errors.filter((text) => !/Failed to load resource|net::ERR_/i.test(text));
+          if (!reload.api || !reload.home || reload.errors.length) console.error('SMOKE_RELOAD_FAIL:', JSON.stringify(reload));
+          else console.log('SMOKE_RELOAD:', JSON.stringify(reload));
+        } catch (error) {
+          console.error('SMOKE_RELOAD_FAIL:', error.message);
+        }
+
         app.quit();
       }, 5000);
     });

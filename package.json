@@ -1,7 +1,7 @@
 {
   "name": "cleanmusic",
   "productName": "CleanMusic",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "CleanMusic – The Music Launcher. Alle Streaming-Dienste an einem Ort, lokale Wiedergabe, Favoriten, Playlists, Cutter-Modus, Vollbild-Player mit Visualizer, Discord Rich Presence und optionale Quellen-Plugins.",
   "author": "CleanMusic",
