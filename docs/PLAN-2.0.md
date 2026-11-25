@@ -116,6 +116,13 @@ Map). `toggleFavorite`, `addToPlaylist`, `removeFromPlaylist`, `movePlaylistItem
 und `recordPlay` in app.js rufen nur noch diese Funktionen. Test
 `test/collection.test.js` (9), Smoke `SMOKE_COLLECTION`.
 
+**Player-Regeln (2.0.0):** `renderer/audio/volume.js` (`window.CMVolume`) bündelt die
+reinen Lautstärke-Regeln: Obergrenze mit/ohne Boost, `clampLevel`, die
+gehörrichtige Quadrat-Kurve (`gain`/`elementVolume` inkl. Mute und Fade),
+`unmuteLevel` (0 % → 50 %), `adjust`, `percent` und `fill`. `maxVolume`,
+`applyVolume`, `setVolume`, `setMuted` und `updateVolumeUi` in app.js rufen nur
+noch diese Funktionen. Test `test/volume.test.js` (6), Smoke `SMOKE_VOLUME_RULES`.
+
 **Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.
 

@@ -37,6 +37,9 @@
   if (!CMQueue) throw new Error('renderer/audio/queue.js fehlt');
   const { queueGroup } = CMQueue;
 
+  const CMVolume = window.CMVolume;
+  if (!CMVolume) throw new Error('renderer/audio/volume.js fehlt');
+
   const CMQueueSlice = window.CMQueueSlice;
   if (!CMQueueSlice) throw new Error('renderer/audio/queue-slice.js fehlt');
 
@@ -11090,7 +11093,7 @@
   }
 
   function maxVolume() {
-    return state.settings.volumeBoost ? 1.5 : 1;
+    return CMVolume.max(state.settings.volumeBoost);
   }
 
   function persistVolume() {
@@ -11103,12 +11106,12 @@
 
   function applyVolume() {
     const level = volumeLevel();
-    const gain = level * level;
+    const gain = CMVolume.gain(level, vol.muted, fadeFactor);
     const viz = window.CMVisualizer;
     const engine =
       viz && viz.setOutput
         ? viz.setOutput({
-            gain: vol.muted ? 0 : gain * fadeFactor,
+            gain,
             normalize: Boolean(state.settings.normalize),
             bass: Number(state.settings.bass) || 0,
             treble: Number(state.settings.treble) || 0,
@@ -11128,7 +11131,7 @@
       audio.volume = 1;
       audio.muted = false;
     } else {
-      audio.volume = Math.min(1, gain * fadeFactor);
+      audio.volume = CMVolume.elementVolume(level, vol.muted, fadeFactor);
       audio.muted = vol.muted;
     }
     // The crossfade ghost is a second element; Mute must silence it too.
@@ -11139,20 +11142,20 @@
 
   function setVolume(level, { unmute = true } = {}) {
     if (!Number.isFinite(level)) return;
-    vol.level = Math.round(Math.min(maxVolume(), Math.max(0, level)) * 100) / 100;
+    vol.level = CMVolume.clampLevel(level, maxVolume());
     if (unmute) vol.muted = false;
     applyVolume();
     persistVolume();
   }
 
   function nudgeVolume(delta) {
-    setVolume(volumeLevel() + delta);
+    setVolume(CMVolume.adjust(volumeLevel(), delta, maxVolume()));
   }
 
   function setMuted(muted) {
     vol.muted = Boolean(muted);
     // Unmuting at 0 % would stay silent – come back at a sensible level.
-    if (!vol.muted && vol.level < 0.02) vol.level = 0.5;
+    if (!vol.muted) vol.level = CMVolume.unmuteLevel(vol.level);
     applyVolume();
     persistVolume();
   }
@@ -11175,15 +11178,15 @@
   function updateVolumeUi() {
     const max = maxVolume();
     const level = vol.muted ? 0 : volumeLevel();
-    const pct = Math.round(volumeLevel() * 100);
+    const pct = CMVolume.percent(volumeLevel());
     const over = !vol.muted && level > 1;
     ['#volume', '#fs-volume'].forEach((selector) => {
       const input = $(selector);
       if (!input) return;
       input.max = String(max);
       input.value = String(level);
-      input.style.setProperty('--fill', `${((level / max) * 100).toFixed(2)}%`);
-      input.style.setProperty('--full', `${((1 / max) * 100).toFixed(2)}%`);
+      input.style.setProperty('--fill', `${CMVolume.fill(level, max).toFixed(2)}%`);
+      input.style.setProperty('--full', `${CMVolume.fill(1, max).toFixed(2)}%`);
       input.classList.toggle('over', over);
       input.setAttribute('aria-valuetext', vol.muted ? 'stumm' : `${pct} Prozent`);
     });
@@ -15890,7 +15893,7 @@ ${updatePanel()}
         const boost = event.target.id === 'opt-boost';
         state.settings[boost ? 'volumeBoost' : 'normalize'] = event.target.checked;
         saveSettings();
-        if (vol.level > maxVolume()) vol.level = maxVolume();
+        if (vol.level > maxVolume()) vol.level = CMVolume.clampLevel(vol.level, maxVolume());
         applyVolume();
         persistVolume();
         toast(
@@ -17151,6 +17154,17 @@ ${updatePanel()}
         untouched: state.collection.favorites.length === favorites.length,
         fresh: CMCollection.fresh(favorites, [{ id: 'smoke-new' }, { id: 'smoke-new' }]).length === 1,
         history: historyRows.length === 1 && historyRows[0].entry.id === 'smoke-history',
+      };
+    },
+    volumeSliceTest: () => {
+      const max = maxVolume();
+      return {
+        max: max === (state.settings.volumeBoost ? 1.5 : 1),
+        curve: CMVolume.gain(0.5, false) === 0.25,
+        mute: CMVolume.gain(0.8, true) === 0,
+        unmute: CMVolume.unmuteLevel(0) === 0.5,
+        clamped: CMVolume.clampLevel(5, max) === max,
+        element: CMVolume.elementVolume(0.5, false) === 0.25,
       };
     },
     shareUrl: (entry) => shareUrl(entry || {}),
