@@ -290,9 +290,10 @@ bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import v
 > **Studio (ab 2.0):** Das Cutting-Projekt ist jetzt eine **nicht-destruktive Timeline**
 > mit mehreren Clips. „Zum Projekt“ legt einen Clip an, Start/Ende und **Effekte**
 > (Fade-in/out, Normalisieren, Loop, **Übergang/Crossfade** zur vorigen Spur) lassen sich je
-> Clip setzen, die Reihenfolge per ↑/↓ ändern. **„Als WAV exportieren“** rendert alle Clips
-> in ihrer Reihenfolge (Übergänge werden überblendet) zu einer Datei und schreibt eine
-> Credit-.txt mit Lizenz und Änderungen (nur stream-sicher: CC0, CC BY, Public Domain, NCS).
+> Clip setzen, die Reihenfolge per ↑/↓ ändern. **„▶ Vorschau“** spielt die Timeline grob ab
+> (Original-Clips, ohne Übergänge), **„Als WAV exportieren“** rendert alle Clips in ihrer
+> Reihenfolge (Übergänge werden überblendet) zu einer Datei und schreibt eine Credit-.txt
+> mit Lizenz und Änderungen (nur stream-sicher: CC0, CC BY, Public Domain, NCS).
 
 > **Für dich (ab 1.5):** Vorschläge aus den Kategorien, die du am meisten nutzt – ohne
 > Titel, die du schon gecreditet hast (Mix, nur Musik, nur Sounds).

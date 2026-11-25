@@ -130,8 +130,9 @@ Je Clip: Start/Ende (Trim), Reihenfolge ↑/↓, Entfernen und **Effekte** (Fade
 Normalisieren, Loop und **Übergang/Crossfade** zur vorigen Spur). Export rendert alle
 Clips in Reihenfolge, mischt Überschneidungen per Crossfade und schreibt Lizenz +
 Änderungen in die Credit-.txt (stream-sicher-Prüfung: nur CC0/CC BY/PD/NCS).
-**Offen:** Export-Presets MP3/M4A (kein Encoder im App-Code), BPM/Key-Batch (Key fehlt)
-und eine Timeline-Vorschau im Player.
+**Vorschau:** `previewToggle` spielt die Timeline grob über ein eigenes Audio-Element
+(Original-Clips, ohne Übergänge). **Offen:** Export-Presets MP3/M4A (kein Encoder im
+App-Code) und BPM/Key-Batch (Key fehlt).
 
 ### Phase 5 – Plugin-API v3 (Muss 5)
 

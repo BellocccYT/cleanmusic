@@ -2890,6 +2890,10 @@ function createMainWindow() {
             if (!(studio && studio.clips === 2 && studio.safe && studio.riff && studio.ordered && studio.changes && studio.total === 6 * 44100)) {
               throw new Error(JSON.stringify(studio));
             }
+            const preview = await mainWindow.webContents.executeJavaScript('window.CleanMusic.studioPreviewSmoke()');
+            if (!(preview && preview.button && preview.effects && preview.transitions && preview.total)) {
+              throw new Error(JSON.stringify(preview));
+            }
             const studioDir = fs.mkdtempSync(path.join(app.getPath('temp'), 'cleanmusic-smoke-studio-'));
             let exportSmoke = null;
             try {
@@ -2905,7 +2909,7 @@ function createMainWindow() {
             } finally {
               fs.rmSync(studioDir, { recursive: true, force: true });
             }
-            console.log('SMOKE_STUDIO:', JSON.stringify({ render: studio, export: exportSmoke }));
+            console.log('SMOKE_STUDIO:', JSON.stringify({ render: studio, export: exportSmoke, preview }));
           } catch (error) {
             console.error('SMOKE_STUDIO_FAIL:', error.message);
           }

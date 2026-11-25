@@ -5103,6 +5103,7 @@
   async function playFromQueue(index, options = {}) {
     const item = state.queue.items[index];
     if (!item) return;
+    previewStop();
 
     state.queue.index = index;
     state.queue.upcoming = -1;
@@ -9985,6 +9986,98 @@
     }
   }
 
+  // Studio: rough timeline preview. Plays each clip's trimmed range in order
+  // through a dedicated Audio element, so the main player and its analysis
+  // chain stay untouched. Fades/crossfades only apply to the export.
+  const studioPreview = { audio: null, clips: [], index: -1, playing: false, token: 0 };
+
+  function previewStop() {
+    const p = studioPreview;
+    if (p.audio) {
+      p.audio.pause();
+      p.audio.removeAttribute('src');
+      try {
+        p.audio.load();
+      } catch {
+        /* ignore */
+      }
+    }
+    p.playing = false;
+    p.index = -1;
+    p.clips = [];
+    const button = $('#studio-preview');
+    if (button) button.textContent = '▶ Vorschau';
+  }
+
+  function previewPlay() {
+    const p = studioPreview;
+    const clip = p.clips[p.index];
+    if (!clip) {
+      previewStop();
+      return;
+    }
+    const audioEl = p.audio;
+    const token = ++p.token;
+    const start = () => {
+      audioEl.removeEventListener('loadedmetadata', start);
+      if (!p.playing || p.token !== token) return;
+      try {
+        audioEl.currentTime = clip.in;
+      } catch {
+        /* ignore */
+      }
+      audioEl.play().catch(() => {
+        if (p.token === token) previewNext();
+      });
+    };
+    audioEl.addEventListener('loadedmetadata', start);
+    audioEl.src = clip.url;
+    audioEl.load();
+  }
+
+  function previewNext() {
+    const p = studioPreview;
+    if (!p.playing) return;
+    p.index += 1;
+    if (p.index >= p.clips.length) {
+      previewStop();
+      return;
+    }
+    previewPlay();
+  }
+
+  function previewToggle() {
+    const p = studioPreview;
+    if (p.playing) {
+      previewStop();
+      return;
+    }
+    const project = activeCutProject();
+    if (!project) return;
+    const clips = project.clips.filter((clip) => clip.url && clip.out > clip.in);
+    if (!clips.length) {
+      toast('Keine Clips mit hörbarem Ausschnitt zum Vorspielen.');
+      return;
+    }
+    if (!p.audio) {
+      p.audio = new Audio();
+      p.audio.preload = 'auto';
+      p.audio.addEventListener('ended', () => previewNext());
+      p.audio.addEventListener('timeupdate', () => {
+        const clip = p.clips[p.index];
+        if (p.playing && clip && p.audio.currentTime >= clip.out - 0.05) previewNext();
+      });
+      p.audio.addEventListener('error', () => previewNext());
+    }
+    audio.pause();
+    p.clips = clips;
+    p.index = 0;
+    p.playing = true;
+    const button = $('#studio-preview');
+    if (button) button.textContent = '⏹ Stopp';
+    previewPlay();
+  }
+
   function wireCutterExtras() {
     const view = $('#view-creator');
     if (view) {
@@ -12047,7 +12140,14 @@
                   project.clips.length
                     ? `<ol class="credits-list studio-clips">${project.clips
                         .map((clip, index) => {
-                          const max = clip.duration ? ` max="${clip.duration.toFixed(1)}"` : '';
+                          const inSec = Number(clip.in) || 0;
+                          const outSec = Number(clip.out) || 0;
+                          const duration = Number(clip.duration) || 0;
+                          const fadeIn = Number(clip.fadeIn) || 0;
+                          const fadeOut = Number(clip.fadeOut) || 0;
+                          const transition = Number(clip.transition) || 0;
+                          const loopMs = Number(clip.loopMs) || 150;
+                          const max = duration ? ` max="${duration.toFixed(1)}"` : '';
                           return `<li>
                             <div class="studio-clip">
                               <div class="studio-clip-meta">
@@ -12055,19 +12155,19 @@
                                 <span>${esc([clip.artist, clip.license].filter(Boolean).join(' · '))}${clip.url ? '' : ' · ohne Audio (nur Credit)'}</span>
                               </div>
                               <div class="studio-clip-trim">
-                                <label>Start <input type="number" min="0" step="0.1"${max} data-clip-in="${index}" value="${clip.in.toFixed(1)}" /> s</label>
-                                <label>Ende <input type="number" min="0" step="0.1"${max} data-clip-out="${index}" value="${clip.out.toFixed(1)}" /> s</label>
-                                <span class="muted small">${fmtTime(Math.max(0, clip.out - clip.in))}</span>
+                                <label>Start <input type="number" min="0" step="0.1"${max} data-clip-in="${index}" value="${inSec.toFixed(1)}" /> s</label>
+                                <label>Ende <input type="number" min="0" step="0.1"${max} data-clip-out="${index}" value="${outSec.toFixed(1)}" /> s</label>
+                                <span class="muted small">${fmtTime(Math.max(0, outSec - inSec))}</span>
                               </div>
-                              <details class="studio-clip-fx"${clip.fadeIn || clip.fadeOut || clip.transition || clip.normalize || clip.loop ? ' open' : ''}>
+                              <details class="studio-clip-fx"${fadeIn || fadeOut || transition || clip.normalize || clip.loop ? ' open' : ''}>
                                 <summary>Effekte</summary>
                                 <div class="studio-clip-fx-grid">
-                                  <label>Fade-in <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:fadeIn" value="${clip.fadeIn.toFixed(1)}" /> s</label>
-                                  <label>Fade-out <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:fadeOut" value="${clip.fadeOut.toFixed(1)}" /> s</label>
-                                  <label>Übergang <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:transition" value="${clip.transition.toFixed(1)}" /> s</label>
+                                  <label>Fade-in <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:fadeIn" value="${fadeIn.toFixed(1)}" /> s</label>
+                                  <label>Fade-out <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:fadeOut" value="${fadeOut.toFixed(1)}" /> s</label>
+                                  <label>Übergang <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:transition" value="${transition.toFixed(1)}" /> s</label>
                                   <label class="toggle-row"><span>Normalisieren</span><input type="checkbox" data-clip-fx="${index}:normalize" ${clip.normalize ? 'checked' : ''} /></label>
                                   <label class="toggle-row"><span>Loop</span><input type="checkbox" data-clip-fx="${index}:loop" ${clip.loop ? 'checked' : ''} /></label>
-                                  <label>Loop-Übergang <input type="number" min="50" max="500" step="50" data-clip-fx="${index}:loopMs" value="${clip.loopMs}" /> ms</label>
+                                  <label>Loop-Übergang <input type="number" min="50" max="500" step="50" data-clip-fx="${index}:loopMs" value="${loopMs}" /> ms</label>
                                 </div>
                               </details>
                             </div>
@@ -12082,6 +12182,7 @@
                     : `<p class="credits-empty">Füge Titel im Cutter mit „Zum Projekt“ hinzu – sie werden zu Clips in der Timeline.</p>`
                 }
                 <div class="row">
+                  <button class="btn ghost small" id="studio-preview" data-project-action="preview" ${project.clips.length ? '' : 'disabled'}>▶ Vorschau</button>
                   <button class="btn primary small" data-project-action="export" ${project.clips.length ? '' : 'disabled'}>Als WAV exportieren</button>
                   <button class="btn ghost small" data-project-action="copy">Credits kopieren</button>
                   <button class="btn ghost small" data-project-action="save">Credits als .txt</button>
@@ -14548,6 +14649,7 @@ ${updatePanel()}
     if (name === 'service' && !state.currentService) name = 'home';
     if (name === 'playlist' && !playlistById(state.currentPlaylist)) name = 'favorites';
     state.view = name;
+    if (name !== 'creator') previewStop();
     hideMenus();
 
     $$('.view').forEach((view) => {
@@ -15863,6 +15965,7 @@ ${updatePanel()}
         const project = activeCutProject();
         switch (projectAction.dataset.projectAction) {
           case 'new': await createCutProject(); return;
+          case 'preview': previewToggle(); return;
           case 'export': exportProject(); return;
           case 'copy': {
             if (!project) return;
@@ -16927,6 +17030,30 @@ ${updatePanel()}
       cutProjects.active = before.active;
       cutProjects.projects = before.projects;
       return { ok: Boolean(result && result.ok), name: result && result.name, error: result && result.error, safe: CMStudio.isStreamSafe(project.clips), changes: /Änderungen/.test(text) };
+    },
+    studioPreviewSmoke: () => {
+      const before = { active: cutProjects.active, projects: JSON.parse(JSON.stringify(cutProjects.projects)) };
+      cutProjects.projects = [
+        CMStudio.normalizeProject({
+          id: 'smoke-preview',
+          name: 'Smoke Preview',
+          created: Date.now(),
+          clips: [
+            { key: 'p1', title: 'P1', artist: 'X', license: 'CC BY 4.0', credit: 'P1', url: 'https://example.com/p.mp3', in: 0, out: 3, duration: 3 },
+            { key: 'p2', title: 'P2', artist: 'Y', license: 'CC0', credit: 'P2', url: 'https://example.com/q.mp3', in: 0, out: 2, duration: 2, transition: 1 },
+          ],
+        }),
+      ];
+      cutProjects.active = 'smoke-preview';
+      const html = cutProjectPanelHtml();
+      cutProjects.active = before.active;
+      cutProjects.projects = before.projects;
+      return {
+        button: /id="studio-preview"/.test(html),
+        effects: /data-clip-fx=/.test(html),
+        transitions: /data-clip-fx="1:transition"/.test(html),
+        total: /0:04/.test(html),
+      };
     },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),
