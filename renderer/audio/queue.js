@@ -84,6 +84,60 @@
     return items.slice(index + 1).filter((entry) => entry.queued);
   }
 
+  // Where new titles land: 'next' right after the current one, 'end' after the
+  // titles the user queued before. Returns -1 when the queue has no current title.
+  function insertPosition(items, index, mode) {
+    const list = Array.isArray(items) ? items : [];
+    if (index < 0 || !list[index]) return -1;
+    let at = index + 1;
+    if (mode === 'end') {
+      while (at < list.length && list[at].queued) at += 1;
+    }
+    return at;
+  }
+
+  // Removes a title from the waiting part (never the running one or earlier).
+  // Returns the new list and whether something changed.
+  function removeAt(items, index, position) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    if (position <= index || position >= list.length) return { items: list, changed: false };
+    list.splice(position, 1);
+    return { items: list, changed: true };
+  }
+
+  // Moves a title inside the waiting part. Same guard rules as removeAt.
+  function moveAt(items, index, from, to) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    const blocked =
+      from <= index || to <= index || from >= list.length || to >= list.length || from === to;
+    if (blocked) return { items: list, changed: false };
+    const [entry] = list.splice(from, 1);
+    list.splice(to, 0, entry);
+    return { items: list, changed: true };
+  }
+
+  // Drops everything after the current title that was added on top of a list
+  // (queued titles, autoplay suggestions). Hands back how many were removed.
+  function clearAdded(items, index) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    if (index < 0 || index >= list.length) return { items: list, removed: 0 };
+    const head = list.slice(0, index + 1);
+    const rest = list.slice(index + 1).filter((entry) => !entry.queued && !entry.autoplay);
+    return { items: head.concat(rest), removed: list.length - head.length - rest.length };
+  }
+
+  // The seed for autoplay: the last title (starting at the current one) that
+  // `accept` likes. 0 is a valid index, so -1 means "nothing found".
+  function seedIndex(items, index, accept) {
+    const list = Array.isArray(items) ? items : [];
+    if (typeof accept !== 'function') return -1;
+    for (let at = index; at >= 0; at -= 1) {
+      const entry = list[at];
+      if (entry && accept(entry)) return at;
+    }
+    return -1;
+  }
+
   window.CMQueue = {
     isPriority,
     shuffled,
@@ -93,5 +147,10 @@
     upcomingIndex,
     nextIndex,
     pendingQueued,
+    insertPosition,
+    removeAt,
+    moveAt,
+    clearAdded,
+    seedIndex,
   };
 })();

@@ -97,7 +97,17 @@ ohne Verhaltensänderung.
 `get`/`set`/`patch`/`subscribe`/`notify`, `store.settings`-Slice mit eigenem
 `subscribe`). app.js lädt die Settings-Defaults daraus und `saveSettings()` ruft
 `store.notify()`. Test `test/state.test.js` (7 Prüfungen), Smoke `SMOKE_STATE`.
-**Offen:** Queue, Player und Sammlung schrittweise auf den Store umstellen, damit
+
+**Queue-Slice (2.0.0):** `renderer/audio/queue-slice.js` (`window.CMQueueSlice`) ist
+die erste echte Slice – `create(store)` umhüllt `state.queue` per Referenz, alle
+Listenänderungen laufen über `replace`/`insert`/`append`/`remove`/`move`/
+`clearAdded`/`shuffle`/`restore`/`seed`/`pending`; die reinen Regeln liegen in
+`renderer/audio/queue.js` (`insertPosition`, `removeAt`, `moveAt`, `clearAdded`,
+`seedIndex`). `enqueue`, `removeFromQueue`, `moveInQueue`, `clearAddedToQueue`,
+Shuffle/Restore, Autoplay-Samen und Listenstarts in app.js nutzen nur noch diese
+Aktionen (Playback bleibt in app.js). Test `test/queue.test.js` (13) und
+`test/queue-slice.test.js` (8), Smoke `SMOKE_QUEUE_SLICE`.
+**Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.
 
 ### Phase 2 – Schema & Migrationen (Muss 2)

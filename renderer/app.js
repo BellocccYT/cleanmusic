@@ -37,6 +37,9 @@
   if (!CMQueue) throw new Error('renderer/audio/queue.js fehlt');
   const { queueGroup } = CMQueue;
 
+  const CMQueueSlice = window.CMQueueSlice;
+  if (!CMQueueSlice) throw new Error('renderer/audio/queue-slice.js fehlt');
+
   const CMPersist = window.CMPersist;
   if (!CMPersist) throw new Error('renderer/core/persist.js fehlt');
   const { STORAGE } = CMPersist;
@@ -289,6 +292,8 @@
   // Store foundation (2.0 Phase 1): wraps `state` by reference so old reads keep
   // working; new code uses store.set/patch + subscribers (see core/state.js).
   const store = CMState.createStore(state);
+  // First slice on the store: all queue list changes (see audio/queue-slice.js).
+  const queueSlice = CMQueueSlice.create(store);
 
   const audio = $('#audio');
   let favIds = new Set(state.collection.favorites.map((entry) => entry.id));
@@ -1407,7 +1412,7 @@
     // Titles the user queued stay queued when another list starts.
     const pending = state.queue.items.length ? pendingQueued() : [];
     items.splice(start + 1, 0, ...pending);
-    state.queue = { items, index: start, kind: key, upcoming: -1, shuffleBase: null };
+    state.queue = queueSlice.replace(items, start, key, { shuffleBase: null });
     // Shuffle the rest of the list once; the clicked title keeps playing.
     if (state.playback.shuffle && !single) shuffleQueueTail(true);
     playFromQueue(start);
@@ -1424,7 +1429,7 @@
     const pending = state.queue.items.length ? pendingQueued() : [];
     const items = shuffled(list.slice());
     items.splice(1, 0, ...pending);
-    state.queue = { items, index: 0, kind: key, upcoming: -1, shuffleBase: list.slice() };
+    state.queue = queueSlice.replace(items, 0, key, { shuffleBase: list.slice() });
     playFromQueue(0);
   }
 
@@ -3639,13 +3644,7 @@
       syncPlaybackButtons();
     }
 
-    state.queue = {
-      items,
-      index: 0,
-      kind: `mix:${id}`,
-      upcoming: -1,
-      shuffleBase: mixed ? list.slice() : null,
-    };
+    state.queue = queueSlice.replace(items, 0, `mix:${id}`, { shuffleBase: mixed ? list.slice() : null });
     playFromQueue(0);
     toast(`${def ? def.title : 'Mix'} · ${items.length} Titel`);
   }
@@ -4830,7 +4829,7 @@
     persistLibrary();
 
     if (current && current.kind === 'local') {
-      state.queue = { items: [], index: -1, kind: 'local', upcoming: -1 };
+      state.queue = queueSlice.replace([], -1, 'local');
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
@@ -5179,22 +5178,11 @@
    * restores the order saved when it was switched on. */
 
   function shuffleQueueTail(snapshot = false) {
-    const q = state.queue;
-    if (q.index < 0 || q.items.length < 2) return;
-    if (snapshot) q.shuffleBase = q.items.slice();
-    const result = CMQueue.shuffleTail(q.items, q.index);
-    q.items = result.items;
-    q.upcoming = result.upcoming;
+    queueSlice.shuffle(snapshot);
   }
 
   function restoreQueueTail() {
-    const q = state.queue;
-    const base = Array.isArray(q.shuffleBase) ? q.shuffleBase : null;
-    q.shuffleBase = null;
-    if (!base || q.index < 0) return;
-    const result = CMQueue.restoreTail(q.items, q.index, base);
-    q.items = result.items;
-    q.upcoming = result.upcoming;
+    queueSlice.restore();
   }
 
   function planUpcoming() {
@@ -10516,7 +10504,7 @@
 
   // Titles the user queued that have not played yet.
   function pendingQueued() {
-    return CMQueue.pendingQueued(state.queue.items, state.queue.index);
+    return queueSlice.pending();
   }
 
   function queueCopy(entry, flags) {
@@ -10528,12 +10516,11 @@
   function playRemoteEntry(entry) {
     if (!entry) return false;
     const copy = queueCopy(entry);
-    const q = state.queue;
-    if (q.index >= 0 && q.items[q.index]) {
-      q.items.splice(q.index + 1, 0, copy);
-      playFromQueue(q.index + 1);
+    const at = queueSlice.insert([copy], 'next');
+    if (at >= 0) {
+      playFromQueue(at);
     } else {
-      state.queue = { items: [copy], index: 0, kind: 'queue', upcoming: -1 };
+      queueSlice.replace([copy], 0, 'queue');
       playFromQueue(0);
     }
     return true;
@@ -10547,17 +10534,14 @@
     const q = state.queue;
 
     if (q.index < 0 || !q.items[q.index]) {
-      state.queue = { items: copies, index: 0, kind: 'queue', upcoming: -1 };
+      queueSlice.replace(copies, 0, 'queue');
       playFromQueue(0);
       toast(by + (copies.length === 1 ? `„${copies[0].title}“ wird abgespielt` : `${copies.length} Titel werden abgespielt`));
       return;
     }
 
-    let at = q.index + 1;
-    if (mode === 'end') {
-      while (at < q.items.length && q.items[at].queued) at += 1;
-    }
-    q.items.splice(at, 0, ...copies);
+    const at = queueSlice.insert(copies, mode);
+    if (at < 0) return;
     planUpcoming();
     schedulePrefetch();
     renderQueuePanel();
@@ -10576,19 +10560,17 @@
   // The current title is the best seed; if it has no artist (radio, local file
   // without tags), look back through what just played.
   function autoplaySeed() {
-    const { items, index } = state.queue;
-    for (let at = index; at >= 0; at -= 1) {
-      const entry = items[at];
-      if (!entry || entry.kind === 'radio') continue;
-      if (tasteTrackValue(entry) < 0 || tasteArtistValue(entry) < 0) continue;
+    return queueSlice.seed((entry) => {
+      if (entry.kind === 'radio') return false;
+      if (tasteTrackValue(entry) < 0 || tasteArtistValue(entry) < 0) return false;
       const name = primaryArtist(entry.artist);
-      if (name && name.length > 1) return entry;
+      if (name && name.length > 1) return true;
       if (entry.kind === 'plugin' && entry.refId) {
         const plugin = pluginById(entry.pluginId);
-        if (isPluginReady(plugin) && plugin.capabilities.related) return entry;
+        return Boolean(isPluginReady(plugin) && plugin.capabilities.related);
       }
-    }
-    return null;
+      return false;
+    });
   }
 
   function maybeAutoplay() {
@@ -10658,7 +10640,7 @@
     });
     if (!picked.length) return 0;
 
-    state.queue.items.push(...picked);
+    queueSlice.append(picked);
     planUpcoming();
     schedulePrefetch();
     renderQueuePanel();
@@ -10667,9 +10649,7 @@
   }
 
   function removeFromQueue(position) {
-    const q = state.queue;
-    if (position <= q.index || position >= q.items.length) return;
-    q.items.splice(position, 1);
+    if (!queueSlice.remove(position)) return;
     planUpcoming();
     schedulePrefetch();
     renderQueuePanel();
@@ -10677,10 +10657,7 @@
   }
 
   function moveInQueue(from, to) {
-    const q = state.queue;
-    if (from <= q.index || to <= q.index || from >= q.items.length || to >= q.items.length || from === to) return;
-    const [entry] = q.items.splice(from, 1);
-    q.items.splice(to, 0, entry);
+    if (!queueSlice.move(from, to)) return;
     planUpcoming();
     schedulePrefetch();
     renderQueuePanel();
@@ -10688,11 +10665,7 @@
   }
 
   function clearAddedToQueue() {
-    const q = state.queue;
-    const head = q.items.slice(0, q.index + 1);
-    const rest = q.items.slice(q.index + 1).filter((entry) => !entry.queued && !entry.autoplay);
-    const removed = q.items.length - head.length - rest.length;
-    q.items = head.concat(rest);
+    const removed = queueSlice.clearAdded();
     planUpcoming();
     schedulePrefetch();
     renderQueuePanel();
@@ -17140,6 +17113,39 @@ ${updatePanel()}
         normalized: CMState.normalizeSettings({ theme: 'x' }).theme === 'x' && CMState.normalizeSettings({ theme: 'x' }).layout === 'advanced',
         listeners: store.listenerCount(),
       };
+    },
+    queueSliceTest: () => {
+      const backup = state.queue;
+      const saved = {
+        items: backup.items.slice(),
+        index: backup.index,
+        kind: backup.kind,
+        upcoming: backup.upcoming,
+        shuffleBase: backup.shuffleBase,
+      };
+      try {
+        queueSlice.replace([{ id: 'qa', title: 'A' }, { id: 'qb', title: 'B', queued: true }], 0, 'queue');
+        const inserted = queueSlice.insert([{ id: 'qc', title: 'C' }], 'end');
+        const removed = queueSlice.remove(2);
+        const appended = queueSlice.append([{ id: 'qd', title: 'D', autoplay: true }]);
+        const cleared = queueSlice.clearAdded();
+        const seed = queueSlice.seed((entry) => entry.id === 'qa');
+        return {
+          inserted: inserted === 2,
+          removed,
+          appended: appended === 1,
+          cleared,
+          seed: Boolean(seed && seed.id === 'qa'),
+          items: state.queue.items.map((entry) => entry.id),
+        };
+      } finally {
+        backup.items = saved.items;
+        backup.index = saved.index;
+        backup.kind = saved.kind;
+        backup.upcoming = saved.upcoming;
+        backup.shuffleBase = saved.shuffleBase;
+        state.queue = backup;
+      }
     },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),

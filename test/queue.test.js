@@ -122,4 +122,54 @@ check('pendingQueued returns only queued entries after the current one', () => {
   assert.deepEqual(queue.pendingQueued(items, 2).map((row) => row.id), ['d']);
 });
 
+check('insertPosition: after the current title, skipping queued ones at the end', () => {
+  const items = [entry('a'), entry('q1', { queued: true }), entry('q2', { queued: true }), entry('b')];
+  assert.equal(queue.insertPosition(items, 0, 'next'), 1);
+  assert.equal(queue.insertPosition(items, 0, 'end'), 3, 'überspringt die eingereihten Titel');
+  assert.equal(queue.insertPosition(items, 1, 'next'), 2);
+  assert.equal(queue.insertPosition([], -1, 'end'), -1);
+  assert.equal(queue.insertPosition(items, 3, 'end'), 4);
+});
+
+check('removeAt and moveAt never touch the running title or earlier ones', () => {
+  const items = [entry('a'), entry('b'), entry('c'), entry('d')];
+  const removed = queue.removeAt(items, 1, 3);
+  assert.equal(removed.changed, true);
+  assert.deepEqual(removed.items.map((row) => row.id), ['a', 'b', 'c']);
+  assert.equal(queue.removeAt(items, 1, 1).changed, false, 'laufender Titel');
+  assert.equal(queue.removeAt(items, 1, 0).changed, false, 'davor');
+  assert.equal(queue.removeAt(items, 1, 9).changed, false, 'außerhalb');
+  assert.deepEqual(items.map((row) => row.id), ['a', 'b', 'c', 'd'], 'Eingabe bleibt unberührt');
+
+  const moved = queue.moveAt(items, 0, 3, 1);
+  assert.equal(moved.changed, true);
+  assert.deepEqual(moved.items.map((row) => row.id), ['a', 'd', 'b', 'c']);
+  assert.equal(queue.moveAt(items, 1, 1, 2).changed, false, 'laufender Titel');
+  assert.equal(queue.moveAt(items, 0, 2, 2).changed, false, 'gleiche Position');
+});
+
+check('clearAdded drops queued and autoplay titles after the current one', () => {
+  const items = [
+    entry('played'),
+    entry('current'),
+    entry('q', { queued: true }),
+    entry('ctx'),
+    entry('auto', { autoplay: true }),
+  ];
+  const result = queue.clearAdded(items, 1);
+  assert.deepEqual(result.items.map((row) => row.id), ['played', 'current', 'ctx']);
+  assert.equal(result.removed, 2);
+  assert.equal(queue.clearAdded(items, -1).removed, 0);
+  assert.equal(queue.clearAdded([], 0).removed, 0);
+});
+
+check('seedIndex walks back to the last accepted title', () => {
+  const items = [entry('radio', { kind: 'radio' }), entry('good'), entry('bad'), entry('current')];
+  const accept = (row) => row.kind !== 'radio' && row.id !== 'bad' && row.id !== 'current';
+  assert.equal(queue.seedIndex(items, 3, accept), 1);
+  assert.equal(queue.seedIndex(items, 1, accept), 1);
+  assert.equal(queue.seedIndex(items, 3, () => false), -1);
+  assert.equal(queue.seedIndex(items, 3, null), -1);
+});
+
 console.log(`\n${checks} passed, 0 failed`);
