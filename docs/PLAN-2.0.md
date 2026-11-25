@@ -122,6 +122,12 @@ gehörrichtige Quadrat-Kurve (`gain`/`elementVolume` inkl. Mute und Fade),
 `unmuteLevel` (0 % → 50 %), `adjust`, `percent` und `fill`. `maxVolume`,
 `applyVolume`, `setVolume`, `setMuted` und `updateVolumeUi` in app.js rufen nur
 noch diese Funktionen. Test `test/volume.test.js` (6), Smoke `SMOKE_VOLUME_RULES`.
+`renderer/audio/playback.js` (`window.CMPlayback`) regelt Shuffle/Wiederholen:
+`normalize` beim Laden (nur `off`/`all`/`one`), `nextRepeat` (off → all → one →
+off), `repeatActive`/`repeatOne`/`repeatOff`, `repeatLabel`, `blocksAutoplay`,
+`shuffleTitle` und `singleContext`. `syncPlaybackButtons`, der Wiederholen-Knopf,
+`autoplayEligible`, die Warteschlangen-Hinweise und `playList` nutzen sie. Test
+`test/playback.test.js` (5), Smoke `SMOKE_PLAYBACK`.
 
 **Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.

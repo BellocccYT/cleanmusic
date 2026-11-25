@@ -40,6 +40,9 @@
   const CMVolume = window.CMVolume;
   if (!CMVolume) throw new Error('renderer/audio/volume.js fehlt');
 
+  const CMPlayback = window.CMPlayback;
+  if (!CMPlayback) throw new Error('renderer/audio/playback.js fehlt');
+
   const CMQueueSlice = window.CMQueueSlice;
   if (!CMQueueSlice) throw new Error('renderer/audio/queue-slice.js fehlt');
 
@@ -283,10 +286,7 @@
     fullscreen: false,
     collection: loadCollection(),
     matches: readJSON(STORAGE.matches, {}) || {},
-    playback: Object.assign(
-      { shuffle: false, repeat: 'off' },
-      readJSON(STORAGE.playback, {})
-    ),
+    playback: CMPlayback.normalize(readJSON(STORAGE.playback, {})),
     settings: CMState.normalizeSettings(readJSON(STORAGE.settings, {})),
   };
 
@@ -1410,7 +1410,7 @@
     if (!entry) return;
     // A search hit plays on its own – autoplay continues with suggestions
     // instead of the other search results.
-    const single = autoplayOn() && SINGLE_CONTEXTS.includes(key);
+    const single = CMPlayback.singleContext(autoplayOn(), key, SINGLE_CONTEXTS);
     const items = single ? [entry] : list.slice();
     const start = single ? 0 : index;
     // Titles the user queued stay queued when another list starts.
@@ -5514,26 +5514,22 @@
   function syncPlaybackButtons() {
     const shuffleButton = $('#btn-shuffle');
     const repeatButton = $('#btn-repeat');
+    const repeat = CMPlayback.repeatMode(state.playback.repeat);
 
     shuffleButton.classList.toggle('active', Boolean(state.playback.shuffle));
-    shuffleButton.title = state.playback.shuffle ? 'Shuffle an' : 'Shuffle aus';
+    shuffleButton.title = CMPlayback.shuffleTitle(state.playback.shuffle);
 
-    repeatButton.classList.toggle('active', state.playback.repeat !== 'off');
-    repeatButton.classList.toggle('repeat-one', state.playback.repeat === 'one');
+    repeatButton.classList.toggle('active', CMPlayback.repeatActive(repeat));
+    repeatButton.classList.toggle('repeat-one', CMPlayback.repeatOne(repeat));
     const fsShuffle = $('#fs-shuffle');
     const fsRepeat = $('#fs-repeat');
     if (fsShuffle) fsShuffle.classList.toggle('active', Boolean(state.playback.shuffle));
     if (fsRepeat) {
-      fsRepeat.classList.toggle('active', state.playback.repeat !== 'off');
-      fsRepeat.classList.toggle('repeat-one', state.playback.repeat === 'one');
+      fsRepeat.classList.toggle('active', CMPlayback.repeatActive(repeat));
+      fsRepeat.classList.toggle('repeat-one', CMPlayback.repeatOne(repeat));
     }
 
-    repeatButton.title =
-      state.playback.repeat === 'one'
-        ? 'Titel wiederholen'
-        : state.playback.repeat === 'all'
-          ? 'Alle wiederholen'
-          : 'Wiederholen aus';
+    repeatButton.title = CMPlayback.repeatLabel(repeat);
   }
 
   function wirePlayer() {
@@ -5578,12 +5574,7 @@
     });
 
     $('#btn-repeat').addEventListener('click', () => {
-      state.playback.repeat =
-        state.playback.repeat === 'off'
-          ? 'all'
-          : state.playback.repeat === 'all'
-            ? 'one'
-            : 'off';
+      state.playback.repeat = CMPlayback.nextRepeat(state.playback.repeat);
       writeJSON(STORAGE.playback, state.playback);
       syncPlaybackButtons();
     });
@@ -10546,7 +10537,7 @@
   function autoplayEligible() {
     const { items, index } = state.queue;
     if (!autoplayOn()) return false;
-    if (state.playback.repeat !== 'off') return false;
+    if (CMPlayback.blocksAutoplay(state.playback.repeat)) return false;
     if (index < 0 || index < items.length - 1) return false;
     return Boolean(autoplaySeed());
   }
@@ -10721,7 +10712,7 @@
         body += `<p class="queue-empty">${
           autoplayTask
             ? 'Autoplay sucht passende Titel …'
-            : autoplayOn() && state.playback.repeat === 'off'
+            : autoplayOn() && CMPlayback.repeatOff(state.playback.repeat)
               ? 'Danach geht es mit passenden Vorschlägen weiter.'
               : 'Danach ist Schluss.'
         }</p>`;
@@ -17166,6 +17157,35 @@ ${updatePanel()}
         clamped: CMVolume.clampLevel(5, max) === max,
         element: CMVolume.elementVolume(0.5, false) === 0.25,
       };
+    },
+    playbackSliceTest: () => {
+      const before = {
+        shuffle: state.playback.shuffle,
+        repeat: state.playback.repeat,
+      };
+      try {
+        state.playback.repeat = 'off';
+        const first = CMPlayback.nextRepeat(state.playback.repeat);
+        const second = CMPlayback.nextRepeat(first);
+        state.playback.repeat = 'one';
+        syncPlaybackButtons();
+        const oneActive = $('#btn-repeat').classList.contains('active') && $('#btn-repeat').classList.contains('repeat-one');
+        state.playback.shuffle = true;
+        syncPlaybackButtons();
+        const shuffleActive = $('#btn-shuffle').classList.contains('active');
+        return {
+          cycle: first === 'all' && second === 'one',
+          oneActive,
+          shuffleActive,
+          label: CMPlayback.repeatLabel('all') === 'Alle wiederholen',
+          normalized: CMPlayback.normalize({ repeat: 'quatsch' }).repeat === 'off',
+          blocks: CMPlayback.blocksAutoplay('all') === true && CMPlayback.blocksAutoplay('off') === false,
+        };
+      } finally {
+        state.playback.shuffle = before.shuffle;
+        state.playback.repeat = before.repeat;
+        syncPlaybackButtons();
+      }
     },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),
