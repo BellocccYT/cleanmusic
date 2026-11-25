@@ -62,6 +62,30 @@ if (isSmoke) {
   const smokeProfile = path.join(app.getPath('temp'), 'cleanmusic-smoke');
   fs.rmSync(smokeProfile, { recursive: true, force: true });
   app.setPath('userData', smokeProfile);
+
+  // A packaged Windows build is a GUI app: console.log has no console to write
+  // to, so the release check (`release\win-unpacked\CleanMusic.exe --smoke`)
+  // would be silent. Mirror every line into a file next to the smoke profile.
+  const smokeLogFile = path.join(app.getPath('temp'), 'cleanmusic-smoke.log');
+  try {
+    fs.writeFileSync(smokeLogFile, '');
+    ['log', 'error', 'warn'].forEach((level) => {
+      const original = console[level].bind(console);
+      console[level] = (...args) => {
+        original(...args);
+        try {
+          const line = args
+            .map((value) => (typeof value === 'string' ? value : JSON.stringify(value)))
+            .join(' ');
+          fs.appendFileSync(smokeLogFile, `${line}\n`);
+        } catch {
+          /* logging must never break the smoke run */
+        }
+      };
+    });
+  } catch {
+    /* no temp dir – the smoke still runs */
+  }
 }
 
 // One CleanMusic at a time: a second launch (e.g. a double-click on the
