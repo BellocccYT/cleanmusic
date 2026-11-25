@@ -15,6 +15,7 @@ Fernseher automatisch **CleanMusic TV Lite**.
 | --- | --- | --- |
 | Vorschauen (Deezer/Apple), Radio, Charts | ✓ | ✓ |
 | Favoriten, Playlists, Verlauf, Rückblick | ✓ | Favoriten, Warteschlange |
+| Rezepte (Smart-Playlists) und Smart Mixes | ✓ | Mixes (aus Favoriten, Playlists, Charts) |
 | Songtexte mit Effekten (LRCLIB) | ✓ | ✓ |
 | Themes, Live-Hintergründe, Plattenspieler, Visualizer | ✓ | ✓ |
 | Songs teilen | ✓ | – |
@@ -53,9 +54,12 @@ Ansicht „Erweitert“ sind auf dem Fernseher nicht vorhanden.
 
 ![CleanMusic TV Lite: Plattenspieler mit Spektrum-Ring, Titel und Songtext](../docs/images/05-android-tv.png)
 
-Drin: Jetzt läuft (groß, mit Cover und Songtext), Radio, Charts, Favoriten,
-Songtexte mit Effekten, Themes, Live-Hintergründe, Plattenspieler, Visualizer,
-Warteschlange und Party-Modus. Der Party-Modus ist die große Spektrum-Bühne:
+Drin: Jetzt läuft (groß, mit Cover und Songtext), Radio, **Mixes** (fünf Listen
+aus Favoriten, Playlists und Charts, gleiche Regeln wie am Desktop), Charts,
+Favoriten, Songtexte mit Effekten, Themes, Live-Hintergründe, Plattenspieler,
+Visualizer, Warteschlange und Party-Modus. Gesucht wird über die Handy-Steuerung
+(`/api/search`) – die Treffer landen direkt in der Warteschlange des Fernsehers.
+Der Party-Modus ist die große Spektrum-Bühne:
 Plattenspieler mit Radial-Spektrum und Tonarm, Karaoke-Text, „Als Nächstes“ unten;
 auf der Startseite dreht sich ein Spektrum-Ring ums Cover, „Spektrum groß“ öffnet
 die Bühne. Die Analyse läuft über `captureStream`; gibt Android keine Tonspur

@@ -149,6 +149,35 @@ async function main() {
   ok('Handy: Update-Panel in den Einstellungen', phoneInfo.updatePanel);
   ok('Handy: Updater-Brücke vorhanden', phoneInfo.updater);
 
+  // 2.0: dieselben Module wie am Desktop (Rezepte, Mixes, Queue, Player).
+  const parity = await phone.webContents.executeJavaScript(`(() => ({
+    recipes: Boolean(window.CMRecipes) && window.CMRecipes.normalize({}).limit === 30,
+    mixes: Boolean(window.CMMixes) && window.CMMixes.DEFS.length === 5,
+    queue: Boolean(window.CMQueue && window.CMQueueSlice),
+    playback: Boolean(window.CMPlayback) && window.CMPlayback.nextRepeat('off') === 'all',
+    entries: Boolean(window.CMEntries),
+    taste: Boolean(window.CMTaste),
+    stats: Boolean(window.CMStats)
+  }))()`);
+  ok('Handy: Module für Rezepte, Mixes, Queue und Player geladen', Object.values(parity).every(Boolean), parity);
+
+  const mixes = await phone.webContents.executeJavaScript(`
+    (async () => {
+      window.CleanMusic.showView('mixes');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const cards = Array.from(document.querySelectorAll('#view-mixes [data-mix-id]'));
+      const ids = Array.from(new Set(cards.map((card) => card.dataset.mixId)));
+      const result = {
+        cards: ids.length,
+        ids: ids.join(','),
+        view: document.querySelector('#view-mixes').classList.contains('active')
+      };
+      window.CleanMusic.showView('home');
+      return result;
+    })()
+  `);
+  ok('Handy: Mixes-Ansicht mit fünf Karten', mixes.cards === 5 && mixes.view && /daily/.test(mixes.ids), mixes);
+
   // Vorschau über die Suche
   const search = await phone.webContents.executeJavaScript(`
     (async () => {
@@ -180,6 +209,35 @@ async function main() {
     })()
   `);
   ok('Vorschau spielt', !preview.error && !preview.paused && preview.time > 0.2, preview);
+
+  // 2.0: Queue und Player-Zustände wie am Desktop (jetzt mit laufendem Titel).
+  const repeat = await phone.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('#btn-repeat');
+    const before = button.title;
+    button.click();
+    const after = button.title;
+    button.click();
+    button.click();
+    return { before, after, back: button.title };
+  })()`);
+  ok(
+    'Handy: Wiederholen-Knopf zykelt (aus → alle → Titel → aus)',
+    /aus/.test(repeat.before) && /Alle/.test(repeat.after) && repeat.back === repeat.before,
+    repeat
+  );
+
+  const queueUi = await phone.webContents.executeJavaScript(`
+    (async () => {
+      const button = document.querySelector('#btn-queue');
+      button.click();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const panel = document.querySelector('#queue-panel');
+      const result = { open: !panel.hidden, rows: panel.querySelectorAll('.queue-row').length };
+      button.click();
+      return result;
+    })()
+  `);
+  ok('Handy: Warteschlange öffnet mit Titeln', queueUi.open && queueUi.rows >= 1, queueUi);
 
   // Radio über den Radio-Bereich
   const radio = await phone.webContents.executeJavaScript(`
@@ -299,7 +357,7 @@ async function main() {
   ok('TV: eigene Lite-Oberfläche', tvInfo.device === 'tv' && tvInfo.tvApi, tvInfo);
   ok('TV: app.js nicht geladen', !tvInfo.appLoaded && !tvInfo.scripts.some((src) => /app\\.js/.test(src || '')), tvInfo.scripts);
   ok('TV: kein Cutter, keine Downloads, keine lokale Musik', !tvInfo.cutter && !tvInfo.downloads && !tvInfo.local, tvInfo);
-  ok('TV: alle Hauptbereiche vorhanden', tvInfo.nav.join(',') === 'home,radio,charts,favorites,party,queue', tvInfo.nav);
+  ok('TV: alle Hauptbereiche vorhanden', tvInfo.nav.join(',') === 'home,mixes,radio,charts,favorites,party,queue', tvInfo.nav);
   ok('TV: Schrift mindestens 24 px', tvInfo.minFont >= 24, tvInfo.minFont);
   ok('TV: QR-Code für die Steuerung sichtbar', tvInfo.qr, tvInfo);
   ok('TV: Theme, Hintergrund, Plattenspieler erreichbar', tvInfo.look, tvInfo);
@@ -316,7 +374,7 @@ async function main() {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
       const third = tv.focus();
       const views = [];
-      for (const name of ['home', 'radio', 'charts', 'favorites', 'party', 'queue']) {
+      for (const name of ['home', 'mixes', 'radio', 'charts', 'favorites', 'party', 'queue']) {
         tv.showView(name);
         views.push(Boolean(document.querySelector('[data-tv-panel="' + name + '"].is-active')));
       }
@@ -372,6 +430,34 @@ async function main() {
     })()
   `);
   ok('TV: Radio spielt', tvRadio.stations > 0 && !tvRadio.paused, tvRadio);
+
+  // 2.0: Mixes auf dem Fernseher (Favoriten + Playlists + Charts, gleiche Regeln).
+  const tvMixes = await tv.webContents.executeJavaScript(`
+    (async () => {
+      const tv = window.CMTv;
+      tv.showView('mixes');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const cards = Array.from(document.querySelectorAll('#tv-mixes-grid [data-mix]'));
+      const before = tv.state.queue.length;
+      const first = cards[0];
+      if (first) first.click();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return {
+        cards: cards.length,
+        ids: cards.map((card) => card.dataset.mix).join(','),
+        view: tv.state.view,
+        queue: tv.state.queue.length,
+        before,
+        paused: document.querySelector('#audio').paused,
+        engine: Boolean(window.CMMixes && window.CMMixes.DEFS.length === 5)
+      };
+    })()
+  `);
+  ok(
+    'TV: Mixes-Ansicht mit fünf Karten und Start',
+    tvMixes.cards === 5 && tvMixes.view === 'mixes' && tvMixes.engine && /daily/.test(tvMixes.ids) && tvMixes.queue >= 1 && !tvMixes.paused,
+    tvMixes
+  );
 
   const tvUpdate = await tv.webContents.executeJavaScript(`
     (async () => {

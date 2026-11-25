@@ -27,7 +27,7 @@
     level: 'cleanmusic.volume.v2',
   };
 
-  const VIEWS = ['home', 'radio', 'charts', 'favorites', 'party', 'queue'];
+  const VIEWS = ['home', 'mixes', 'radio', 'charts', 'favorites', 'party', 'queue'];
 
   const state = {
     view: 'home',
@@ -39,6 +39,7 @@
     radio: { stations: [], entries: [], tag: 'top', loaded: false },
     charts: { tracks: [], loaded: false, error: null },
     lyrics: { key: '', lines: [], plain: '', index: -1, error: null, loading: false },
+    mixes: { key: '', nonce: 0, lists: null },
     volume: 1,
     remote: { enabled: false, port: 0, url: '', qr: '', error: null, starting: false },
     focus: null,
@@ -429,6 +430,15 @@
     $$('.tv-nav-item').forEach((item) => item.classList.toggle('is-active', item.dataset.tvView === name));
     if (name === 'radio' && !state.radio.loaded) loadRadio(state.radio.tag);
     if (name === 'charts' && !state.charts.loaded) loadCharts();
+    if (name === 'mixes') {
+      renderMixes();
+      // Fresh/Discover brauchen die Charts – nachladen und neu zeichnen.
+      if (!state.charts.loaded) {
+        Promise.resolve(loadCharts()).then(() => {
+          if (state.view === 'mixes') renderMixes();
+        });
+      }
+    }
     if (name === 'favorites') renderFavorites();
     if (name === 'queue') paintQueue();
     if (name === 'party') partMode(true);
@@ -1015,6 +1025,124 @@
    * Favoriten (aus derselben Sammlung wie Handy und Desktop)
    * ---------------------------------------------------------------- */
 
+  /* ---------------------------------------------------------------- *
+   * Mixes: dieselben Regeln wie am Desktop (renderer/core/mixes.js)
+   *
+   * Der Fernseher hat keinen Hör-Verlauf und kein Geschmacksprofil, deshalb
+   * kommen die Titel aus Favoriten, Playlists und Charts; „Tage seit zuletzt“
+   * ist immer groß, damit Fresh/Discover die Charts nutzen.
+   * ---------------------------------------------------------------- */
+
+  function mixArtistKey(name) {
+    const t = window.CMText;
+    return t ? t.normKey(t.primaryArtist(name)) : '';
+  }
+
+  function mixPool() {
+    loadCollection();
+    const out = [];
+    const seen = new Set();
+    const add = (entry) => {
+      if (!entry || !entry.id || typeof entry.title !== 'string') return;
+      if (!playableUrl(entry)) return;
+      if (seen.has(entry.id)) return;
+      seen.add(entry.id);
+      out.push(entry);
+    };
+    favoriteEntries().forEach(add);
+    state.collection.playlists.forEach((playlist) =>
+      (playlist && Array.isArray(playlist.items) ? playlist.items : []).forEach(add)
+    );
+    state.charts.tracks.forEach((track) => add(previewEntry(track)));
+    return out;
+  }
+
+  function mixContext() {
+    const favoriteIds = new Set();
+    const favoriteKeys = new Set();
+    favoriteEntries().forEach((entry) => {
+      favoriteIds.add(entry.id);
+      const t = window.CMText;
+      if (t) favoriteKeys.add(t.matchKey(entry));
+    });
+    const playlistIds = new Set();
+    state.collection.playlists.forEach((playlist) =>
+      (playlist && Array.isArray(playlist.items) ? playlist.items : []).forEach((entry) => playlistIds.add(entry.id))
+    );
+    const recIds = new Set(state.charts.tracks.map((track) => previewEntry(track).id));
+    const knownArtists = new Set();
+    favoriteEntries().forEach((entry) => {
+      const key = mixArtistKey(entry.artist);
+      if (key) knownArtists.add(key);
+    });
+    return {
+      baseScore: () => 0,
+      days: () => 999,
+      plays: () => 0,
+      favoriteIds,
+      favoriteKeys,
+      playlistIds,
+      recIds,
+      knownArtists,
+      artistKey: mixArtistKey,
+      excluded: () => false,
+    };
+  }
+
+  function mixSeed() {
+    return { day: new Date().toISOString().slice(0, 10), nonce: state.mixes.nonce };
+  }
+
+  function ensureMixes(force = false) {
+    if (!window.CMMixes) return {};
+    loadCollection();
+    const seed = mixSeed();
+    const key = `${seed.day}:${seed.nonce}:${favoriteEntries().length}:${state.charts.tracks.length}`;
+    if (!force && state.mixes.lists && state.mixes.key === key) return state.mixes.lists;
+    const pool = mixPool();
+    const lists = window.CMMixes.buildAll(pool, mixContext(), seed, 25);
+    state.mixes.key = key;
+    state.mixes.lists = lists;
+    return lists;
+  }
+
+  function renderMixes() {
+    const host = $('#tv-mixes-grid');
+    if (!host) return;
+    if (!window.CMMixes) {
+      host.innerHTML = '<p class="tv-muted">Mixes sind in dieser Version nicht verfügbar.</p>';
+      return;
+    }
+    const lists = ensureMixes();
+    host.innerHTML = window.CMMixes.DEFS.map((def) => {
+      const list = lists[def.id] || [];
+      const first = list[0] || null;
+      return `
+        <button type="button" class="tv-card tv-mix-card" data-mix="${esc(def.id)}" data-focus>
+          ${first ? coverHtml(first, 'tv-card-art') : `<div class="tv-card-art"><span>♪</span></div>`}
+          <div class="tv-card-title">${esc(def.title)}</div>
+          <div class="tv-card-sub">${esc(def.subtitle)} · ${list.length}</div>
+        </button>`;
+    }).join('');
+    host.querySelectorAll('[data-mix]').forEach((card) => {
+      card.addEventListener('click', () => playMix(card.dataset.mix));
+    });
+    if (state.view === 'mixes') focusFirst();
+  }
+
+  // Starts a mix as the new queue – like picking a playlist on the desktop.
+  function playMix(id) {
+    const lists = ensureMixes();
+    const list = (lists[id] || [])
+      .map((entry) => (entry.kind === 'radio' ? entry : playableEntry(entry)))
+      .filter((entry) => playableUrl(entry));
+    if (!list.length) return false;
+    state.queue = list;
+    state.index = 0;
+    playEntry(list[0], { index: 0 });
+    return true;
+  }
+
   function favoriteEntries() {
     return state.collection.favorites.filter((entry) => entry && typeof entry.title === 'string');
   }
@@ -1521,6 +1649,12 @@
     $('#tv-charts-refresh').addEventListener('click', () => {
       state.charts.loaded = false;
       loadCharts(true);
+    });
+    $('#tv-mixes-refresh').addEventListener('click', () => {
+      // New nonce → a fresh mix for the same day, like "Neu mischen" on desktop.
+      state.mixes.nonce += 1;
+      state.mixes.key = '';
+      renderMixes();
     });
     $('#tv-remote-toggle').addEventListener('click', () => {
       if (state.remote.enabled) stopRemote();

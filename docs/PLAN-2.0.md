@@ -236,6 +236,15 @@ Manifest.
 
 **Fertig, wenn:** `smoke:mobile` die neuen Rezepte und die Parität prüft.
 
+**Stand (2.0.0):** Handy/Tablet lädt `app.js` und hat damit Rezepte, Mixes,
+Queue und Playerschalter automatisch; `smoke:mobile` prüft das jetzt (Module
+`CMRecipes`/`CMMixes`/`CMQueue`/`CMPlayback`, Mixes-Ansicht mit fünf Karten,
+Wiederholen-Zyklus, Warteschlange mit Titeln). **TV Lite** hat eine eigene
+Ansicht „Mixes“ (`mobile/src/tv.html` lädt `core/text.js` + `core/mixes.js`):
+fünf Listen aus Favoriten, Playlists und Charts (ohne Hör-Verlauf, also mit
+`days: 999`), Start per OK, „Neu mischen“ über `state.mixes.nonce`; die Suche
+läuft dort über die Handy-Steuerung (`/api/search`). Damit ist Phase 6 erledigt.
+
 ### Phase 7 – 2.0.0 (Release)
 
 - `WHATS_NEW` für alle Versionen seit dem letzten Stand.

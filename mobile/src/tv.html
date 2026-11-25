@@ -30,6 +30,7 @@
       </div>
       <nav id="tv-nav" class="tv-nav" aria-label="Hauptbereiche">
         <button type="button" class="tv-nav-item is-active" data-tv-view="home">Start</button>
+        <button type="button" class="tv-nav-item" data-tv-view="mixes">Mixes</button>
         <button type="button" class="tv-nav-item" data-tv-view="radio">Radio</button>
         <button type="button" class="tv-nav-item" data-tv-view="charts">Charts</button>
         <button type="button" class="tv-nav-item" data-tv-view="favorites">Favoriten</button>
@@ -84,6 +85,18 @@
           <h2>Als Nächstes</h2>
           <ol id="tv-home-next" class="tv-next-list"><li class="tv-muted">Noch keine Titel</li></ol>
         </div>
+      </section>
+
+      <!-- Mixes: dieselben Regeln wie am Desktop, aus Favoriten, Playlists und Charts -->
+      <section class="tv-view" data-tv-panel="mixes">
+        <div class="tv-view-head">
+          <div>
+            <h1>Mixes</h1>
+            <p class="tv-muted">Fünf fertige Listen – aus Favoriten, Playlists und Charts</p>
+          </div>
+          <button type="button" class="tv-btn" id="tv-mixes-refresh" data-focus>Neu mischen</button>
+        </div>
+        <div class="tv-grid" id="tv-mixes-grid"></div>
       </section>
 
       <!-- Radio -->
@@ -194,6 +207,8 @@
   <script src="themes.js"></script>
   <script src="visualizer.js"></script>
   <script src="live-bg.js"></script>
+  <script src="core/text.js"></script>
+  <script src="core/mixes.js"></script>
   <script src="native.js"></script>
   <script src="tv.js"></script>
 </body>
