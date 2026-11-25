@@ -7993,7 +7993,7 @@
     if (!info) return null;
     if (info.error) toast(info.message);
     else if (!info.cancelled) {
-      toast(info.server ? `Social-Server: ${info.server}` : 'Social-Server entfernt.');
+      toast(info.custom ? `Eigener Social-Server: ${info.server}` : info.server ? 'Social nutzt den CleanMusic-Server.' : 'Social-Server entfernt.');
       if (!info.registered && socialLocal.enabled) {
         socialLocal.enabled = false;
         persistSocial();
@@ -8075,14 +8075,27 @@
     if (!socialAvailable()) {
       return `<div class="page narrow social-page">${head}<div class="panel"><p>Freunde gibt es vorerst nur in der Desktop-App.</p></div></div>`;
     }
+    // Normal case: the built-in CleanMusic server, nothing to set. The address
+    // field is only for developers (own worker / local test) and stays folded.
+    const hostOf = (url) => String(url || '').replace(/^https?:\/\//, '');
+    const serverStatus = info.custom
+      ? `<p class="social-server-status custom"><strong>Eigener Server:</strong> <code>${esc(hostOf(info.server))}</code></p>
+        <p class="muted small">Konto und Freundesliste liegen auf diesem Server, nicht beim CleanMusic-Server.${info.defaultServer ? ' <button class="btn ghost small" data-social="server-reset">Zurück zum CleanMusic-Server</button>' : ''}</p>`
+      : info.server
+        ? `<p class="social-server-status ok">✓ Verbunden mit dem CleanMusic-Server <span class="muted small">(${esc(hostOf(info.server))})</span></p>
+        <p class="muted small">Hier musst du nichts einstellen.</p>`
+        : '';
     const serverPanel = `<div class="panel advanced-only social-server-panel">
         <h3>Social-Server</h3>
-        <p class="muted small">Adresse des Servers, der Konten und Freundeslisten speichert (eigener Cloudflare Worker, siehe <code>server/social/README.md</code>). Für lokale Tests auch <code>http://127.0.0.1:8787</code>.</p>
-        <div class="rv-group-row">
-          <input id="social-server" type="url" placeholder="https://cleanmusic-social.…workers.dev" value="${esc(info.custom ? info.server : '')}" spellcheck="false" />
-          <button class="btn ghost small" data-social="server">Speichern</button>
-        </div>
-        ${info.defaultServer ? `<p class="muted small">Standard: ${esc(info.defaultServer)}</p>` : ''}
+        ${serverStatus}
+        <details class="social-server-custom"${info.custom || !info.server ? ' open' : ''}>
+          <summary>Eigener Server (nur für Entwickler)</summary>
+          <p class="muted small">Nur nötig, wenn du einen eigenen Cloudflare Worker betreibst (siehe <code>server/social/README.md</code>) oder lokal testest (<code>http://127.0.0.1:8787</code>).${info.defaultServer ? ' Feld leeren und speichern = zurück zum CleanMusic-Server.' : ''}</p>
+          <div class="rv-group-row">
+            <input id="social-server" type="url" placeholder="https://mein-server.example.workers.dev" value="${esc(info.custom ? info.server : '')}" spellcheck="false" />
+            <button class="btn ghost small" data-social="server">Speichern</button>
+          </div>
+        </details>
       </div>`;
     if (!info.server) {
       return `<div class="page narrow social-page">${head}
@@ -8247,6 +8260,9 @@
           break;
         case 'server':
           saveSocialServer();
+          break;
+        case 'server-reset':
+          saveSocialServer('');
           break;
         case 'group-create':
           createSocialGroup();

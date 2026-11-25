@@ -7132,6 +7132,15 @@ html[data-perf='saver'] .lv-silhouette {
 .social-page .social-facts { margin: 8px 0; padding-left: 18px; color: var(--muted); }
 .social-page .social-facts li { margin: 4px 0; }
 .social-facts strong { color: var(--text); }
+.social-server-status { margin: 6px 0 2px; overflow-wrap: anywhere; }
+.social-server-status.ok { color: var(--text); }
+.social-server-status code { font-size: 12px; }
+.social-server-panel [data-social="server-reset"] { margin-left: 6px; vertical-align: middle; }
+.social-server-custom { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.social-server-custom > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.social-server-custom > summary:hover,
+.social-server-custom[open] > summary { color: var(--text); }
+.social-server-custom > p { margin: 8px 0; }
 .social-me { font-size: 20px; margin: 4px 0 2px; overflow-wrap: anywhere; }
 .social-tag { color: var(--muted-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .social-listen-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }

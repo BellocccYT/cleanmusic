@@ -242,7 +242,12 @@ function createSocial(deps) {
       });
       if (response !== 1) return Object.assign(info(), { cancelled: true });
     }
-    setConfig({ server: origin, registered: '' });
+    // Only a real change of server ends the registration there. Saving the
+    // same server again (e.g. "Speichern" on the empty field while the
+    // default is in use) must not throw the account out.
+    const before = server();
+    const after = origin || defaultServer();
+    setConfig(after === before ? { server: origin } : { server: origin, registered: '' });
     return info();
   }
 
