@@ -158,6 +158,95 @@
     return `${FRIEND_PAGE}#${code}`;
   }
 
+  /* --- S2: groups --------------------------------------------------------- */
+  const GROUP_CODE_RE = /^G1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
+  const WEEK_GAP = 10 * 60 * 1000; // send the own week card at most every 10 minutes
+  const WEEK_STEP = 60; // … and only when at least a minute of listening was added
+
+  function parseGroupCode(text) {
+    let value = String(text || '');
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      /* keep raw */
+    }
+    const fix = (part) => part.toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
+    for (const match of value.matchAll(/([FG])1[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})(?![0-9A-Za-z])/gi)) {
+      if (match[1].toUpperCase() !== 'G') continue;
+      const code = `G1-${fix(match[2])}-${fix(match[3])}-${fix(match[4])}`;
+      return GROUP_CODE_RE.test(code) ? code : '';
+    }
+    return '';
+  }
+
+  function cleanWeekCard(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const int = (value, max) => Math.max(0, Math.min(max, Math.round(Number(value) || 0)));
+    return {
+      secs: int(raw.secs, 7 * 24 * 3600),
+      plays: int(raw.plays, 100000),
+      artists: (Array.isArray(raw.artists) ? raw.artists : []).map((name) => clean(name, 60)).filter(Boolean).slice(0, 3),
+    };
+  }
+
+  /** Clean GET /v1/groups for the UI; `myId` marks own rows and rights. */
+  function normalizeGroups(data, myId) {
+    const value = data && typeof data === 'object' ? data : {};
+    const groups = (Array.isArray(value.groups) ? value.groups : [])
+      .slice(0, 10)
+      .map((raw) => {
+        if (!raw || !ID_RE.test(String(raw.id || ''))) return null;
+        const owner = String(raw.owner || '');
+        const members = (Array.isArray(raw.members) ? raw.members : [])
+          .slice(0, 30)
+          .map((member) => {
+            const base = person(member);
+            if (!base) return null;
+            base.week = cleanWeekCard(member.week);
+            base.self = base.id === myId;
+            base.owner = base.id === owner;
+            return base;
+          })
+          .filter(Boolean);
+        const tracks = (Array.isArray(raw.tracks) ? raw.tracks : [])
+          .slice(0, 200)
+          .map((track) => {
+            const ref = track && validRef(track.ref);
+            const by = track && person(track.by);
+            if (!ref || !by || !Number.isSafeInteger(track.rid)) return null;
+            return { rid: track.rid, ref, by, at: Number(track.at) || 0, mine: by.id === myId };
+          })
+          .filter(Boolean);
+        return { id: String(raw.id), name: clean(raw.name, 40) || 'Gruppe', isOwner: owner === myId, members, tracks };
+      })
+      .filter(Boolean);
+    return { week: /^\d{4}-W\d{2}$/.test(String(value.week || '')) ? String(value.week) : '', groups };
+  }
+
+  /** Week ranking with shared places; members without a card this week come last. */
+  function groupRanking(members) {
+    const rows = (Array.isArray(members) ? members : [])
+      .map((member) => Object.assign({}, member, { secs: member.week ? member.week.secs : 0 }))
+      .sort((a, b) => b.secs - a.secs || String(a.name).localeCompare(String(b.name), 'de'));
+    let rank = 0;
+    let previous = null;
+    rows.forEach((row, index) => {
+      if (row.secs !== previous) rank = index + 1;
+      previous = row.secs;
+      row.rank = rank;
+    });
+    return rows;
+  }
+
+  /** Send the own week card? Only in groups, on a new week or ≥ 1 min more, at most every 10 min. */
+  function weekPlan(input) {
+    const card = input.card;
+    if (!input.inGroups || !card || !/^\d{4}-W\d{2}$/.test(String(card.week || ''))) return false;
+    const last = input.last;
+    if (!last || last.week !== card.week) return true;
+    return input.now - last.at >= WEEK_GAP && card.secs - last.secs >= WEEK_STEP;
+  }
+
   window.CMSocial = {
     EMOJIS,
     REPORT_REASONS,
@@ -174,5 +263,10 @@
     ago,
     parseFriendCode,
     friendLink,
+    GROUP_CODE_RE,
+    parseGroupCode,
+    normalizeGroups,
+    groupRanking,
+    weekPlan,
   };
 })();

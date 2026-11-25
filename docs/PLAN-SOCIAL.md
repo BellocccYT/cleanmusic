@@ -86,7 +86,16 @@ Meldungen – nur mit `ADMIN_TOKEN`). Freundescodes gelten einmal. Smoke `SMOKE_
   - Eigene Aktivität nur mit dem Schalter „Meine Aktivität zeigen“, standardmäßig aus.
 - Feste Emoji-Reaktionen auf den Song eines Freundes.
 
-### S2 – Gruppen auf dem Server
+### S2 – Gruppen auf dem Server ✅ erledigt (25.11.2026)
+
+Umgesetzt in `server/social/src/groups.js` (Tabellen `groups`, `members`, `group_codes`, `weeks`,
+`group_tracks`): Gruppencode `G1-…` (24 h, für mehrere Personen, nur Hash gespeichert, Link wie
+Freundescodes über `site/f/`), max. 10 Gruppen je Konto und 30 Mitglieder; Wochenkarte je Konto
+(`POST /v1/week`, nur in Gruppen, letzte zwei Wochen, die App schickt sie höchstens alle 10 min);
+Gruppen-Playlist bis 200 Referenzen ohne Duplikate, Entfernen durch Leitung oder wer hinzugefügt hat;
+Verlassen/Entfernen, die Leitung geht an das älteste Mitglied, leere Gruppen verschwinden. App: Panel
+„Gruppen“ in der Ansicht „Freunde“. Der Wochenkarten-Code im Rückblick bleibt als Offline-Weg.
+
 
 - Die Wochenkarte aktualisiert sich automatisch. Der Code zum Kopieren bleibt als
   Offline-Weg.

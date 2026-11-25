@@ -14,6 +14,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import names from '../../../lib/social-names.js';
 import proto from '../../../lib/social-protocol.js';
+import { json, fail, TOO_MANY } from './http.js';
+import * as groups from './groups.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -35,6 +37,7 @@ const RATE = {
   remove: [60, 20, HOUR],
   random: [10, 10, DAY],
   friends: [30, 30, MIN],
+  ...groups.GROUP_RATE,
 };
 
 const SCHEMA = [
@@ -78,18 +81,6 @@ async function hmac(secret, text) {
   return new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(text)));
 }
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  });
-}
-
-function fail(status, error, message) {
-  return json({ error, message }, status);
-}
-
-const TOO_MANY = () => fail(429, 'zu-oft', 'Zu viele Anfragen – bitte kurz warten.');
 
 export class SocialHub extends DurableObject {
   constructor(ctx, env) {
@@ -109,7 +100,7 @@ export class SocialHub extends DurableObject {
       accountsPerIp: Number(test.accountsPerIp) || 3,
     };
     ctx.blockConcurrencyWhile(async () => {
-      SCHEMA.forEach((statement) => this.sql.exec(statement));
+      SCHEMA.concat(groups.GROUP_SCHEMA).forEach((statement) => this.sql.exec(statement));
       if (!(await ctx.storage.getAlarm())) await ctx.storage.setAlarm(Date.now() + 10 * MIN);
     });
   }
@@ -224,6 +215,15 @@ export class SocialHub extends DurableObject {
         const code = proto.parseFriendCode(data.code);
         extra.codeHash = code ? proto.toBase64Url(await sha256(code)) : '';
       }
+      if (path === '/v1/group') extra.groupId = names.accountIdFromDigest(crypto.getRandomValues(new Uint8Array(15)));
+      if (path === '/v1/group/code') {
+        extra.code = proto.groupCodeFrom(crypto.getRandomValues(new Uint8Array(12)));
+        extra.codeHash = proto.toBase64Url(await sha256(extra.code));
+      }
+      if (path === '/v1/group/join') {
+        const code = proto.parseGroupCode(data.code);
+        extra.codeHash = code ? proto.toBase64Url(await sha256(code)) : '';
+      }
       if (path === '/v1/friend-code' && !data.revoke) {
         extra.code = proto.friendCodeFrom(crypto.getRandomValues(new Uint8Array(12)));
         extra.codeHash = proto.toBase64Url(await sha256(extra.code));
@@ -305,6 +305,24 @@ export class SocialHub extends DurableObject {
         return this.report(account, data, now);
       case '/v1/block':
         return this.block(account, data, now);
+      case '/v1/group':
+        return groups.createGroup(this, account, data, extra, now);
+      case '/v1/group/code':
+        return groups.groupCode(this, account, data, extra, now, this.limits.codeTtlMs);
+      case '/v1/group/join':
+        return groups.joinGroup(this, account, extra, now);
+      case '/v1/group/leave':
+        return groups.leaveGroup(this, account, data, now);
+      case '/v1/group/kick':
+        return groups.kickMember(this, account, data, now);
+      case '/v1/groups':
+        return groups.listGroups(this, account, now);
+      case '/v1/week':
+        return groups.postWeek(this, account, data, now);
+      case '/v1/group/track':
+        return groups.addTrack(this, account, data, now);
+      case '/v1/group/track/remove':
+        return groups.removeTrack(this, account, data);
       default:
         return fail(404, 'unbekannt', 'Diese Adresse gibt es nicht.');
     }
@@ -509,6 +527,7 @@ export class SocialHub extends DurableObject {
   }
 
   deleteAccount(id) {
+    groups.deleteAccountGroups(this, id);
     this.run('DELETE FROM accounts WHERE id = ?', id);
     this.run('DELETE FROM friends WHERE a = ? OR b = ?', id, id);
     this.run('DELETE FROM blocks WHERE a = ? OR b = ?', id, id);
@@ -577,6 +596,7 @@ export class SocialHub extends DurableObject {
       this.run('DELETE FROM activity WHERE at < ?', now - this.limits.activityTtlMs);
       this.run('DELETE FROM reactions WHERE at < ?', now - proto.LIMITS.reactionTtlMs);
       this.run('DELETE FROM reports WHERE at < ?', now - REPORT_KEEP_MS);
+      groups.cleanupGroups(this, now);
       this.all('SELECT id FROM accounts WHERE seen < ? LIMIT 200', now - INACTIVE_MS).forEach((row) => this.deleteAccount(row.id));
     });
   }

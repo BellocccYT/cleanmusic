@@ -6876,3 +6876,6 @@ html.cover-vinyl .np-art::after {
 .social-code-text { font: 700 18px/1.3 ui-monospace, Consolas, monospace; letter-spacing: 0.06em; }
 .social-report { display: flex; flex-direction: column; gap: 8px; }
 #home-friends[hidden] { display: none; }
+.social-group { padding: 10px 0 14px; border-top: 1px solid var(--border-soft); margin-top: 10px; }
+.social-group h4 { margin: 0; font-size: 16px; }
+.social-group h5 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }

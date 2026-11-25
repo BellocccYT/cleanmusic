@@ -447,7 +447,9 @@ wird signiert. Du bekommst einen Zufallsnamen wie „Leiser Komet 42 · K7Q2“;
 wird gefiltert. Kontakt nur per Freundescode (24 h, einmal nutzbar, Link `…/cleanmusic/f/#F1-…`
 oder QR) – niemand kann dich suchen, es gibt keinen Chat. „Meine Aktivität zeigen“ ist extra
 und ebenfalls aus; geteilt werden nur Titel, Artist und Such-Referenz, nie lokale Dateien oder
-Radio, und nach 10 Minuten verfällt es. Antippen spielt den Song bei dir.
+Radio, und nach 10 Minuten verfällt es. Antippen spielt den Song bei dir. **Gruppen** (per
+Gruppencode, bis 30 Leute): Die Wochenkarten aktualisieren sich von selbst zu einer Rangliste, dazu
+eine gemeinsame Gruppen-Playlist (bis 200 Titel), die du auch als eigene Playlist übernehmen kannst.
 
 Dafür braucht es einen kleinen Server (Cloudflare Worker, Daten in der EU) – Code und
 Anleitung in [`server/social/README.md`](server/social/README.md). Solange keiner eingetragen

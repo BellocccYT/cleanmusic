@@ -2460,6 +2460,36 @@ function createMainWindow() {
             await js(`window.CleanMusic.socialBlock(${q(friend2.id)})`);
             const blocked = (await js('window.CleanMusic.socialState()')).blocked.map((row) => row.id);
             await js(`window.CleanMusic.socialUnblock(${q(friend2.id)})`);
+            // S2: group – create, invite code (also as deep link), the friend joins,
+            // week cards on both sides, shared playlist (add, remove), leave.
+            const madeGroup = await js('window.CleanMusic.socialGroupCreate("Smoke Gruppe")');
+            const gid = madeGroup && madeGroup.id;
+            const groupCode = ((await js(`window.CleanMusic.socialGroupCode(${q(gid)})`)) || {}).code || '';
+            const groupDeep = parseDeepLink(`cleanmusic://friend?c=${groupCode}`);
+            const groupJoined = await friend.call('POST', '/v1/group/join', { code: groupCode });
+            await friend.call('POST', '/v1/week', { week: '2026-W48', secs: 5400, plays: 12, artists: ['Linkin Park'] });
+            await friend.call('POST', '/v1/group/track', { group: gid, ref: { src: 'search', id: '', title: 'Numb', artist: 'Linkin Park' } });
+            await js('window.CleanMusic.socialRefresh()');
+            await js('window.CleanMusic.socialTick()');
+            const groupUi = await js(`(async () => {
+              window.CleanMusic.showView('friends');
+              await new Promise((resolve) => setTimeout(resolve, 250));
+              return {
+                groups: document.querySelectorAll('#view-friends .social-group').length,
+                ranking: document.querySelectorAll('#view-friends .social-group .rv-group-list li').length,
+                tracks: document.querySelectorAll('#view-friends .social-group [data-social="group-play"]').length,
+              };
+            })()`);
+            const weekPushed = fake.state().weeks.includes(appId);
+            const friendTrack = ((await js('window.CleanMusic.socialState()')).groups[0] || { tracks: [] }).tracks[0];
+            const untracked = friendTrack ? await js(`window.CleanMusic.socialGroupUntrack(${q(gid)}, ${friendTrack.rid})`) : false;
+            const added = await js(`window.CleanMusic.socialGroupAdd(${q(gid)})`);
+            const groupTracks = (fake.state().groups.find((row) => row.id === gid) || {}).tracks;
+            const left = await js(`window.CleanMusic.socialGroupLeave(${q(gid)})`);
+            const groupsAfter = (await js('window.CleanMusic.socialState()')).groups.length;
+            const groupOk = Boolean(gid) && /^G1-/.test(groupCode) && Boolean(groupDeep && groupDeep.action === 'friend') &&
+              groupJoined.status === 201 && groupUi.groups === 1 && groupUi.ranking === 2 && groupUi.tracks === 1 && weekPushed &&
+              untracked === true && added === true && groupTracks === 1 && left === true && groupsAfter === 0;
             fake.setEnabled(false);
             const off = await js('window.CleanMusic.socialRefresh()');
             fake.setEnabled(true);
@@ -2490,6 +2520,7 @@ function createMainWindow() {
               reports: fake.state().reports.length,
               blocked: blocked.includes(friend2.id),
               killSwitch: off === null,
+              groups: groupOk || { gid: Boolean(gid), groupCode, joined: groupJoined.status, groupUi, weekPushed, untracked, added, groupTracks, left, groupsAfter },
               signed: log.length > 0 && log.every((entry) => entry.signed),
               requests: log.length,
               deleted: Boolean(deleted) && !fs.existsSync(social.keyFile()) && !after.local.enabled && fake.state().accounts === 2,
@@ -2502,7 +2533,7 @@ function createMainWindow() {
               ui.home === 1 && ui.rows === 1 && ui.listen === 1 && ui.emojis === 5 && ui.count === '1' && result.qr &&
               reacted === true && result.played && tickOff === 'none' && result.shared === 'false,true' && result.inbox === 1 &&
               result.cleared && deepOk && result.viaLink && result.reports === 1 && result.blocked && result.killSwitch &&
-              result.signed && result.deleted;
+              result.signed && result.deleted && groupOk;
             if (!ok) throw new Error(JSON.stringify(result));
             console.log('SMOKE_SOCIAL_SERVER:', JSON.stringify(result));
           } catch (error) {
@@ -7412,10 +7443,10 @@ function parseDeepLink(raw) {
       const code = String(url.searchParams.get('d') || '');
       return /^P1\.[A-Za-z0-9_-]{8,12000}$/.test(code) ? { action: 'playlist', code } : null;
     }
-    // Social friend code (site/f/#F1-…): only the code format, redeemed after a question.
+    // Social friend (F1-…) or group (G1-…) code from site/f/: only the format, used after a question.
     if (host === 'friend') {
       const code = String(url.searchParams.get('c') || '');
-      return /^F1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code) ? { action: 'friend', code } : null;
+      return /^[FG]1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code) ? { action: 'friend', code } : null;
     }
     if (host === 'group') {
       const code = String(url.searchParams.get('c') || '');

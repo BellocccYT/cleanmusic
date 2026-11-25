@@ -31,6 +31,12 @@ mit dem CleanMusic-Cloudflare-Konto – vorher mit `npx wrangler whoami` prüfen
 | POST | `/v1/react` | 🔥 ❤️ 😂 🎧 👀 auf den aktuellen Song eines Freundes |
 | POST | `/v1/report` | Melden (`name`/`spam`/`other`); 3× Name → Zufallsname |
 | POST | `/v1/block` | Blockieren (sofort, einseitig) bzw. `{ block: false }` |
+| POST | `/v1/group` | S2: Gruppe erstellen (Name wie eigene Namen gefiltert, max. 10 je Konto) |
+| POST | `/v1/group/code` | Gruppencode `G1-…` (24 h, für mehrere, jedes Mitglied darf einladen) |
+| POST | `/v1/group/join` · `/v1/group/leave` · `/v1/group/kick` | Beitreten (max. 30), Verlassen, Entfernen (nur Leitung) |
+| GET | `/v1/groups` | eigene Gruppen mit Mitgliedern, Wochenkarten der aktuellen Woche und Playlist |
+| POST | `/v1/week` | eigene Wochenkarte (nur in Gruppen, nur diese/letzte Woche) |
+| POST | `/v1/group/track` · `/v1/group/track/remove` | Gruppen-Playlist (max. 200, Entfernen durch Leitung oder Hinzufügende) |
 
 Jede Anfrage außer `/v1/status` ist signiert: ECDSA P-256 über
 `CM-SOCIAL-1 · Methode · Pfad · Zeit (±5 min) · Nonce · SHA-256(Body)` in den Headern

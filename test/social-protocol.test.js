@@ -104,4 +104,25 @@ check('server address: https only, http just for local tests', () => {
   assert.equal(P.normalizeServer(''), '');
 });
 
+check('S2: group codes, ISO weeks (same as CMGroup) and week cards', () => {
+  const code = P.groupCodeFrom(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 31]));
+  assert.equal(code, 'G1-0123-4567-89AZ');
+  assert.equal(P.parseGroupCode(`Gruppe: ${P.friendLink(code)}`), code);
+  assert.equal(P.parseFriendCode(code), '', 'Gruppencode ist kein Freundescode');
+  assert.equal(P.parseGroupCode('F1-0123-4567-89AZ'), '');
+  assert.equal(P.parseFriendCode('G1-0123-4567-89AZ F1-AAAA-BBBB-CCCC'), 'F1-AAAA-BBBB-CCCC');
+  assert.equal(P.isoWeek(Date.UTC(2026, 10, 24)), '2026-W48');
+  assert.equal(P.isoWeek(Date.UTC(2026, 10, 22)), '2026-W47');
+  assert.equal(P.isoWeek(Date.UTC(2021, 0, 3)), '2020-W53');
+  assert.equal(P.isoWeek(Date.UTC(2024, 11, 30)), '2025-W01');
+  const now = Date.UTC(2026, 10, 25, 12);
+  assert.ok(P.weekOk('2026-W48', now) && P.weekOk('2026-W47', now));
+  assert.equal(P.weekOk('2026-W45', now), false);
+  assert.deepEqual(P.cleanWeek({ week: '2026-W48', secs: 1e9, plays: -2, artists: ['A', '', ' B ', 'C', 'D'] }), {
+    week: '2026-W48', secs: 604800, plays: 0, artists: ['A', 'B', 'C'],
+  });
+  assert.equal(P.cleanWeek({ week: '48' }), null);
+  assert.ok(P.isEndpoint('GET', '/v1/groups') && P.isEndpoint('POST', '/v1/group/track/remove'));
+});
+
 console.log(`\n${checks} passed, 0 failed`);

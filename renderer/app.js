@@ -7561,6 +7561,10 @@
     loaded: 0,
     last: null,
     nameMsg: '',
+    groups: [],
+    groupWeek: '',
+    groupCodes: {},
+    lastWeek: null,
     tick: 0,
     poll: 0,
   };
@@ -7690,6 +7694,13 @@
     }
     const clean = SOC.normalizeFriends(data, Date.now());
     Object.assign(socialRt, clean, { loaded: Date.now() });
+    // S2: groups (an older server without groups simply answers 404 – nothing breaks).
+    const groupData = await socialCall('GET', '/v1/groups', null, { quiet: true });
+    if (groupData) {
+      const parsed = SOC.normalizeGroups(groupData, clean.me ? clean.me.id : '');
+      socialRt.groups = parsed.groups;
+      socialRt.groupWeek = parsed.week;
+    }
     const fresh = SOC.newReactions(clean.reactions, socialLocal.seenReactions);
     if (fresh.length && socialLocal.seenReactions) {
       toast(
@@ -7726,6 +7737,12 @@
       if (ok) socialRt.last = { key: plan.key, at: Date.now(), cleared: false };
     } else if (plan.action === 'clear') {
       await clearSocialActivity();
+    }
+    // S2: the own week card for the group ranking (only while in a group).
+    const card = socialRt.groups.length ? ownWeekCard() : null;
+    if (SOC.weekPlan({ inGroups: socialRt.groups.length > 0, card, last: socialRt.lastWeek, now: Date.now() })) {
+      const sent = await socialCall('POST', '/v1/week', { week: card.week, secs: card.secs, plays: card.plays, artists: card.artists }, { quiet: true });
+      if (sent) socialRt.lastWeek = { week: card.week, secs: card.secs, at: Date.now() };
     }
     return plan.action;
   }
@@ -7793,6 +7810,7 @@
   }
 
   async function redeemFriendCode(text, options = {}) {
+    if (SOC.parseGroupCode(text) && !SOC.parseFriendCode(text)) return joinGroupCode(text, options);
     const code = SOC.parseFriendCode(text);
     if (!code) {
       toast('Das ist kein gültiger Freundescode (F1-XXXX-XXXX-XXXX).');
@@ -7811,6 +7829,7 @@
 
   // cleanmusic://friend?c=… (from the page site/f/#F1-…): ask first, then redeem.
   async function importFriendLink(code, options = {}) {
+    if (SOC.parseGroupCode(code)) return joinGroupCode(code, options);
     if (!socialAvailable()) {
       toast('Freunde gibt es vorerst nur in der Desktop-App.');
       return null;
@@ -7825,6 +7844,216 @@
     }
     showView('friends');
     return redeemFriendCode(code, options);
+  }
+
+  /* S2: groups – invite code (G1-…), week cards that update themselves, shared playlist. */
+  function socialGroup(gid) {
+    return socialRt.groups.find((group) => group.id === gid) || null;
+  }
+
+  async function createSocialGroup(value) {
+    const field = $('#social-group-name');
+    const name = value != null ? value : field ? field.value : '';
+    const check = await bridge.socialNameCheck(name);
+    if (!check || !check.ok) {
+      toast((check && check.reason) || 'Dieser Gruppenname geht nicht.');
+      return null;
+    }
+    const data = await socialCall('POST', '/v1/group', { name: check.name });
+    if (!data || !data.group) return null;
+    if (field) {
+      field.value = '';
+      delete field.dataset.touched;
+    }
+    toast(`Gruppe „${data.group.name}“ erstellt – lade jetzt Leute mit einem Gruppencode ein.`);
+    socialRt.lastWeek = null;
+    await refreshFriends({ quiet: true });
+    return data.group;
+  }
+
+  async function createGroupCode(gid) {
+    const group = socialGroup(gid);
+    const data = await socialCall('POST', '/v1/group/code', { group: gid });
+    if (!data || !SOC.GROUP_CODE_RE.test(String(data.code || ''))) return null;
+    const link = SOC.friendLink(data.code);
+    socialRt.groupCodes[gid] = { code: data.code, link, expires: Number(data.expires) || 0 };
+    renderFriends();
+    const copied = await bridge.copyText(`🎧 Komm in meine CleanMusic-Gruppe „${group ? group.name : 'Gruppe'}“ (Code gilt 24 Stunden):\n${link}\n${data.code}`);
+    toast(copied ? 'Gruppencode kopiert – in eure Gruppe schicken.' : 'Gruppencode erstellt.');
+    return socialRt.groupCodes[gid];
+  }
+
+  async function joinGroupCode(text, options = {}) {
+    const code = SOC.parseGroupCode(text);
+    if (!code) {
+      toast('Das ist kein gültiger Gruppencode (G1-XXXX-XXXX-XXXX).');
+      return null;
+    }
+    if (!socialAvailable()) {
+      toast('Freunde gibt es vorerst nur in der Desktop-App.');
+      return null;
+    }
+    if (!options.confirm) {
+      const ok = await askConfirm({
+        title: 'Gruppe beitreten?',
+        text: `Mit dem Code ${code} trittst du einer Gruppe bei. Alle in der Gruppe sehen deinen Namen und deine Wochenkarte (Hörzeit, Anzahl Titel, Top-3-Artists) und können Songs zur Gruppen-Playlist hinzufügen.`,
+        confirm: 'Beitreten',
+      });
+      if (!ok) return null;
+    }
+    if (!socialLocal.enabled && !(await enableSocial({ confirm: options.confirm }))) return null;
+    const data = await socialCall('POST', '/v1/group/join', { code });
+    if (!data || !data.group) return null;
+    const field = $('#social-group-code');
+    if (field) {
+      field.value = '';
+      delete field.dataset.touched;
+    }
+    toast(data.already ? `Du bist schon in „${data.group.name}“.` : `Du bist jetzt in „${data.group.name}“.`);
+    socialRt.lastWeek = null;
+    await refreshFriends({ quiet: true });
+    await socialTick();
+    if (state.view !== 'friends') showView('friends');
+    return data.group;
+  }
+
+  async function leaveSocialGroup(gid, options = {}) {
+    const group = socialGroup(gid);
+    if (!options.confirm && !(await askConfirm({ title: 'Gruppe verlassen?', text: `Du verlässt „${group ? group.name : 'die Gruppe'}“.${group && group.isOwner ? ' Die Leitung geht an das älteste Mitglied.' : ''} Deine Wochenkarte ist dort dann nicht mehr zu sehen.`, confirm: 'Verlassen' }))) return false;
+    if (!(await socialCall('POST', '/v1/group/leave', { group: gid }))) return false;
+    delete socialRt.groupCodes[gid];
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function kickGroupMember(gid, id, options = {}) {
+    const group = socialGroup(gid);
+    const member = group ? group.members.find((row) => row.id === id) : null;
+    if (!options.confirm && !(await askConfirm({ title: 'Aus der Gruppe entfernen?', text: `${SOC.display(member)} wird aus „${group ? group.name : 'der Gruppe'}“ entfernt.`, confirm: 'Entfernen', danger: true }))) return false;
+    if (!(await socialCall('POST', '/v1/group/kick', { group: gid, id }))) return false;
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function addCurrentToGroup(gid) {
+    const entry = currentItem();
+    const ref = entry && window.CMShare ? window.CMShare.refOf(entry) : null;
+    if (!ref) {
+      toast(entry ? 'Lokale Dateien und Radio lassen sich nicht teilen.' : 'Gerade läuft kein Song.');
+      return false;
+    }
+    const data = await socialCall('POST', '/v1/group/track', { group: gid, ref });
+    if (!data) return false;
+    toast(data.already ? `„${ref.title}“ ist schon in der Gruppen-Playlist.` : `„${ref.title}“ ist jetzt in der Gruppen-Playlist.`);
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function removeGroupTrack(gid, rid) {
+    if (!(await socialCall('POST', '/v1/group/track/remove', { group: gid, rid: Number(rid) }))) return false;
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function playGroupTrack(gid, rid) {
+    const group = socialGroup(gid);
+    const track = group ? group.tracks.find((row) => row.rid === Number(rid)) : null;
+    if (!track) return false;
+    toast(`„${track.ref.title}“ wird geladen …`);
+    const entry = await findSharedEntry(track.ref);
+    if (!entry) {
+      toast('Der Song wurde nicht gefunden.');
+      return false;
+    }
+    state.sharedList = [entry];
+    playList('shared', 0);
+    return true;
+  }
+
+  // The group playlist as an own playlist (titles are looked up like a shared playlist).
+  async function importGroupPlaylist(gid) {
+    const group = socialGroup(gid);
+    if (!group || !group.tracks.length) {
+      toast('Die Gruppen-Playlist ist noch leer.');
+      return null;
+    }
+    toast(`„${group.name}“ wird übernommen …`);
+    const refs = group.tracks.slice().reverse();
+    const found = new Array(refs.length).fill(null);
+    let next = 0;
+    const worker = async () => {
+      while (next < refs.length) {
+        const index = next;
+        next += 1;
+        found[index] = await findSharedEntry(refs[index].ref);
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    const entries = found.filter(Boolean);
+    if (!entries.length) {
+      toast('Keiner der Titel wurde gefunden.');
+      return null;
+    }
+    const playlist = createPlaylist(uniquePlaylistName(group.name, 'Gruppen-Playlist'));
+    addToPlaylist(playlist.id, entries, { quiet: true });
+    openPlaylist(playlist.id);
+    toast(`„${playlist.name}“ übernommen: ${entries.length} von ${refs.length} Titeln gefunden.`);
+    return { id: playlist.id, count: entries.length, total: refs.length };
+  }
+
+  function groupsPanelHtml() {
+    const now = Date.now() + socialRt.skew;
+    const groups = socialRt.groups
+      .map((group) => {
+        const open = socialRt.groupCodes[group.id];
+        const code = open && open.expires > now ? open : null;
+        const ranking = SOC.groupRanking(group.members)
+          .map((row) => `<li class="${row.self ? 'self' : ''}">
+            <span class="rv-rank">${row.rank}</span>
+            <span class="rv-who"><strong>${esc(row.name)}${row.self ? ' (du)' : ''}</strong> <span class="social-tag">· ${esc(row.tag)}</span>${row.owner ? ' <span class="chip">leitet</span>' : ''}
+              <small>${row.week ? `${esc(hoursMinutes(row.week.secs))} · ${row.week.plays.toLocaleString('de-DE')} Titel${row.week.artists.length ? ` · ${esc(row.week.artists[0])}` : ''}` : 'noch keine Wochenkarte'}</small></span>
+            ${group.isOwner && !row.self ? `<button class="icon-btn small" data-social="group-kick" data-gid="${esc(group.id)}" data-id="${esc(row.id)}" title="Aus der Gruppe entfernen" aria-label="${esc(row.name)} entfernen">×</button>` : ''}
+          </li>`)
+          .join('');
+        const tracks = group.tracks
+          .slice(0, 50)
+          .map((track) => `<li class="social-friend">
+            <button class="social-listen-play" data-social="group-play" data-gid="${esc(group.id)}" data-rid="${track.rid}" title="Abspielen"><strong>${esc(track.ref.title)}</strong><small>${track.ref.artist ? `${esc(track.ref.artist)} · ` : ''}von ${esc(track.by.name)}</small></button>
+            ${group.isOwner || track.mine ? `<button class="icon-btn small" data-social="group-untrack" data-gid="${esc(group.id)}" data-rid="${track.rid}" title="Aus der Gruppen-Playlist entfernen" aria-label="Entfernen">×</button>` : ''}
+          </li>`)
+          .join('');
+        const week = socialRt.groupWeek.replace(/^(\d{4})-W0?(\d+)$/, 'KW $2/$1');
+        return `<div class="social-group" data-group="${esc(group.id)}">
+          <div class="home-section-head"><h4>${esc(group.name)} <span class="muted small">· ${group.members.length}/30</span></h4>
+            <span class="social-friend-actions">
+              <button class="btn ghost small" data-social="group-code" data-gid="${esc(group.id)}">Einladen</button>
+              <button class="btn ghost small" data-social="group-leave" data-gid="${esc(group.id)}">Verlassen</button>
+            </span></div>
+          ${code ? `<p class="small">Gruppencode <strong class="social-code-text">${esc(code.code)}</strong> · <a href="${esc(code.link)}" target="_blank" rel="noreferrer">Link</a> · gilt 24 Stunden für alle, die ihn bekommen.</p>` : ''}
+          <h5>Diese Woche${week ? ` · ${esc(week)}` : ''}</h5>
+          <ol class="rv-group-list">${ranking}</ol>
+          <div class="home-section-head"><h5>Gruppen-Playlist · ${group.tracks.length}/200</h5>
+            <span class="social-friend-actions">
+              <button class="btn ghost small" data-social="group-add" data-gid="${esc(group.id)}">Aktuellen Song hinzufügen</button>
+              ${group.tracks.length ? `<button class="btn ghost small" data-social="group-import" data-gid="${esc(group.id)}">Als Playlist übernehmen</button>` : ''}
+            </span></div>
+          <ul class="social-list">${tracks || '<li class="muted small">Noch leer – füge den Song hinzu, der gerade läuft.</li>'}</ul>
+        </div>`;
+      })
+      .join('');
+    return `<div class="panel social-groups">
+        <h3>Gruppen</h3>
+        <p class="muted small">Eure Wochenkarten aktualisieren sich von selbst, dazu gibt es eine gemeinsame Playlist. Beitreten geht nur per Gruppencode. Die Gruppe sieht deinen Namen und deine Wochenkarte (Hörzeit, Anzahl Titel, Top-3-Artists).</p>
+        ${groups}
+        <div class="rv-group-row" style="margin-top:10px">
+          <input id="social-group-name" type="text" maxlength="20" placeholder="Name für eine neue Gruppe" spellcheck="false" />
+          <button class="btn ghost small" data-social="group-create">Gruppe erstellen</button>
+        </div>
+        <div class="rv-group-row">
+          <input id="social-group-code" type="text" placeholder="Gruppencode oder Link (G1-…)" spellcheck="false" />
+          <button class="btn ghost small" data-social="group-join">Beitreten</button>
+        </div>
+      </div>`;
   }
 
   function socialFriend(id) {
@@ -7911,7 +8140,7 @@
     stopSocialTimers();
     socialLocal = SOC.normalizeState({});
     persistSocial();
-    Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], code: null, last: null, nameMsg: '', loaded: 0 });
+    Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], code: null, last: null, nameMsg: '', loaded: 0, groups: [], groupWeek: '', groupCodes: {}, lastWeek: null });
     await refreshSocialInfo();
     renderFriends();
     renderHomeFriends();
@@ -7981,7 +8210,7 @@
     const host = $('#view-friends');
     if (!host) return;
     const keep = {};
-    ['social-name', 'social-redeem', 'social-server'].forEach((id) => {
+    ['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code'].forEach((id) => {
       const field = document.getElementById(id);
       if (field && field.dataset.touched) keep[id] = field.value;
     });
@@ -8090,6 +8319,8 @@
         </div>
       </div>
 
+      ${groupsPanelHtml()}
+
       ${reactions ? `<div class="panel"><h3>Reaktionen</h3><ul class="social-list">${reactions}</ul></div>` : ''}
 
       <div class="panel">
@@ -8179,13 +8410,42 @@
         case 'server':
           saveSocialServer();
           break;
+        case 'group-create':
+          createSocialGroup();
+          break;
+        case 'group-join': {
+          const field = $('#social-group-code');
+          joinGroupCode(field ? field.value : '');
+          break;
+        }
+        case 'group-code':
+          createGroupCode(button.dataset.gid);
+          break;
+        case 'group-leave':
+          leaveSocialGroup(button.dataset.gid);
+          break;
+        case 'group-kick':
+          kickGroupMember(button.dataset.gid, id);
+          break;
+        case 'group-add':
+          addCurrentToGroup(button.dataset.gid);
+          break;
+        case 'group-play':
+          playGroupTrack(button.dataset.gid, button.dataset.rid);
+          break;
+        case 'group-untrack':
+          removeGroupTrack(button.dataset.gid, button.dataset.rid);
+          break;
+        case 'group-import':
+          importGroupPlaylist(button.dataset.gid);
+          break;
         default:
           break;
       }
     });
     document.addEventListener('input', (event) => {
       const field = event.target;
-      if (!field || !['social-name', 'social-redeem', 'social-server'].includes(field.id)) return;
+      if (!field || !['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code'].includes(field.id)) return;
       field.dataset.touched = '1';
       if (field.id !== 'social-name' || !bridge.socialNameCheck) return;
       clearTimeout(socialNameTimer);
@@ -8203,6 +8463,8 @@
       if (event.key !== 'Enter' || !event.target) return;
       if (event.target.id === 'social-redeem') redeemFriendCode(event.target.value);
       if (event.target.id === 'social-name') saveSocialName();
+      if (event.target.id === 'social-group-code') joinGroupCode(event.target.value);
+      if (event.target.id === 'social-group-name') createSocialGroup();
     });
   }
 
@@ -15635,6 +15897,7 @@ ${updatePanel()}
       friends: socialRt.friends,
       reactions: socialRt.reactions,
       blocked: socialRt.blocked,
+      groups: socialRt.groups,
       code: socialRt.code ? { code: socialRt.code.code, link: socialRt.code.link, qr: Boolean(socialRt.code.qr) } : null,
     })),
     socialRefresh: () => refreshFriends({ quiet: true }),
@@ -15653,6 +15916,12 @@ ${updatePanel()}
     socialRemove: (id) => removeFriend(id, { confirm: true }),
     socialDisable: () => disableSocial(),
     socialDelete: () => deleteSocialAccount({ confirm: true }),
+    socialGroupCreate: (name) => createSocialGroup(name),
+    socialGroupCode: (gid) => createGroupCode(gid),
+    socialGroupJoin: (code) => joinGroupCode(code, { confirm: true }),
+    socialGroupAdd: (gid) => addCurrentToGroup(gid),
+    socialGroupUntrack: (gid, rid) => removeGroupTrack(gid, rid),
+    socialGroupLeave: (gid) => leaveSocialGroup(gid, { confirm: true }),
     groupReset: () => {
       group = GROUP.normalizeGroup({});
       persistGroup();

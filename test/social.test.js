@@ -102,4 +102,49 @@ check('friend codes and links match the shared protocol', () => {
   assert.equal(S.ago(1000, 1000 + 3 * 60000), 'vor 3 Min.');
 });
 
+check('S2 groups: payload cleaned, rights, ranking with shared places, week card plan', () => {
+  const data = S.normalizeGroups({
+    week: '2026-W48',
+    groups: [
+      {
+        id: 'G7Q2ABCDEFGHJKMNPQRSTVWX',
+        name: ' Die Hörer ',
+        owner: A,
+        members: [
+          { id: A, name: 'Rob', week: { secs: 3600, plays: 9, artists: ['X', 'Y', 'Z', 'W'] } },
+          { id: B, name: 'Lena', week: { secs: 3600, plays: 4 } },
+          { id: 'CCCCABCDEFGHJKMNPQRSTVWX', name: 'Max', week: null },
+          { id: 'kaputt', name: 'X' },
+        ],
+        tracks: [
+          { rid: 1, ref, by: { id: B, name: 'Lena' }, at: 5 },
+          { rid: 2, ref: { src: 'local', title: 'C:/a.mp3' }, by: { id: B } },
+        ],
+      },
+      { id: 'kaputt', name: 'X' },
+    ],
+  }, A);
+  assert.equal(data.week, '2026-W48');
+  assert.equal(data.groups.length, 1);
+  const group = data.groups[0];
+  assert.equal(group.name, 'Die Hörer');
+  assert.equal(group.isOwner, true);
+  assert.equal(group.members.length, 3);
+  assert.deepEqual(plain(group.members[0].week.artists), ['X', 'Y', 'Z']);
+  assert.equal(group.tracks.length, 1);
+  assert.equal(group.tracks[0].mine, false);
+  assert.deepEqual(plain(S.groupRanking(group.members).map((row) => [row.name, row.rank])), [['Lena', 1], ['Rob', 1], ['Max', 3]]);
+  assert.equal(S.parseGroupCode('F1-0123-4567-89AZ G1-o123-4567-89az'), 'G1-0123-4567-89AZ');
+  assert.equal(S.parseGroupCode(S.friendLink('G1-0123-4567-89AZ')), proto.parseGroupCode('G1-0123-4567-89AZ'));
+  const now = 1795500000000;
+  const card = { week: '2026-W48', secs: 600, plays: 3, artists: [] };
+  const plan = (input) => S.weekPlan(Object.assign({ inGroups: true, card, last: null, now }, input));
+  assert.equal(plan({ inGroups: false }), false, 'nur in Gruppen');
+  assert.equal(plan({}), true, 'erste Karte');
+  assert.equal(plan({ last: { week: '2026-W47', secs: 9999, at: now - 1000 } }), true, 'neue Woche');
+  assert.equal(plan({ last: { week: '2026-W48', secs: 500, at: now - 11 * 60000 } }), true);
+  assert.equal(plan({ last: { week: '2026-W48', secs: 590, at: now - 11 * 60000 } }), false, 'unter 1 Minute mehr');
+  assert.equal(plan({ last: { week: '2026-W48', secs: 0, at: now - 60000 } }), false, 'höchstens alle 10 Minuten');
+});
+
 console.log(`\n${checks} passed, 0 failed`);

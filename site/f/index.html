@@ -50,7 +50,8 @@
 (() => {
   // The code travels in the #fragment – it is never sent to a server.
   const code = decodeURIComponent((location.hash || '').slice(1)).trim().toUpperCase();
-  const valid = /^F1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code);
+  const valid = /^[FG]1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code);
+  const isGroup = code.startsWith('G1-');
   const open = document.getElementById('open');
   const hint = document.getElementById('hint');
   const box = document.getElementById('code');
@@ -60,10 +61,17 @@
     hint.textContent = 'Dieser Link ist unvollständig. Bitte den ganzen Link oder Code schicken lassen.';
     return;
   }
+  if (isGroup) {
+    document.title = 'Gruppe in CleanMusic beitreten';
+    document.querySelector('.eyebrow').textContent = 'Gruppencode';
+    document.querySelector('h1').textContent = 'Komm in unsere CleanMusic-Gruppe';
+    open.textContent = 'In CleanMusic beitreten';
+    hint.textContent = 'CleanMusic fragt dich vorher. Die Gruppe sieht deinen Namen und deine Wochenkarte. Der Code gilt 24 Stunden.';
+  }
   open.href = 'cleanmusic://friend?c=' + encodeURIComponent(code);
   box.textContent = code;
   box.addEventListener('click', () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => { hint.textContent = 'Code kopiert – in CleanMusic unter Freunde → Freund hinzufügen einfügen.'; });
+    if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => { hint.textContent = isGroup ? 'Code kopiert – in CleanMusic unter Freunde → Gruppen einfügen.' : 'Code kopiert – in CleanMusic unter Freunde → Freund hinzufügen einfügen.'; });
   });
   setTimeout(() => { location.href = open.href; }, 600);
 })();

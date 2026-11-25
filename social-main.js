@@ -273,6 +273,10 @@ function createFakeServer() {
   const reports = [];
   const nonces = new Set();
   const log = [];
+  const groups = new Map(); // id -> { id, name, owner, members: [id], tracks: [] }
+  const groupCodes = new Map(); // code -> group id
+  const weeks = new Map(); // account -> week card
+  let trackSeq = 0;
   let enabled = true;
   const POW = 8;
 
@@ -395,6 +399,71 @@ function createFakeServer() {
           unlink(auth.id, other);
         }
         return [200, { ok: true, blocked: data.block !== false }];
+      // S2 groups (simplified: no limits, the stored week card is always shown)
+      case 'POST /v1/group': {
+        const check = names.checkName(data.name);
+        if (!check.ok) return [400, { error: 'name', message: check.reason }];
+        const id = names.accountIdFromDigest(crypto.randomBytes(15));
+        groups.set(id, { id, name: check.name, owner: auth.id, members: [auth.id], tracks: [] });
+        return [201, { group: { id, name: check.name } }];
+      }
+      case 'POST /v1/group/code': {
+        const group = groups.get(String(data.group));
+        if (!group || !group.members.includes(auth.id)) return [404, { error: 'keine-gruppe', message: 'Keine Gruppe.' }];
+        const code = proto.groupCodeFrom(crypto.randomBytes(12));
+        groupCodes.set(code, group.id);
+        return [201, { code, expires: Date.now() + proto.LIMITS.codeTtlMs }];
+      }
+      case 'POST /v1/group/join': {
+        const group = groups.get(groupCodes.get(proto.parseGroupCode(data.code)));
+        if (!group) return [404, { error: 'code', message: 'Der Gruppencode ist ungültig.' }];
+        const already = group.members.includes(auth.id);
+        if (!already) group.members.push(auth.id);
+        return [already ? 200 : 201, { group: { id: group.id, name: group.name }, already }];
+      }
+      case 'POST /v1/group/leave': {
+        const group = groups.get(String(data.group));
+        if (!group) return [404, { error: 'keine-gruppe', message: 'Keine Gruppe.' }];
+        group.members = group.members.filter((id) => id !== auth.id);
+        if (group.owner === auth.id) group.owner = group.members[0] || '';
+        if (!group.members.length) groups.delete(group.id);
+        return [200, { ok: true }];
+      }
+      case 'GET /v1/groups':
+        return [200, {
+          week: proto.isoWeek(Date.now()),
+          groups: Array.from(groups.values())
+            .filter((group) => group.members.includes(auth.id))
+            .map((group) => ({
+              id: group.id,
+              name: group.name,
+              owner: group.owner,
+              members: group.members.map((id) => Object.assign(person(id), { week: weeks.get(id) || null })),
+              tracks: group.tracks.map((track) => ({ rid: track.rid, ref: track.ref, at: track.at, by: person(track.by) })),
+            })),
+          now: Date.now(),
+        }];
+      case 'POST /v1/week': {
+        const card = proto.cleanWeek(data);
+        if (!card) return [400, { error: 'woche', message: 'Keine Wochenkarte.' }];
+        weeks.set(auth.id, card);
+        return [200, { ok: true }];
+      }
+      case 'POST /v1/group/track': {
+        const group = groups.get(String(data.group));
+        const ref = proto.cleanRef(data.ref);
+        if (!group || !group.members.includes(auth.id)) return [404, { error: 'keine-gruppe', message: 'Keine Gruppe.' }];
+        if (!ref) return [400, { error: 'ref', message: 'Nicht teilbar.' }];
+        trackSeq += 1;
+        group.tracks.unshift({ rid: trackSeq, ref, by: auth.id, at: Date.now() });
+        return [201, { ok: true }];
+      }
+      case 'POST /v1/group/track/remove': {
+        const group = groups.get(String(data.group));
+        if (!group) return [404, { error: 'keine-gruppe', message: 'Keine Gruppe.' }];
+        group.tracks = group.tracks.filter((track) => track.rid !== Number(data.rid));
+        return [200, { ok: true }];
+      }
       default:
         return [404, { error: 'unbekannt', message: 'Unbekannt.' }];
     }
@@ -473,6 +542,8 @@ function createFakeServer() {
       blocks: Array.from(blocks),
       activity: Array.from(activity.entries()).map(([id, act]) => ({ id, ref: act.ref })),
       reactions: reactions.slice(),
+      groups: Array.from(groups.values()).map((group) => ({ id: group.id, owner: group.owner, members: group.members.length, tracks: group.tracks.length })),
+      weeks: Array.from(weeks.keys()),
     }),
   };
 }

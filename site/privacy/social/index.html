@@ -64,6 +64,7 @@
       <li>Du bekommst einen Zufallsnamen. Einen eigenen Namen kannst du setzen; er wird auf anstößige Wörter geprüft.</li>
       <li>Kontakt nur per Freundescode. Es gibt keine Suche nach Personen, keine öffentliche Liste und keinen Chat – nur feste Emoji-Reaktionen.</li>
       <li>„Meine Aktivität zeigen“ ist standardmäßig aus. Eingeschaltet sehen nur deine Freunde Titel und Artist des laufenden Songs. Lokale Dateien und Radio werden nie geteilt. Es läuft kein Audio über den Server.</li>
+      <li>Gruppen gibt es nur per Gruppencode. Die Gruppe sieht deinen Namen und deine Wochenkarte (Hörzeit, Anzahl Titel, Top-3-Artists), dazu kommt eine gemeinsame Playlist aus Song-Referenzen.</li>
       <li>„Konto löschen“ in der App entfernt alles sofort.</li>
     </ul>
 
@@ -77,6 +78,10 @@
         <tr><td>Freundescodes – nur als SHA-256-Hash</td><td>Kontakt per Code</td><td>höchstens 24 Stunden; beim Einlösen oder Widerrufen sofort gelöscht</td></tr>
         <tr><td>Aktivität: Titel, Artist, Song-Referenz (Deezer-, Apple- oder YouTube-ID bzw. Suchbegriff), Zeitpunkt – nur mit „Meine Aktivität zeigen“</td><td>„Freunde hören gerade“</td><td>10 Minuten nach der letzten Meldung</td></tr>
         <tr><td>Reaktionen (Emoji, Absender, Songtitel)</td><td>Anzeige beim Empfänger</td><td>24 Stunden, höchstens 100 je Person</td></tr>
+        <tr><td>Gruppen: Name, wer sie leitet, Mitglieder</td><td>gemeinsame Gruppe</td><td>bis das letzte Mitglied geht oder sein Konto löscht</td></tr>
+        <tr><td>Gruppencodes – nur als SHA-256-Hash</td><td>Beitreten per Code</td><td>höchstens 24 Stunden</td></tr>
+        <tr><td>Wochenkarte: Kalenderwoche, Hörzeit, Anzahl Titel, Top-3-Artists – nur solange du in einer Gruppe bist</td><td>Rangliste in deinen Gruppen</td><td>die letzten zwei Wochen; beim Verlassen der letzten Gruppe sofort gelöscht</td></tr>
+        <tr><td>Gruppen-Playlist: Song-Referenzen (wie bei der Aktivität) und wer sie hinzugefügt hat</td><td>gemeinsame Playlist</td><td>bis der Titel entfernt wird, die Gruppe leer ist oder du dein Konto löschst</td></tr>
         <tr><td>Meldungen (wer, wen, Grund aus einer festen Liste)</td><td>Missbrauchsschutz; nach drei Meldungen wird ein anstößiger Name durch einen Zufallsnamen ersetzt</td><td>30 Tage</td></tr>
         <tr><td>Einmalwerte (Nonces) der Anfragen</td><td>Schutz gegen wiederholte Anfragen</td><td>10 Minuten</td></tr>
         <tr><td>Zähler für Anfrage-Grenzen je Konto und je Netz: das IP-Präfix (IPv4 /24, IPv6 /48) nur als Hash mit täglich wechselndem Zufallswert</td><td>Schutz vor Massen-Konten und Spam</td><td>höchstens 24 Stunden</td></tr>

@@ -304,3 +304,50 @@ test('operator: kill switch (delete still works), bans, reports – only with th
   assert.equal((await call(user, 'DELETE', '/v1/account')).data.deleted, true, 'Löschen geht auch bei Not-Aus');
   await admin('POST', '/v1/admin/switch', { enabled: true });
 });
+
+test('S2 groups: invite code for several, week ranking, shared playlist rights, kick/leave, cleanup', async () => {
+  const owner = client();
+  const m1 = client();
+  const m2 = client();
+  const outsider = client();
+  await Promise.all([owner, m1, m2, outsider].map(account));
+  assert.equal((await call(owner, 'POST', '/v1/group', { name: 'Admin' })).data.error, 'name');
+  const made = await call(owner, 'POST', '/v1/group', { name: 'Die Hörer' });
+  assert.equal(made.status, 201);
+  const gid = made.data.group.id;
+  assert.equal((await call(outsider, 'POST', '/v1/group/code', { group: gid })).data.error, 'keine-gruppe');
+  const code = (await call(owner, 'POST', '/v1/group/code', { group: gid })).data.code;
+  assert.match(code, proto.GROUP_CODE_RE);
+  assert.equal((await call(m1, 'POST', '/v1/group/join', { code: proto.friendLink(code) })).status, 201);
+  assert.equal((await call(m2, 'POST', '/v1/group/join', { code })).status, 201, 'ein Gruppencode gilt für mehrere');
+  assert.equal((await call(m2, 'POST', '/v1/group/join', { code })).data.already, true);
+  // Week cards: only for group members, only this/last week, cleaned.
+  const week = proto.isoWeek(Date.now());
+  assert.equal((await call(outsider, 'POST', '/v1/week', { week, secs: 60 })).data.error, 'keine-gruppe');
+  assert.equal((await call(owner, 'POST', '/v1/week', { week: '2020-W01', secs: 60 })).data.error, 'woche');
+  assert.equal((await call(owner, 'POST', '/v1/week', { week, secs: 3600, plays: 20, artists: ['A', 'B', 'C', 'D'] })).status, 200);
+  assert.equal((await call(m1, 'POST', '/v1/week', { week, secs: 7200, plays: 30 })).status, 200);
+  const group = (await call(m2, 'GET', '/v1/groups')).data.groups[0];
+  assert.equal(group.name, 'Die Hörer');
+  assert.equal(group.owner, owner.id);
+  assert.deepEqual(group.members.map((member) => member.week && member.week.secs), [3600, 7200, null]);
+  assert.deepEqual(group.members[0].week.artists, ['A', 'B', 'C']);
+  // Shared playlist: everyone adds, no duplicates, creator or adder removes.
+  assert.equal((await call(m1, 'POST', '/v1/group/track', { group: gid, ref })).status, 201);
+  assert.equal((await call(m2, 'POST', '/v1/group/track', { group: gid, ref })).data.already, true);
+  assert.equal((await call(m2, 'POST', '/v1/group/track', { group: gid, ref: { src: 'local', title: 'x' } })).data.error, 'ref');
+  assert.equal((await call(outsider, 'POST', '/v1/group/track', { group: gid, ref })).data.error, 'keine-gruppe');
+  const track = (await call(owner, 'GET', '/v1/groups')).data.groups[0].tracks[0];
+  assert.equal(track.by.id, m1.id);
+  assert.equal((await call(m2, 'POST', '/v1/group/track/remove', { group: gid, rid: track.rid })).data.error, 'nur-ersteller');
+  assert.equal((await call(owner, 'POST', '/v1/group/track/remove', { group: gid, rid: track.rid })).status, 200);
+  // Kick, leave (oldest member takes over), last member gone → group gone.
+  assert.equal((await call(m1, 'POST', '/v1/group/kick', { group: gid, id: m2.id })).data.error, 'nur-ersteller');
+  assert.equal((await call(owner, 'POST', '/v1/group/kick', { group: gid, id: m2.id })).status, 200);
+  assert.equal((await call(m2, 'GET', '/v1/groups')).data.groups.length, 0);
+  assert.equal((await call(owner, 'POST', '/v1/group/leave', { group: gid })).status, 200);
+  assert.equal((await call(m1, 'GET', '/v1/groups')).data.groups[0].owner, m1.id, 'ältestes Mitglied übernimmt');
+  assert.equal((await call(owner, 'POST', '/v1/week', { week, secs: 1 })).data.error, 'keine-gruppe', 'Wochensumme weg ohne Gruppe');
+  assert.equal((await call(m1, 'DELETE', '/v1/account')).data.deleted, true);
+  assert.equal((await call(m2, 'POST', '/v1/group/join', { code })).status, 404, 'leere Gruppe ist gelöscht');
+});
