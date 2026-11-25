@@ -2442,9 +2442,28 @@ function createMainWindow() {
             const friend = await fake.remoteClient();
             await friend.call('POST', '/v1/name', { name: 'Smoke Freund' });
             const code = await js('window.CleanMusic.socialCode().then((made) => made && made.code)');
-            const redeemed = await friend.call('POST', '/v1/friend/redeem', { code });
+            // 2.1: redeeming the app's code leaves a request; the app accepts it.
+            const redeemed = await friend.call('POST', '/v1/friend/redeem', { code, requests: true });
+            await js('window.CleanMusic.socialRefresh()');
+            const requestUi = await js(`(async () => {
+              const cm = window.CleanMusic;
+              cm.showView('friends');
+              await new Promise((resolve) => setTimeout(resolve, 250));
+              const count = document.querySelector('#friends-count');
+              return {
+                rows: document.querySelectorAll('#view-friends .social-request').length,
+                buttons: document.querySelectorAll('#view-friends .social-request [data-social="accept"], #view-friends .social-request [data-social="decline"]').length,
+                count: count.textContent,
+                badge: count.classList.contains('requests'),
+                friends: cm.socialState().friends.length,
+                note: cm.socialState().notes.some((text) => /Freundschaftsanfrage/.test(text)),
+              };
+            })()`);
+            const accepted = await js(`window.CleanMusic.socialAccept(${q(friend.id)})`);
+            await friend.call('POST', '/v1/presence', { show: true });
             await friend.call('POST', '/v1/activity', { ref: { src: 'search', id: '', title: 'Numb', artist: 'Linkin Park' } });
             await js('window.CleanMusic.socialRefresh()');
+            const onlineNote = (await js('window.CleanMusic.socialState()')).notes.some((text) => /ist jetzt online/.test(text));
             const ui = await js(`(async () => {
               const cm = window.CleanMusic;
               const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -2481,6 +2500,25 @@ function createMainWindow() {
             await js('window.CleanMusic.socialShowActivity(false)');
             const cleared = !fake.state().activity.some((row) => row.id === appId);
             await js('document.querySelector("#audio").pause()');
+            // 2.1: the own "Mir online zeigen" switch (off by default) goes to the server and back.
+            const onlineBefore = fake.state().presence.includes(appId);
+            await js('window.CleanMusic.socialShowOnline(true)');
+            const onlineOn = fake.state().presence.includes(appId);
+            await js('window.CleanMusic.socialShowOnline(false)');
+            const onlineOff = !fake.state().presence.includes(appId);
+            // 2.1: a 2.0.x-style client (no `requests` flag) redeems an ask-code → readable message; decline is silent.
+            const friend3 = await fake.remoteClient();
+            const code3 = await js('window.CleanMusic.socialCode().then((made) => made && made.code)');
+            const legacy = await friend3.call('POST', '/v1/friend/redeem', { code: code3 });
+            await js('window.CleanMusic.socialRefresh()');
+            const legacyVisible = (await js('window.CleanMusic.socialState()')).requests.some((row) => row.from.id === friend3.id);
+            const declined = await js(`window.CleanMusic.socialDecline(${q(friend3.id)})`);
+            const declinedGone = !(await js('window.CleanMusic.socialState()')).requests.length;
+            const stillWaits = ((await friend3.call('GET', '/v1/friends')).data.sent || []).length === 1;
+            const requestsOk = redeemed.status === 202 && requestUi.rows === 1 && requestUi.buttons === 2 && requestUi.count === '1' &&
+              requestUi.badge && requestUi.friends === 0 && requestUi.note && accepted === true && onlineNote &&
+              !onlineBefore && onlineOn && onlineOff && legacy.status === 409 && legacy.data.error === 'anfrage-gesendet' &&
+              legacyVisible && declined === true && declinedGone && stillWaits;
             const friend2 = await fake.remoteClient();
             const code2 = (await friend2.call('POST', '/v1/friend-code', {})).data.code;
             const deep = parseDeepLink(`cleanmusic://friend?c=${code2}`);
@@ -2527,6 +2565,7 @@ function createMainWindow() {
             const log = fake.state().log;
             const deleted = await js('window.CleanMusic.socialDelete()');
             const after = await js('window.CleanMusic.socialState()');
+            const accountsLeft = fake.state().accounts;
             const result = {
               noServer: noServer.error,
               badServer: badServer.error || '',
@@ -2537,6 +2576,7 @@ function createMainWindow() {
               names: [badName, goodName].join(','),
               me: ui.me.trim(),
               redeemed: redeemed.status,
+              friendRequests: requestsOk || { requestUi, accepted, onlineNote, onlineBefore, onlineOn, onlineOff, legacy: legacy.status, legacyVisible, declined, declinedGone, stillWaits },
               ui,
               qr: Boolean(appState.code && appState.code.qr),
               reacted,
@@ -2554,13 +2594,13 @@ function createMainWindow() {
               groups: groupOk || { gid: Boolean(gid), groupCode, joined: groupJoined.status, groupUi, weekPushed, untracked, added, groupTracks, left, groupsAfter },
               signed: log.length > 0 && log.every((entry) => entry.signed),
               requests: log.length,
-              deleted: Boolean(deleted) && !fs.existsSync(social.keyFile()) && !after.local.enabled && fake.state().accounts === 2,
+              deleted: Boolean(deleted) && !fs.existsSync(social.keyFile()) && !after.local.enabled && accountsLeft === 3,
             };
             await social.setServer('');
             await fake.close();
             const ok = result.noServer === 'kein-server' && result.badServer === 'adresse' && result.allowlist === 'adresse,adresse' &&
               enabled === true && result.keyEncrypted && result.bridge === 'socialInfo,socialNameCheck,socialRequest,socialServerSet,socialSetup' &&
-              result.names === 'false,true' && result.me.startsWith('Smoke Tester') && result.redeemed === 201 &&
+              result.names === 'false,true' && result.me.startsWith('Smoke Tester') && requestsOk &&
               ui.home === 1 && ui.rows === 1 && ui.listen === 1 && ui.emojis === 5 && ui.count === '1' && result.qr &&
               reacted === true && result.played && tickOff === 'none' && result.shared === 'false,true' && result.inbox === 1 &&
               result.cleared && deepOk && result.viaLink && result.reports === 1 && result.blocked && result.killSwitch &&

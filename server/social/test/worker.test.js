@@ -43,7 +43,7 @@ before(async () => {
       LOCAL_DEV: 'true',
       POW_BITS: '8',
       ADMIN_TOKEN: ADMIN,
-      TEST_LIMITS: JSON.stringify({ friends: 3, activityTtlMs: 2500, codeTtlMs: 4000, accountsPerIp: 2 }),
+      TEST_LIMITS: JSON.stringify({ friends: 3, activityTtlMs: 2500, codeTtlMs: 4000, accountsPerIp: 2, requestTtlMs: 3000, onlineTtlMs: 2000 }),
     },
   }));
   await mf.ready;
@@ -350,4 +350,102 @@ test('S2 groups: invite code for several, week ranking, shared playlist rights, 
   assert.equal((await call(owner, 'POST', '/v1/week', { week, secs: 1 })).data.error, 'keine-gruppe', 'Wochensumme weg ohne Gruppe');
   assert.equal((await call(m1, 'DELETE', '/v1/account')).data.deleted, true);
   assert.equal((await call(m2, 'POST', '/v1/group/join', { code })).status, 404, 'leere Gruppe ist gelöscht');
+});
+
+const friendsOf = async (who) => (await call(who, 'GET', '/v1/friends')).data;
+
+test('2.1 friend requests: ask-codes need a yes, 2.0 codes stay instant, 2.0 redeemers get a message, decline is silent', async () => {
+  const owner = client();
+  const asker = client();
+  const old = client();
+  const third = client();
+  await Promise.all([owner, asker, old, third].map(account));
+  const made = await call(owner, 'POST', '/v1/friend-code', { requests: true });
+  assert.equal(made.data.requests, true);
+  const sent = await call(asker, 'POST', '/v1/friend/redeem', { code: made.data.code, requests: true });
+  assert.equal(sent.status, 202, JSON.stringify(sent.data));
+  assert.equal(sent.data.pending, true);
+  assert.equal(sent.data.friend.id, owner.id);
+  let mine = await friendsOf(owner);
+  assert.deepEqual(mine.requests.map((row) => row.from.id), [asker.id]);
+  assert.equal(mine.friends.length, 0, 'noch keine Freunde');
+  assert.deepEqual((await friendsOf(asker)).sent.map((row) => row.to.id), [owner.id]);
+  assert.equal((await call(asker, 'POST', '/v1/friend/accept', { id: owner.id })).data.error, 'anfrage', 'nur wer gefragt wird, nimmt an');
+  assert.equal((await call(owner, 'POST', '/v1/friend/accept', { id: asker.id })).status, 201);
+  assert.deepEqual((await friendsOf(asker)).friends.map((row) => row.id), [owner.id]);
+  mine = await friendsOf(owner);
+  assert.deepEqual([mine.friends.length, mine.requests.length, (await friendsOf(asker)).sent.length], [1, 0, 0]);
+  // A 2.0.x client (no `requests` flag) redeems an ask-code: the request is made, the answer is a readable message.
+  const askCode = (await call(owner, 'POST', '/v1/friend-code', { requests: true })).data.code;
+  const legacy = await call(old, 'POST', '/v1/friend/redeem', { code: askCode });
+  assert.equal(legacy.status, 409);
+  assert.equal(legacy.data.error, 'anfrage-gesendet');
+  assert.match(legacy.data.message, /Anfrage an .+ gesendet/);
+  assert.deepEqual((await friendsOf(owner)).requests.map((row) => row.from.id), [old.id]);
+  // Decline: hidden for the owner, the sender still sees "wartet" (silent).
+  assert.equal((await call(owner, 'POST', '/v1/friend/decline', { id: old.id })).data.declined, true);
+  assert.equal((await friendsOf(owner)).requests.length, 0);
+  assert.equal((await friendsOf(old)).sent.length, 1, 'Ablehnen bleibt still');
+  assert.equal((await call(owner, 'POST', '/v1/friend/accept', { id: old.id })).data.error, 'anfrage');
+  // Codes without the flag (every 2.0.x code) still make friends at once – nobody waits on an invisible request.
+  const oldCode = (await call(third, 'POST', '/v1/friend-code', {})).data;
+  assert.equal(oldCode.requests, false);
+  const instant = await call(owner, 'POST', '/v1/friend/redeem', { code: oldCode.code, requests: true });
+  assert.equal(instant.status, 201);
+  assert.equal(instant.data.pending, undefined);
+  assert.equal((await friendsOf(third)).friends[0].id, owner.id);
+});
+
+test('2.1 requests: block clears them, requester can be reported, mutual codes, withdraw, expiry, delete', async () => {
+  const a = client();
+  const b = client();
+  const c = client();
+  const d = client();
+  await Promise.all([a, b, c, d].map(account));
+  const redeem = (who, code) => call(who, 'POST', '/v1/friend/redeem', { code, requests: true });
+  const askCode = async (who) => (await call(who, 'POST', '/v1/friend-code', { requests: true })).data.code;
+  assert.equal((await redeem(b, await askCode(a))).status, 202);
+  assert.equal((await call(a, 'POST', '/v1/report', { id: b.id, reason: 'spam' })).status, 200, 'wer anfragt, kann gemeldet werden');
+  assert.equal((await call(a, 'POST', '/v1/block', { id: b.id })).data.blocked, true);
+  assert.deepEqual([(await friendsOf(a)).requests.length, (await friendsOf(b)).sent.length], [0, 0], 'Blockieren löscht Anfragen');
+  // Mutual: c asks a, then a redeems one of c's codes → friends at once, nothing left open.
+  assert.equal((await redeem(c, await askCode(a))).status, 202);
+  assert.equal((await redeem(a, await askCode(c))).status, 201);
+  const cView = await friendsOf(c);
+  assert.deepEqual([cView.friends.map((row) => row.id), cView.requests.length, cView.sent.length], [[a.id], 0, 0]);
+  // Withdraw your own request.
+  assert.equal((await redeem(d, await askCode(c))).status, 202);
+  assert.equal((await call(d, 'POST', '/v1/friend/decline', { id: c.id, withdraw: true })).data.withdrawn, true);
+  assert.equal((await friendsOf(c)).requests.length, 0);
+  // Expiry (3 s in this setup instead of 7 days).
+  assert.equal((await redeem(d, await askCode(a))).status, 202);
+  await wait(3200);
+  assert.equal((await friendsOf(a)).requests.length, 0, 'Anfrage läuft ab');
+  assert.equal((await call(a, 'POST', '/v1/friend/accept', { id: d.id })).data.error, 'anfrage');
+  // Deleting the account removes its requests.
+  assert.equal((await redeem(d, await askCode(c))).status, 202);
+  assert.equal((await call(d, 'DELETE', '/v1/account')).data.deleted, true);
+  assert.equal((await friendsOf(c)).requests.length, 0);
+});
+
+test('2.1 online: opt-in, only friends, switched off looks offline, expires without requests', async () => {
+  const a = client();
+  const b = client();
+  const stranger = client();
+  await Promise.all([a, b, stranger].map(account));
+  await befriend(a, b);
+  assert.equal((await friendsOf(b)).friends[0].online, false, 'Standard: aus');
+  assert.equal((await friendsOf(a)).me.showOnline, false);
+  assert.equal((await call(a, 'POST', '/v1/presence', {})).data.error, 'presence');
+  assert.equal((await call(a, 'POST', '/v1/presence', { show: true })).data.showOnline, true);
+  assert.equal((await friendsOf(b)).friends[0].online, true);
+  assert.equal((await friendsOf(a)).me.showOnline, true);
+  assert.equal((await friendsOf(stranger)).friends.length, 0, 'nur Freunde');
+  await wait(2400);
+  assert.equal((await friendsOf(b)).friends[0].online, false, 'ohne Anfragen nach dem Fenster offline');
+  await friendsOf(a); // the normal poll keeps it fresh
+  assert.equal((await friendsOf(b)).friends[0].online, true);
+  assert.equal((await call(a, 'POST', '/v1/presence', { show: false })).data.showOnline, false);
+  assert.equal((await friendsOf(b)).friends[0].online, false, 'Schalter aus = offline');
+  assert.equal((await friendsOf(a)).me.showOnline, false);
 });

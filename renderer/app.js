@@ -5363,6 +5363,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.1.0': [
+      'Freundschaftsanfragen: Wer deinen Freundescode einlöst, schickt dir jetzt eine Anfrage – erst wenn du „Annehmen“ drückst, seid ihr Freunde. Ablehnen ist still, offene Anfragen laufen nach 7 Tagen ab.',
+      'Online-Status (freiwillig): Mit „Mir online zeigen“ sehen deine Freunde, wenn CleanMusic bei dir gerade aktiv ist. Standardmäßig aus – der Server merkt sich dafür nur einen auf die Minute gerundeten Zeitpunkt.',
+      'Kurze Meldung „… ist jetzt online“, wenn ein Freund online kommt – höchstens einmal pro Freund in 30 Minuten und nie für alle auf einmal beim Start. In den Einstellungen der Freunde-Ansicht abschaltbar.',
+      'Neue Freunde-Ansicht: Anfragen oben mit Zähler, „Online · hört gerade“, alle Freunde mit Online zuerst und ein Menü „⋯“ je Freund (Entfernen, Blockieren, Melden). Offene Anfragen zählt auch „Freunde“ in der Seitenleiste.',
+    ],
     '2.0.1': [
       'Behoben: CleanMusic 2.0.0 blieb bei vielen bestehenden Profilen leer – Startseite, Suche und Player reagierten nicht. Deine Daten waren nie betroffen, sie sind alle wieder da.',
       'Behoben: Der Visualizer konnte bei sehr schmalem Fenster stehen bleiben.',
@@ -7360,17 +7366,26 @@
    * every request; this part only shows what the server answers. Contact only
    * per friend code, fixed emoji reactions, no free text. Shared is a song
    * reference (CMShare.refOf) – never local files or radio – and only with
-   * "Meine Aktivität zeigen" switched on. Logic in core/social.js. */
+   * "Meine Aktivität zeigen" switched on. Logic in core/social.js.
+   * 2.1: friend requests (Annehmen/Ablehnen) and the opt-in online status
+   * ("Mir online zeigen", toast "<Name> ist jetzt online" – never on start). */
   const SOC = window.CMSocial;
   const SOCIAL_PRIVACY_URL = 'https://bellocccyt.github.io/cleanmusic/privacy/social/';
   const SOCIAL_MIN_AGE = 16; // vom Betreiber zu bestätigen (docs/PLAN-SOCIAL.md, „Datenschutz“)
-  let socialLocal = SOC ? SOC.normalizeState(readJSON(STORAGE.social, {})) : { enabled: false, showActivity: false, seenReactions: 0 };
+  let socialLocal = SOC ? SOC.normalizeState(readJSON(STORAGE.social, {})) : { enabled: false, showActivity: false, showOnline: false, onlineToasts: true, seenReactions: 0 };
   const socialRt = {
     info: null,
     me: null,
     friends: [],
     reactions: [],
     blocked: [],
+    requests: [], // 2.1: friend requests to you
+    sent: [], // 2.1: your requests that still wait
+    features: { requests: false, presence: false }, // what the server knows (older servers: neither)
+    onlineSeen: null, // { id: online } of the last poll – null until the first one (no toasts on start)
+    onlineNotified: {},
+    requestIds: null,
+    notes: [], // last notices (smoke test reads them; toasts are not shown there)
     skew: 0,
     code: null,
     busy: '',
@@ -7511,7 +7526,20 @@
       return null;
     }
     const clean = SOC.normalizeFriends(data, Date.now());
-    Object.assign(socialRt, clean, { loaded: Date.now() });
+    const newReqs = SOC.newRequests(socialRt.requestIds, clean.requests);
+    const notices = SOC.onlineNotices({ prev: socialRt.onlineSeen, friends: clean.friends, now: Date.now(), notified: socialRt.onlineNotified });
+    Object.assign(socialRt, clean, { loaded: Date.now(), onlineSeen: notices.seen, onlineNotified: notices.notified, requestIds: clean.requests.map((row) => row.from.id) });
+    // The server is the truth for "Mir online zeigen" (null = older server without it).
+    if (clean.me && typeof clean.me.showOnline === 'boolean' && clean.me.showOnline !== socialLocal.showOnline) {
+      socialLocal.showOnline = clean.me.showOnline;
+      persistSocial();
+    }
+    if (newReqs.length) {
+      socialNote(newReqs.length === 1 ? `Neue Freundschaftsanfrage von ${SOC.display(newReqs[0].from)}` : `${newReqs.length} neue Freundschaftsanfragen`);
+    }
+    if (notices.ids.length && socialLocal.onlineToasts) {
+      socialNote(SOC.onlineText(notices.ids.map((id) => clean.friends.find((friend) => friend.id === id)).filter(Boolean)));
+    }
     // S2: groups (an older server without groups simply answers 404 – nothing breaks).
     if (options.groups !== false) await refreshGroups(clean.me ? clean.me.id : '');
     const fresh = SOC.newReactions(clean.reactions, socialLocal.seenReactions);
@@ -7530,6 +7558,14 @@
     if (state.view === 'friends') renderFriends();
     renderHomeFriends();
     return clean;
+  }
+
+  // Friend requests and "ist jetzt online": a toast – except in the smoke test,
+  // which only reads socialRt.notes.
+  function socialNote(text) {
+    if (!text) return;
+    socialRt.notes = socialRt.notes.concat(text).slice(-10);
+    if (!(state.info && state.info.smoke)) toast(text);
   }
 
   // S2: GET /v1/groups – called from refreshFriends (and, rarely, on its own).
@@ -7609,6 +7645,28 @@
     renderFriends();
   }
 
+  // 2.1 "Mir online zeigen": off by default; the server keeps one coarse timestamp only while it is on.
+  async function setShowOnline(on) {
+    const want = Boolean(on);
+    const data = await socialCall('POST', '/v1/presence', { show: want }, { quiet: true });
+    if (!data) {
+      toast(socialRt.features.presence ? socialRt.error || 'Das hat nicht geklappt.' : 'Dein Social-Server kennt den Online-Status noch nicht.');
+      renderFriends();
+      return false;
+    }
+    socialLocal.showOnline = data.showOnline === true;
+    if (socialRt.me) socialRt.me.showOnline = socialLocal.showOnline;
+    persistSocial();
+    renderFriends();
+    return true;
+  }
+
+  function setOnlineToasts(on) {
+    socialLocal.onlineToasts = Boolean(on);
+    persistSocial();
+    renderFriends();
+  }
+
   async function saveSocialName(value) {
     const field = $('#social-name');
     const name = value != null ? value : field ? field.value : '';
@@ -7637,9 +7695,10 @@
   }
 
   async function createFriendCode() {
-    const data = await socialCall('POST', '/v1/friend-code', {});
+    // 2.1: ask for a code that needs a "yes" (older servers ignore the flag – then it stays instant).
+    const data = await socialCall('POST', '/v1/friend-code', { requests: true });
     if (!data || !SOC.CODE_RE.test(String(data.code || ''))) return null;
-    socialRt.code = { code: data.code, link: data.link || SOC.friendLink(data.code), qr: data.qr || '', expires: Number(data.expires) || 0 };
+    socialRt.code = { code: data.code, link: data.link || SOC.friendLink(data.code), qr: data.qr || '', expires: Number(data.expires) || 0, requests: data.requests === true };
     renderFriends();
     const text = `🎧 Lass uns in CleanMusic Freunde sein! Link öffnen oder Code eingeben (gilt 24 Stunden für eine Person):\n${socialRt.code.link}\n${data.code}`;
     const copied = await bridge.copyText(text);
@@ -7655,10 +7714,15 @@
       return null;
     }
     if (!socialLocal.enabled && !(await enableSocial({ confirm: options.confirm }))) return null;
-    const data = await socialCall('POST', '/v1/friend/redeem', { code });
+    const data = await socialCall('POST', '/v1/friend/redeem', { code, requests: true });
     if (!data || !data.friend) return null;
     const friend = SOC.normalizeFriends({ me: data.friend }, Date.now()).me;
-    toast(data.already ? `${SOC.display(friend)} ist schon dein Freund.` : `${SOC.display(friend)} ist jetzt dein Freund.`);
+    if (data.pending) {
+      toast(`Anfrage an ${SOC.display(friend)} gesendet – sobald die Person annimmt, seid ihr Freunde.`);
+      friend.pending = true;
+    } else {
+      toast(data.already ? `${SOC.display(friend)} ist schon dein Freund.` : `${SOC.display(friend)} ist jetzt dein Freund.`);
+    }
     const field = $('#social-redeem');
     if (field) field.value = '';
     await refreshFriends({ quiet: true });
@@ -7675,13 +7739,44 @@
     if (!options.confirm) {
       const ok = await askConfirm({
         title: 'Freund hinzufügen?',
-        text: `Mit dem Code ${code} wirst du mit der Person befreundet, die ihn dir geschickt hat. Ihr seht dann eure Namen und – nur wenn eingeschaltet – was ihr gerade hört.`,
+        text: `Mit dem Code ${code} fragst du die Person, die ihn dir geschickt hat, ob ihr Freunde sein wollt (bei Codes aus älteren Versionen seid ihr sofort befreundet). Ihr seht dann eure Namen und – nur wenn eingeschaltet – was ihr gerade hört und ob ihr online seid.`,
         confirm: 'Hinzufügen',
       });
       if (!ok) return null;
     }
     showView('friends');
     return redeemFriendCode(code, options);
+  }
+
+  /* 2.1: friend requests – only the person who made the code answers. */
+  function socialRequest(id) {
+    return socialRt.requests.find((row) => row.from.id === id) || null;
+  }
+
+  async function acceptFriendRequest(id) {
+    const data = await socialCall('POST', '/v1/friend/accept', { id });
+    if (!data || !data.friend) {
+      await refreshFriends({ quiet: true });
+      return false;
+    }
+    toast(`${SOC.display(SOC.normalizeFriends({ me: data.friend }, Date.now()).me)} ist jetzt dein Freund.`);
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function declineFriendRequest(id, options = {}) {
+    const request = socialRequest(id);
+    if (!options.confirm && !(await askConfirm({ title: 'Anfrage ablehnen?', text: `Die Anfrage von ${SOC.display(request && request.from)} verschwindet. Die Person wird nicht benachrichtigt – für sie wartet die Anfrage einfach, bis sie nach 7 Tagen abläuft.`, confirm: 'Ablehnen' }))) return false;
+    if (!(await socialCall('POST', '/v1/friend/decline', { id }))) return false;
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function withdrawFriendRequest(id) {
+    if (!(await socialCall('POST', '/v1/friend/decline', { id, withdraw: true }))) return false;
+    toast('Anfrage zurückgezogen.');
+    await refreshFriends({ quiet: true });
+    return true;
   }
 
   /* S2: groups – invite code (G1-…), week cards that update themselves, shared playlist. */
@@ -7895,7 +7990,25 @@
   }
 
   function socialFriend(id) {
-    return socialRt.friends.find((friend) => friend.id === id) || socialRt.blocked.find((friend) => friend.id === id) || null;
+    const request = socialRequest(id);
+    return socialRt.friends.find((friend) => friend.id === id) || socialRt.blocked.find((friend) => friend.id === id) || (request && request.from) || null;
+  }
+
+  // "⋯" per friend or request: the shared popover (#ctx-menu), items are data-social buttons.
+  function openFriendMenu(anchor, id, kind) {
+    const who = socialFriend(id);
+    if (!who) return;
+    hideMenus();
+    const menu = $('#ctx-menu');
+    const item = (action, text, extra = '') => `<button class="service-menu-item${extra}" data-social="${action}" data-id="${esc(id)}"><span class="menu-text">${text}</span></button>`;
+    const friend = kind === 'friend' ? socialRt.friends.find((row) => row.id === id) : null;
+    menu.innerHTML = `<div class="service-menu-label">${esc(SOC.display(who))}</div>
+      ${friend && friend.activity ? item('play', `„${esc(friend.activity.ref.title)}“ abspielen`) + '<div class="menu-sep"></div>' : ''}
+      ${friend ? item('remove', 'Aus Freunden entfernen') : ''}
+      ${kind === 'request' ? item('accept', 'Annehmen') + item('decline', 'Ablehnen') + '<div class="menu-sep"></div>' : ''}
+      ${item('block', 'Blockieren')}
+      ${item('report', 'Melden …', ' danger')}`;
+    positionMenu(menu, anchor);
   }
 
   async function playFriend(id) {
@@ -7978,7 +8091,7 @@
     stopSocialTimers();
     socialLocal = SOC.normalizeState({});
     persistSocial();
-    Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], code: null, last: null, nameMsg: '', loaded: 0, groupsLoaded: 0, groups: [], groupWeek: '', groupCodes: {}, lastWeek: null });
+    Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], requests: [], sent: [], features: { requests: false, presence: false }, onlineSeen: null, onlineNotified: {}, requestIds: null, code: null, last: null, nameMsg: '', loaded: 0, groupsLoaded: 0, groups: [], groupWeek: '', groupCodes: {}, lastWeek: null });
     await refreshSocialInfo();
     renderFriends();
     renderHomeFriends();
@@ -8013,8 +8126,15 @@
     const count = $('#friends-count');
     if (!count) return;
     const live = socialLocal.enabled ? SOC.listening(socialRt.friends, Date.now(), socialRt.skew).length : 0;
-    count.textContent = live ? String(live) : '';
-    count.title = live ? `${live} Freund${live === 1 ? '' : 'e'} hören gerade` : '';
+    const badge = SOC.navBadge(socialLocal.enabled ? socialRt.requests : [], live);
+    count.textContent = badge.text;
+    count.title = badge.title;
+    count.classList.toggle('requests', badge.kind === 'requests');
+  }
+
+  function socialAvatar(person, status) {
+    const letters = String((person && person.name) || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join('').toUpperCase() || '?';
+    return `<span class="social-avatar" aria-hidden="true">${esc(letters)}${status ? `<i class="social-dot ${status}"></i>` : ''}</span>`;
   }
 
   function socialListenCard(friend, compact) {
@@ -8117,28 +8237,117 @@
     const me = socialRt.me;
     const now = Date.now() + socialRt.skew;
     const live = SOC.listening(socialRt.friends, Date.now(), socialRt.skew);
+    const sorted = SOC.sortFriends(socialRt.friends, Date.now(), socialRt.skew);
+    const statusOf = (friend) => SOC.friendStatus(friend, Date.now(), socialRt.skew);
+    const onlineOnly = sorted.filter((friend) => statusOf(friend) === 'online');
     const nameLocked = me && me.nameChangeAt > now;
     const code = socialRt.code && socialRt.code.expires > now ? socialRt.code : null;
-    const friendRows = socialRt.friends.length
-      ? socialRt.friends
-          .map((friend) => `<li class="social-friend">
-            <span class="social-friend-name"><strong>${esc(friend.name)}</strong> <span class="social-tag">· ${esc(friend.tag)}</span>
-              <small>${friend.activity ? `hört „${esc(friend.activity.ref.title)}“` : 'hört gerade nichts'}</small></span>
+    const tag = (person) => `<span class="social-tag">· ${esc(person.tag)}</span>`;
+    const more = (person, kind) => `<button class="icon-btn small social-more" data-social="menu" data-kind="${kind}" data-id="${esc(person.id)}" title="Mehr" aria-label="Mehr zu ${esc(person.name)}">⋯</button>`;
+    const statusText = { listening: 'hört gerade', online: 'online', offline: '' };
+
+    const requestRows = socialRt.requests.map((request) => `<li class="social-friend social-request">
+        ${socialAvatar(request.from)}
+        <span class="social-friend-name"><strong>${esc(request.from.name)}</strong> ${tag(request.from)}
+          <small>möchte mit dir befreundet sein · ${esc(SOC.ago(request.at, now))}</small></span>
+        <span class="social-friend-actions">
+          <button class="btn primary small" data-social="accept" data-id="${esc(request.from.id)}">Annehmen</button>
+          <button class="btn ghost small" data-social="decline" data-id="${esc(request.from.id)}">Ablehnen</button>
+          ${more(request.from, 'request')}
+        </span>
+      </li>`).join('');
+    const requestsPanel = requestRows
+      ? `<div class="panel social-requests">
+          <h3>Anfragen <span class="social-count">${socialRt.requests.length}</span></h3>
+          <p class="muted small">Erst wenn du annimmst, seid ihr Freunde. Ablehnen ist still – die Person erfährt es nicht.</p>
+          <ul class="social-list">${requestRows}</ul>
+        </div>`
+      : '';
+
+    const onlineRows = onlineOnly.map((friend) => `<li class="social-friend compact">${socialAvatar(friend, 'online')}
+        <span class="social-friend-name"><strong>${esc(friend.name)}</strong> ${tag(friend)}<small>online</small></span>${more(friend, 'friend')}</li>`).join('');
+    const onlinePanel = socialRt.friends.length
+      ? `<div class="panel social-online">
+          <h3>Online · hört gerade <span class="muted small">${live.length + onlineOnly.length ? `· ${live.length + onlineOnly.length}` : ''}</span></h3>
+          ${live.length ? `<div class="social-listen-row">${live.map((friend) => socialListenCard(friend, false)).join('')}</div>` : ''}
+          ${onlineRows ? `<ul class="social-list social-online-list">${onlineRows}</ul>` : ''}
+          ${live.length || onlineRows ? '' : '<p class="muted small">Gerade ist niemand online. Freunde erscheinen hier, wenn sie „Meine Aktivität zeigen“ oder „Mir online zeigen“ eingeschaltet haben.</p>'}
+        </div>`
+      : '';
+
+    const friendRows = sorted.length
+      ? sorted
+          .map((friend) => {
+            const status = statusOf(friend);
+            const detail = status === 'listening'
+              ? `„${esc(friend.activity.ref.title)}“${friend.activity.ref.artist ? ` · ${esc(friend.activity.ref.artist)}` : ''}`
+              : esc(statusText[status]);
+            return `<li class="social-friend ${status}">
+            ${socialAvatar(friend, status)}
+            <span class="social-friend-name"><strong>${esc(friend.name)}</strong> ${tag(friend)}${detail ? `<small>${detail}</small>` : ''}</span>
             <span class="social-friend-actions">
-              <button class="btn ghost small" data-social="remove" data-id="${esc(friend.id)}">Entfernen</button>
-              <button class="btn ghost small" data-social="block" data-id="${esc(friend.id)}">Blockieren</button>
-              <button class="btn ghost small danger" data-social="report" data-id="${esc(friend.id)}">Melden</button>
+              ${status === 'listening' ? `<button class="btn ghost small" data-social="play" data-id="${esc(friend.id)}">Abspielen</button>` : ''}
+              ${more(friend, 'friend')}
             </span>
-          </li>`)
+          </li>`;
+          })
           .join('')
-      : '<li class="muted small">Noch keine Freunde. Erzeuge einen Freundescode und schick ihn an eine Person.</li>';
-    const reactions = socialRt.reactions.slice(0, 12).map((reaction) => `<li><span class="social-big-emoji">${reaction.emoji}</span> <strong>${esc(reaction.from.name)}</strong> <span class="social-tag">· ${esc(reaction.from.tag)}</span>${reaction.title ? ` zu „${esc(reaction.title)}“` : ''} <small class="muted">${esc(SOC.ago(reaction.at, now))}</small></li>`).join('');
-    const blocked = socialRt.blocked.map((person) => `<li class="social-friend"><span class="social-friend-name"><strong>${esc(person.name)}</strong> <span class="social-tag">· ${esc(person.tag)}</span></span>
+      : '<li class="muted small social-empty">Noch keine Freunde. Erzeuge unten einen Freundescode und schick ihn an eine Person – sie schickt dir damit eine Anfrage.</li>';
+
+    const sentRows = socialRt.sent.map((row) => `<li class="social-friend compact">${socialAvatar(row.to)}
+        <span class="social-friend-name"><strong>${esc(row.to.name)}</strong> ${tag(row.to)}<small>wartet auf Bestätigung · ${esc(SOC.expiresIn(row.expires, now))}</small></span>
+        <span class="social-friend-actions"><button class="btn ghost small" data-social="withdraw" data-id="${esc(row.to.id)}">Zurückziehen</button></span></li>`).join('');
+    const reactions = socialRt.reactions.slice(0, 12).map((reaction) => `<li><span class="social-big-emoji">${reaction.emoji}</span> <strong>${esc(reaction.from.name)}</strong> ${tag(reaction.from)}${reaction.title ? ` zu „${esc(reaction.title)}“` : ''} <small class="muted">${esc(SOC.ago(reaction.at, now))}</small></li>`).join('');
+    const blocked = socialRt.blocked.map((person) => `<li class="social-friend"><span class="social-friend-name"><strong>${esc(person.name)}</strong> ${tag(person)}</span>
         <span class="social-friend-actions"><button class="btn ghost small" data-social="unblock" data-id="${esc(person.id)}">Freigeben</button></span></li>`).join('');
+    const chip = (on, yes, no) => `<span class="chip social-chip${on ? ' on' : ''}">${on ? yes : no}</span>`;
+    const presenceNote = socialRt.features.presence ? '' : ' <em>(Dein Social-Server kennt das noch nicht.)</em>';
     return `<div class="page narrow social-page">${head}
-      <div class="panel social-me-panel">
-        <h3>Du</h3>
-        <div class="social-me">${me ? `<strong>${esc(me.name)}</strong> <span class="social-tag">· ${esc(me.tag)}</span>${me.random ? ' <span class="chip">Zufallsname</span>' : ''}` : '<span class="muted">wird geladen …</span>'}</div>
+      <div class="panel social-me-bar">
+        ${me ? socialAvatar(me, socialLocal.showOnline ? 'online' : '') : ''}
+        <div class="social-me-text">
+          <div class="social-me">${me ? `<strong>${esc(me.name)}</strong> ${tag(me)}${me.random ? ' <span class="chip">Zufallsname</span>' : ''}` : '<span class="muted">wird geladen …</span>'}</div>
+          <div class="social-chips">${chip(socialLocal.showActivity, 'Aktivität sichtbar', 'Aktivität privat')}${chip(socialLocal.showOnline, 'Online sichtbar', 'Online verborgen')}</div>
+        </div>
+        <div class="social-me-actions">
+          <button class="btn primary small" data-social="code">Freund einladen</button>
+          <button class="btn ghost small" data-social="goto-settings">Einstellungen</button>
+        </div>
+      </div>
+
+      ${requestsPanel}
+
+      ${onlinePanel}
+
+      <div class="panel social-all">
+        <div class="home-section-head"><h3>Alle Freunde · ${socialRt.friends.length}/200</h3><button class="btn ghost small" data-social="refresh">Aktualisieren</button></div>
+        <ul class="social-list">${friendRows}</ul>
+        ${socialRt.error ? `<p class="muted small">${esc(socialRt.error)}</p>` : ''}
+      </div>
+
+      <div class="panel" id="social-add">
+        <h3>Freund hinzufügen</h3>
+        <p class="muted small">Ein Code gilt 24 Stunden für eine Person. Schick ihn per WhatsApp, Discord &amp; Co. – oder lass den QR-Code scannen. Wer ihn einlöst, schickt dir eine Anfrage; erst wenn du annimmst, seid ihr Freunde.</p>
+        <div class="row">
+          <button class="btn primary small" data-social="code">Freundescode erzeugen</button>
+          ${code ? '<button class="btn ghost small" data-social="copy-code">Nochmal kopieren</button><button class="btn ghost small" data-social="revoke">Codes widerrufen</button>' : ''}
+        </div>
+        ${code ? `<div class="social-code">${code.qr ? `<img src="${esc(code.qr)}" alt="QR-Code für den Freundescode" width="132" height="132" />` : ''}
+          <div><strong class="social-code-text">${esc(code.code)}</strong><p class="small"><a href="${esc(code.link)}" target="_blank" rel="noreferrer">${esc(code.link)}</a></p>
+          <p class="muted small">Gültig bis ${esc(new Date(code.expires).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }))}.${code.requests ? '' : ' Dein Server kennt noch keine Anfragen – wer den Code einlöst, ist sofort dein Freund.'}</p></div></div>` : ''}
+        <div class="rv-group-row" style="margin-top:10px">
+          <input id="social-redeem" type="text" placeholder="Code oder Link einfügen (F1-…)" spellcheck="false" />
+          <button class="btn ghost small" data-social="redeem">Hinzufügen</button>
+        </div>
+        ${sentRows ? `<h4 class="social-sub">Gesendete Anfragen</h4><ul class="social-list">${sentRows}</ul>` : ''}
+      </div>
+
+      ${reactions ? `<div class="panel"><h3>Reaktionen</h3><ul class="social-list">${reactions}</ul></div>` : ''}
+
+      ${groupsPanelHtml()}
+
+      <div class="panel social-me-panel" id="social-settings">
+        <h3>Du &amp; Privatsphäre</h3>
         <p class="muted small">Namen sind nicht eindeutig – das Kürzel hinter dem Punkt kommt aus deinem Schlüssel und lässt sich nicht nachmachen.</p>
         <div class="rv-group-row">
           <input id="social-name" type="text" maxlength="20" placeholder="Eigener Name (3–20 Zeichen)" spellcheck="false" ${nameLocked ? 'disabled' : ''} />
@@ -8150,34 +8359,14 @@
           <span><strong>Meine Aktivität zeigen</strong><small>Deine Freunde sehen Titel und Artist des Songs, der gerade läuft (verfällt nach 10 Minuten). Lokale Dateien und Radio werden nie geteilt.</small></span>
           <input type="checkbox" id="social-show-activity" ${socialLocal.showActivity ? 'checked' : ''} />
         </label>
-      </div>
-
-      ${live.length ? `<div class="panel"><h3>Hören gerade</h3><div class="social-listen-row">${live.map((friend) => socialListenCard(friend, false)).join('')}</div></div>` : ''}
-
-      <div class="panel">
-        <h3>Freund hinzufügen</h3>
-        <p class="muted small">Ein Code gilt 24 Stunden für eine Person. Schick ihn per WhatsApp, Discord &amp; Co. – oder lass den QR-Code scannen.</p>
-        <div class="row">
-          <button class="btn primary small" data-social="code">Freundescode erzeugen</button>
-          ${code ? '<button class="btn ghost small" data-social="copy-code">Nochmal kopieren</button><button class="btn ghost small" data-social="revoke">Codes widerrufen</button>' : ''}
-        </div>
-        ${code ? `<div class="social-code">${code.qr ? `<img src="${esc(code.qr)}" alt="QR-Code für den Freundescode" width="132" height="132" />` : ''}
-          <div><strong class="social-code-text">${esc(code.code)}</strong><p class="small"><a href="${esc(code.link)}" target="_blank" rel="noreferrer">${esc(code.link)}</a></p>
-          <p class="muted small">Gültig bis ${esc(new Date(code.expires).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }))}.</p></div></div>` : ''}
-        <div class="rv-group-row" style="margin-top:10px">
-          <input id="social-redeem" type="text" placeholder="Code oder Link einfügen (F1-…)" spellcheck="false" />
-          <button class="btn ghost small" data-social="redeem">Hinzufügen</button>
-        </div>
-      </div>
-
-      ${groupsPanelHtml()}
-
-      ${reactions ? `<div class="panel"><h3>Reaktionen</h3><ul class="social-list">${reactions}</ul></div>` : ''}
-
-      <div class="panel">
-        <div class="home-section-head"><h3>Freunde · ${socialRt.friends.length}/200</h3><button class="btn ghost small" data-social="refresh">Aktualisieren</button></div>
-        <ul class="social-list">${friendRows}</ul>
-        ${socialRt.error ? `<p class="muted small">${esc(socialRt.error)}</p>` : ''}
+        <label class="toggle-row">
+          <span><strong>Mir online zeigen</strong><small>Deine Freunde sehen, wenn CleanMusic bei dir in den letzten Minuten aktiv war. Der Server merkt sich dafür nur einen auf die Minute gerundeten Zeitpunkt – und nur, solange der Schalter an ist.${presenceNote}</small></span>
+          <input type="checkbox" id="social-show-online" ${socialLocal.showOnline ? 'checked' : ''} ${socialRt.features.presence ? '' : 'disabled'} />
+        </label>
+        <label class="toggle-row">
+          <span><strong>Melden, wenn Freunde online kommen</strong><small>Kurze Meldung „… ist jetzt online“ – höchstens einmal pro Freund in 30 Minuten, nie beim Start.</small></span>
+          <input type="checkbox" id="social-online-toasts" ${socialLocal.onlineToasts ? 'checked' : ''} />
+        </label>
       </div>
 
       ${blocked ? `<div class="panel"><h3>Blockiert</h3><ul class="social-list">${blocked}</ul></div>` : ''}
@@ -8200,7 +8389,27 @@
       const button = event.target.closest('[data-social]');
       if (!button || button.disabled) return;
       const id = button.dataset.id || '';
+      if (button.closest('#ctx-menu')) hideMenus();
       switch (button.dataset.social) {
+        case 'menu':
+          // The global popover handler would close the menu right away.
+          event.stopImmediatePropagation();
+          openFriendMenu(button, id, button.dataset.kind || 'friend');
+          break;
+        case 'accept':
+          acceptFriendRequest(id);
+          break;
+        case 'decline':
+          declineFriendRequest(id);
+          break;
+        case 'withdraw':
+          withdrawFriendRequest(id);
+          break;
+        case 'goto-settings': {
+          const panel = $('#social-settings');
+          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        }
         case 'open':
           showView('friends');
           break;
@@ -8312,6 +8521,8 @@
     });
     document.addEventListener('change', (event) => {
       if (event.target && event.target.id === 'social-show-activity') setShowActivity(event.target.checked);
+      if (event.target && event.target.id === 'social-show-online') setShowOnline(event.target.checked);
+      if (event.target && event.target.id === 'social-online-toasts') setOnlineToasts(event.target.checked);
     });
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' || !event.target) return;
@@ -16033,6 +16244,10 @@ ${updatePanel()}
       friends: socialRt.friends,
       reactions: socialRt.reactions,
       blocked: socialRt.blocked,
+      requests: socialRt.requests,
+      sent: socialRt.sent,
+      features: socialRt.features,
+      notes: socialRt.notes,
       groups: socialRt.groups,
       code: socialRt.code ? { code: socialRt.code.code, link: socialRt.code.link, qr: Boolean(socialRt.code.qr) } : null,
     })),
@@ -16050,6 +16265,10 @@ ${updatePanel()}
     socialUnblock: (id) => unblockFriend(id),
     socialReport: (id, reason) => reportFriend(id, { reason, block: false }),
     socialRemove: (id) => removeFriend(id, { confirm: true }),
+    socialAccept: (id) => acceptFriendRequest(id),
+    socialDecline: (id) => declineFriendRequest(id, { confirm: true }),
+    socialWithdraw: (id) => withdrawFriendRequest(id),
+    socialShowOnline: (on) => setShowOnline(on),
     socialDisable: () => disableSocial(),
     socialDelete: () => deleteSocialAccount({ confirm: true }),
     socialGroupCreate: (name) => createSocialGroup(name),

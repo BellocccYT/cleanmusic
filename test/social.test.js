@@ -31,8 +31,8 @@ const B = 'Z9Z9ABCDEFGHJKMNPQRSTVWX';
 const ref = { src: 'deezer', id: '3135553', title: 'One More Time', artist: 'Daft Punk' };
 
 check('local state: off by default, only booleans count', () => {
-  assert.deepEqual(plain(S.normalizeState(null)), { enabled: false, showActivity: false, seenReactions: 0 });
-  assert.deepEqual(plain(S.normalizeState({ enabled: 'yes', showActivity: true, seenReactions: 5 })), { enabled: false, showActivity: true, seenReactions: 5 });
+  assert.deepEqual(plain(S.normalizeState(null)), { enabled: false, showActivity: false, showOnline: false, onlineToasts: true, seenReactions: 0 });
+  assert.deepEqual(plain(S.normalizeState({ enabled: 'yes', showActivity: true, showOnline: 1, onlineToasts: false, seenReactions: 5 })), { enabled: false, showActivity: true, showOnline: false, onlineToasts: false, seenReactions: 5 });
 });
 
 check('friends payload is cleaned: ids, names, refs, stale activity, unknown emojis', () => {
@@ -163,6 +163,59 @@ check('poll plan: fewer requests (visible only, friends every 30 s/3 min, groups
   assert.deepEqual(plan({ lastFriends: now - S.FRIENDS_IDLE_GAP, lastGroups: now - S.GROUPS_GAP, groupCount: 0 }), { friends: true, groups: true }, 'ohne Gruppe alle 10 Minuten');
   // First run: everything was never fetched.
   assert.deepEqual(plan({ lastFriends: 0, lastGroups: 0, groupCount: 0 }), { friends: true, groups: true });
+});
+
+check('2.1 requests + online: payload, old servers, sorting, notices once per 30 min, never on start, badge', () => {
+  const now = 1795500000000;
+  const C = 'CCCCABCDEFGHJKMNPQRSTVWX';
+  const data = S.normalizeFriends({
+    now,
+    me: { id: A, name: 'Ich', showOnline: true },
+    friends: [
+      { id: B, name: 'Rob', online: true },
+      { id: C, name: 'Anna', online: 'ja', activity: { ref, at: now - 1000 } },
+      { id: 'DDDDABCDEFGHJKMNPQRSTVWX', name: 'Bert' },
+    ],
+    requests: [
+      { from: { id: C, name: 'Anna' }, at: now - 5000, expires: now + 1000 },
+      { from: { id: B, name: 'Rob' }, at: now - 1000, expires: now - 1 },
+      { from: { id: 'kaputt' }, at: now },
+    ],
+    sent: [{ to: { id: B, name: 'Rob' }, at: now - 2000, expires: now + 5000 }],
+  }, now);
+  assert.equal(data.me.showOnline, true);
+  assert.deepEqual(plain(data.features), { requests: true, presence: true });
+  assert.deepEqual(plain(data.friends.map((f) => f.online)), [true, false, false], 'nur echtes true');
+  assert.deepEqual(plain(data.requests.map((r) => r.from.name)), ['Anna'], 'abgelaufen und kaputt raus');
+  assert.equal(data.sent[0].to.id, B);
+  const old = S.normalizeFriends({ now, me: { id: A, name: 'Ich' }, friends: [] }, now);
+  assert.deepEqual(plain(old.features), { requests: false, presence: false }, 'Server vor 2.1');
+  assert.equal(old.me.showOnline, null);
+  assert.deepEqual(plain(old.requests), []);
+  assert.deepEqual(plain(S.sortFriends(data.friends, now).map((f) => f.name)), ['Anna', 'Rob', 'Bert'], 'hört gerade, online, Rest');
+  assert.equal(S.friendStatus(data.friends[1], now), 'listening');
+  // Online notices.
+  const friends = (online) => [{ id: B, name: 'Rob', tag: 'Z9Z9', online }, { id: C, name: 'Anna', tag: 'CCCC', online: false }];
+  const start = S.onlineNotices({ prev: null, friends: friends(true), now, notified: {} });
+  assert.deepEqual(plain(start.ids), [], 'nie beim Start');
+  const off = S.onlineNotices({ prev: start.seen, friends: friends(false), now: now + 1000, notified: start.notified });
+  const on = S.onlineNotices({ prev: off.seen, friends: friends(true), now: now + 2000, notified: off.notified });
+  assert.deepEqual(plain(on.ids), [B], 'offline → online');
+  const again = S.onlineNotices({ prev: { [B]: false }, friends: friends(true), now: now + 60000, notified: on.notified });
+  assert.deepEqual(plain(again.ids), [], 'höchstens einmal in 30 Minuten');
+  const later = S.onlineNotices({ prev: { [B]: false }, friends: friends(true), now: now + 2000 + S.ONLINE_NOTICE_GAP, notified: again.notified });
+  assert.deepEqual(plain(later.ids), [B]);
+  assert.deepEqual(plain(S.onlineNotices({ prev: {}, friends: friends(true), now, notified: {} }).ids), [], 'neuer Freund zählt nicht');
+  assert.equal(S.onlineText([{ name: 'Rob', tag: 'Z9Z9' }]), 'Rob · Z9Z9 ist jetzt online');
+  assert.equal(S.onlineText([{ name: 'Rob' }, { name: 'Anna' }, { name: 'Bert' }]), '3 Freunde sind jetzt online');
+  // New requests and the sidebar badge.
+  assert.deepEqual(plain(S.newRequests(null, data.requests)), [], 'nicht beim ersten Laden');
+  assert.equal(S.newRequests([], data.requests).length, 1);
+  assert.equal(S.newRequests([C], data.requests).length, 0);
+  assert.deepEqual(plain(S.navBadge(data.requests, 3)), { text: '1', kind: 'requests', title: '1 offene Freundschaftsanfrage' });
+  assert.deepEqual(plain(S.navBadge([], 2)), { text: '2', kind: 'live', title: '2 Freunde hören gerade' });
+  assert.equal(S.navBadge([], 0).text, '');
+  assert.equal(S.expiresIn(now + 3 * 86400000, now), 'noch 3 Tage');
 });
 
 console.log(`\n${checks} passed, 0 failed`);

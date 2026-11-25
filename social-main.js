@@ -271,7 +271,9 @@ function createSocial(deps) {
 function createFakeServer() {
   const accounts = new Map(); // id -> { id, pub, name, random }
   const friends = new Map(); // id -> Set(id)
-  const codes = new Map(); // code -> owner
+  const codes = new Map(); // code -> { owner, ask }
+  const requests = new Map(); // "from>to" -> { from, to, at, declined } (2.1)
+  const presence = new Map(); // id -> last request (2.1, only with "Mir online zeigen")
   const activity = new Map(); // id -> { ref, playing, at }
   const reactions = []; // { to, from, emoji, title, at }
   const blocks = new Set(); // "a>b"
@@ -294,6 +296,14 @@ function createFakeServer() {
   const unlink = (a, b) => {
     set(a).delete(b);
     set(b).delete(a);
+  };
+  const forget = (a, b) => {
+    requests.delete(`${a}>${b}`);
+    requests.delete(`${b}>${a}`);
+  };
+  const liveRequest = (from, to) => {
+    const row = requests.get(`${from}>${to}`);
+    return row && Date.now() - row.at < proto.LIMITS.requestTtlMs ? row : null;
   };
 
   function verify(req, method, pathname, body) {
@@ -328,12 +338,15 @@ function createFakeServer() {
     if (!me) return [401, { error: 'kein-konto', message: 'Kein Konto.' }];
     if (!enabled && !(method === 'DELETE' && pathname === '/v1/account')) return [503, { error: 'aus', message: 'Social ist gerade abgeschaltet.' }];
     const other = String(data.id || data.to || '');
+    if (presence.has(auth.id)) presence.set(auth.id, Date.now());
     switch (`${method} ${pathname}`) {
       case 'DELETE /v1/account':
         accounts.delete(auth.id);
         set(auth.id).forEach((id) => set(id).delete(auth.id));
         friends.delete(auth.id);
         activity.delete(auth.id);
+        presence.delete(auth.id);
+        Array.from(requests.values()).forEach((row) => (row.from === auth.id || row.to === auth.id) && forget(row.from, row.to));
         return [200, { ok: true, deleted: true }];
       case 'POST /v1/name': {
         if (data.random) Object.assign(me, { name: names.randomName(), random: true });
@@ -345,31 +358,68 @@ function createFakeServer() {
         return [200, { account: Object.assign(person(auth.id), { random: me.random }) }];
       }
       case 'POST /v1/friend-code': {
+        if (data.revoke) {
+          Array.from(codes.entries()).forEach(([code, row]) => row.owner === auth.id && codes.delete(code));
+          return [200, { revoked: 1 }];
+        }
         const code = proto.friendCodeFrom(crypto.randomBytes(12));
-        codes.set(code, auth.id);
-        return [201, { code, expires: Date.now() + proto.LIMITS.codeTtlMs }];
+        codes.set(code, { owner: auth.id, ask: data.requests === true });
+        return [201, { code, expires: Date.now() + proto.LIMITS.codeTtlMs, requests: data.requests === true }];
       }
       case 'POST /v1/friend/redeem': {
         const code = proto.parseFriendCode(data.code);
-        const owner = codes.get(code);
+        const row = codes.get(code);
+        const owner = row && row.owner;
         if (!owner || owner === auth.id || blocks.has(`${owner}>${auth.id}`) || blocks.has(`${auth.id}>${owner}`)) {
           return [404, { error: 'code', message: 'Der Code ist abgelaufen, schon benutzt oder ungültig.' }];
         }
         codes.delete(code);
+        // 2.1: an ask-code leaves a request (unless the owner already asked you).
+        if (row.ask && !liveRequest(owner, auth.id) && !set(auth.id).has(owner)) {
+          requests.set(`${auth.id}>${owner}`, { from: auth.id, to: owner, at: Date.now(), declined: false });
+          if (data.requests === true) return [202, { friend: person(owner), pending: true }];
+          return [409, { error: 'anfrage-gesendet', message: `Anfrage an ${person(owner).name} gesendet.` }];
+        }
+        forget(auth.id, owner);
         link(auth.id, owner);
         return [201, { friend: person(owner) }];
       }
+      case 'POST /v1/friend/accept': {
+        const row = liveRequest(other, auth.id);
+        if (!row || row.declined || !accounts.has(other)) return [404, { error: 'anfrage', message: 'Diese Anfrage gibt es nicht mehr.' }];
+        forget(auth.id, other);
+        link(auth.id, other);
+        return [201, { friend: person(other) }];
+      }
+      case 'POST /v1/friend/decline': {
+        if (data.withdraw === true) return [200, { ok: true, withdrawn: requests.delete(`${auth.id}>${other}`) }];
+        const row = liveRequest(other, auth.id);
+        if (row) row.declined = true;
+        return [200, { ok: true, declined: Boolean(row) }];
+      }
+      case 'POST /v1/presence':
+        if (typeof data.show !== 'boolean') return [400, { error: 'presence', message: 'An oder aus?' }];
+        if (data.show) presence.set(auth.id, Date.now());
+        else presence.delete(auth.id);
+        return [200, { ok: true, showOnline: data.show }];
       case 'POST /v1/friend/remove':
         unlink(auth.id, other);
         return [200, { ok: true }];
       case 'GET /v1/friends': {
         const now = Date.now();
+        const open = Array.from(requests.values()).filter((row) => now - row.at < proto.LIMITS.requestTtlMs);
         return [200, {
-          me: Object.assign(person(auth.id), { random: me.random, nameChangeAt: 0 }),
+          me: Object.assign(person(auth.id), { random: me.random, nameChangeAt: 0, showOnline: presence.has(auth.id) }),
           friends: Array.from(set(auth.id)).map((id) => {
             const act = activity.get(id);
-            return Object.assign(person(id), { since: now, activity: act && now - act.at < proto.LIMITS.activityTtlMs ? act : null });
+            return Object.assign(person(id), {
+              since: now,
+              online: presence.has(id) && now - presence.get(id) < proto.LIMITS.onlineTtlMs,
+              activity: act && now - act.at < proto.LIMITS.activityTtlMs ? act : null,
+            });
           }),
+          requests: open.filter((row) => row.to === auth.id && !row.declined).map((row) => ({ from: person(row.from), at: row.at, expires: row.at + proto.LIMITS.requestTtlMs })),
+          sent: open.filter((row) => row.from === auth.id).map((row) => ({ to: person(row.to), at: row.at, expires: row.at + proto.LIMITS.requestTtlMs })),
           reactions: reactions.filter((r) => r.to === auth.id).map((r) => ({ from: person(r.from), emoji: r.emoji, title: r.title, at: r.at })),
           blocked: Array.from(blocks).filter((pair) => pair.startsWith(`${auth.id}>`)).map((pair) => person(pair.split('>')[1])),
           now,
@@ -402,6 +452,7 @@ function createFakeServer() {
         else {
           blocks.add(`${auth.id}>${other}`);
           unlink(auth.id, other);
+          forget(auth.id, other);
         }
         return [200, { ok: true, blocked: data.block !== false }];
       // S2 groups (simplified: no limits, the stored week card is always shown)
@@ -547,6 +598,8 @@ function createFakeServer() {
       blocks: Array.from(blocks),
       activity: Array.from(activity.entries()).map(([id, act]) => ({ id, ref: act.ref })),
       reactions: reactions.slice(),
+      requests: Array.from(requests.values()).map((row) => Object.assign({}, row)),
+      presence: Array.from(presence.keys()),
       groups: Array.from(groups.values()).map((group) => ({ id: group.id, owner: group.owner, members: group.members.length, tracks: group.tracks.length })),
       weeks: Array.from(weeks.keys()),
     }),

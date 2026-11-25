@@ -62,8 +62,9 @@
     <ul>
       <li>Kein Konto mit E-Mail oder Passwort, kein Klarname, kein Profilbild. Dein Gerät erzeugt ein Schlüsselpaar; der öffentliche Schlüssel ist dein Konto.</li>
       <li>Du bekommst einen Zufallsnamen. Einen eigenen Namen kannst du setzen; er wird auf anstößige Wörter geprüft.</li>
-      <li>Kontakt nur per Freundescode. Es gibt keine Suche nach Personen, keine öffentliche Liste und keinen Chat – nur feste Emoji-Reaktionen.</li>
+      <li>Kontakt nur per Freundescode. Es gibt keine Suche nach Personen, keine öffentliche Liste und keinen Chat – nur feste Emoji-Reaktionen. Wer deinen Code einlöst, schickt dir eine Freundschaftsanfrage; erst wenn du annimmst, seid ihr Freunde.</li>
       <li>„Meine Aktivität zeigen“ ist standardmäßig aus. Eingeschaltet sehen nur deine Freunde Titel und Artist des laufenden Songs. Lokale Dateien und Radio werden nie geteilt. Es läuft kein Audio über den Server.</li>
+      <li>„Mir online zeigen“ ist standardmäßig aus. Eingeschaltet sehen nur deine Freunde, ob CleanMusic bei dir in den letzten Minuten aktiv war – kein „zuletzt online“, kein Verlauf.</li>
       <li>Gruppen gibt es nur per Gruppencode. Die Gruppe sieht deinen Namen und deine Wochenkarte (Hörzeit, Anzahl Titel, Top-3-Artists), dazu kommt eine gemeinsame Playlist aus Song-Referenzen.</li>
       <li>„Konto löschen“ in der App entfernt alles sofort.</li>
     </ul>
@@ -75,7 +76,9 @@
         <tr><td>Öffentlicher Schlüssel und daraus berechnete Konto-ID (mit Kürzel, z. B. „K7Q2“)</td><td>Konto, Prüfung der Signatur jeder Anfrage</td><td>bis du das Konto löschst; nach 12 Monaten ohne Nutzung automatisch gelöscht</td></tr>
         <tr><td>Anzeigename (Zufallsname oder selbst gewählt), Zeitpunkt der letzten Namensänderung</td><td>Anzeige bei deinen Freunden, „einmal pro Tag ändern“</td><td>wie oben</td></tr>
         <tr><td>Freundesliste, Blockierungen</td><td>die Funktion selbst</td><td>wie oben; Entfernen und Blockieren wirken sofort</td></tr>
-        <tr><td>Freundescodes – nur als SHA-256-Hash</td><td>Kontakt per Code</td><td>höchstens 24 Stunden; beim Einlösen oder Widerrufen sofort gelöscht</td></tr>
+        <tr><td>Freundescodes – nur als SHA-256-Hash, dazu ob der Code eine Anfrage auslöst</td><td>Kontakt per Code</td><td>höchstens 24 Stunden; beim Einlösen oder Widerrufen sofort gelöscht</td></tr>
+        <tr><td>Freundschaftsanfragen: wer wen gefragt hat, Zeitpunkt, ob abgelehnt</td><td>„Annehmen“ / „Ablehnen“; Ablehnen bleibt für die andere Person unsichtbar</td><td>bis zur Antwort, höchstens 7 Tage; Annehmen, Zurückziehen, Blockieren oder Konto löschen entfernen sie sofort</td></tr>
+        <tr><td>Online-Status: ein auf die Minute gerundeter Zeitpunkt deiner letzten Anfrage – nur mit „Mir online zeigen“</td><td>Freunde sehen „online“ (ja/nein)</td><td>der Zeitpunkt wird nach 6 Minuten verworfen; Ausschalten löscht den Eintrag sofort</td></tr>
         <tr><td>Aktivität: Titel, Artist, Song-Referenz (Deezer-, Apple- oder YouTube-ID bzw. Suchbegriff), Zeitpunkt – nur mit „Meine Aktivität zeigen“</td><td>„Freunde hören gerade“</td><td>10 Minuten nach der letzten Meldung</td></tr>
         <tr><td>Reaktionen (Emoji, Absender, Songtitel)</td><td>Anzeige beim Empfänger</td><td>24 Stunden, höchstens 100 je Person</td></tr>
         <tr><td>Gruppen: Name, wer sie leitet, Mitglieder</td><td>gemeinsame Gruppe</td><td>bis das letzte Mitglied geht oder sein Konto löscht</td></tr>
@@ -93,7 +96,7 @@
     <h2>Auf deinem Gerät</h2>
     <ul>
       <li>Der private Schlüssel liegt verschlüsselt (Electron <code>safeStorage</code>, unter Windows die Datenschutz-API des Systems) in <code>%APPDATA%\CleanMusic\social-key.json</code> und verlässt das Gerät nie. Ohne sicheren Schlüsselspeicher bleibt Social aus.</li>
-      <li>Die Schalter („Social an“, „Meine Aktivität zeigen“) liegen im lokalen Speicher der App, die Server-Adresse in <code>cleanmusic-config.json</code>.</li>
+      <li>Die Schalter („Social an“, „Meine Aktivität zeigen“, „Mir online zeigen“, „Melden, wenn Freunde online kommen“) liegen im lokalen Speicher der App, die Server-Adresse in <code>cleanmusic-config.json</code>. „Mir online zeigen“ steht zusätzlich auf dem Server (nur ob er an ist).</li>
     </ul>
 
     <h2>Hosting</h2>
@@ -121,7 +124,7 @@
       E-Mail: <a href="mailto:business@belloccc.de">business@belloccc.de</a>
     </p>
 
-    <p class="muted">Stand: 25.11.2026 · Technische Details: <code>server/social/</code> im Repository.</p>
+    <p class="muted">Stand: 25.11.2026 (ergänzt um Freundschaftsanfragen und Online-Status ab Version 2.1) · Technische Details: <code>server/social/</code> im Repository.</p>
   </main>
 </body>
 </html>

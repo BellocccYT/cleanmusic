@@ -3,7 +3,8 @@
 /**
  * Social (Weg B) – client state without network: the local switch state,
  * the cleaned friends list from the server, "Freunde hören gerade", new
- * reactions and when to send the own activity.
+ * reactions and when to send the own activity. 2.1: friend requests,
+ * the opt-in online status and when to say "<Name> ist jetzt online".
  *
  * Loaded before app.js as window.CMSocial; tested in test/social.test.js.
  * The network goes through the main process (window.cm.socialRequest), which
@@ -31,12 +32,18 @@
       .slice(0, max);
   }
 
-  /** Local state in cleanmusic.social.v1 – both switches are off by default. */
+  /**
+   * Local state in cleanmusic.social.v1 – everything that shares something is
+   * off by default (Social, activity, "Mir online zeigen"). `onlineToasts`
+   * only decides whether *you* get a note when friends come online.
+   */
   function normalizeState(raw) {
     const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     return {
       enabled: value.enabled === true,
       showActivity: value.showActivity === true,
+      showOnline: value.showOnline === true,
+      onlineToasts: value.onlineToasts !== false,
       seenReactions: Number.isFinite(value.seenReactions) ? value.seenReactions : 0,
     };
   }
@@ -72,6 +79,7 @@
         const ref = act ? validRef(act.ref) : null;
         const at = act ? Number(act.at) || 0 : 0;
         base.activity = ref && serverNow - at < ACTIVITY_TTL ? { ref, playing: act.playing !== false, at } : null;
+        base.online = raw.online === true;
         return base;
       })
       .filter(Boolean);
@@ -89,8 +97,24 @@
     if (me) {
       me.random = Boolean(value.me.random);
       me.nameChangeAt = Number(value.me.nameChangeAt) || 0;
+      // null = the server does not know the online switch yet (before 2.1).
+      me.showOnline = typeof value.me.showOnline === 'boolean' ? value.me.showOnline : null;
     }
-    return { me, friends, reactions, blocked, skew: serverNow - now };
+    const open = (list, key) =>
+      (Array.isArray(list) ? list : [])
+        .slice(0, 50)
+        .map((raw) => {
+          const who = raw && person(raw[key]);
+          const expires = raw ? Number(raw.expires) || 0 : 0;
+          if (!who || (expires && expires <= serverNow)) return null;
+          return { [key]: who, at: Number(raw.at) || 0, expires };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.at - a.at);
+    const requests = open(value.requests, 'from');
+    const sent = open(value.sent, 'to');
+    const features = { requests: Array.isArray(value.requests), presence: Boolean(me && me.showOnline !== null) };
+    return { me, friends, reactions, blocked, requests, sent, features, skew: serverNow - now };
   }
 
   /** Friends with a fresh song, newest first. */
@@ -273,6 +297,79 @@
     return { friends: true, groups };
   }
 
+  /* --- 2.1: friend requests, online status ------------------------------- */
+  const ONLINE_NOTICE_GAP = 30 * 60 * 1000; // "ist jetzt online" at most once per friend in 30 min
+
+  function friendStatus(friend, now, skew = 0) {
+    if (friend && friend.activity && now + skew - friend.activity.at < ACTIVITY_TTL) return 'listening';
+    return friend && friend.online ? 'online' : 'offline';
+  }
+
+  /** Listening first, then online, then everyone else – each group by name. */
+  function sortFriends(friends, now, skew = 0) {
+    const order = { listening: 0, online: 1, offline: 2 };
+    return (Array.isArray(friends) ? friends : [])
+      .slice()
+      .sort((a, b) => order[friendStatus(a, now, skew)] - order[friendStatus(b, now, skew)] || String(a.name).localeCompare(String(b.name), 'de'));
+  }
+
+  /**
+   * Who just came online? Only a change offline → online between two polls
+   * counts (never on the first load after the start, never for a friend that
+   * was not in the list before), at most once per friend in 30 minutes.
+   * input: { prev: { id: bool } | null, friends, now, notified: { id: at } }
+   * → { ids, seen, notified }.
+   */
+  function onlineNotices(input) {
+    const now = Number(input && input.now) || 0;
+    const prev = input && input.prev && typeof input.prev === 'object' ? input.prev : null;
+    const notified = Object.assign({}, (input && input.notified) || {});
+    const seen = {};
+    const ids = [];
+    (Array.isArray(input && input.friends) ? input.friends : []).forEach((friend) => {
+      const online = Boolean(friend && friend.online);
+      seen[friend.id] = online;
+      if (!prev || !online || prev[friend.id] !== false) return;
+      if (now - (Number(notified[friend.id]) || 0) < ONLINE_NOTICE_GAP) return;
+      notified[friend.id] = now;
+      ids.push(friend.id);
+    });
+    Object.keys(notified).forEach((id) => {
+      if (now - notified[id] >= ONLINE_NOTICE_GAP) delete notified[id];
+    });
+    return { ids, seen, notified };
+  }
+
+  function onlineText(friends) {
+    const list = Array.isArray(friends) ? friends : [];
+    if (!list.length) return '';
+    if (list.length === 1) return `${display(list[0])} ist jetzt online`;
+    if (list.length === 2) return `${list[0].name} und ${list[1].name} sind jetzt online`;
+    return `${list.length} Freunde sind jetzt online`;
+  }
+
+  /** Requests that were not there at the last poll (none on the first load). */
+  function newRequests(prevIds, requests) {
+    if (!Array.isArray(prevIds)) return [];
+    return (Array.isArray(requests) ? requests : []).filter((request) => !prevIds.includes(request.from.id));
+  }
+
+  /** Sidebar count: open requests win over "hören gerade". */
+  function navBadge(requests, listeningCount) {
+    const open = Array.isArray(requests) ? requests.length : 0;
+    if (open) return { text: String(open), kind: 'requests', title: `${open} offene Freundschaftsanfrage${open === 1 ? '' : 'n'}` };
+    const live = Number(listeningCount) || 0;
+    if (live) return { text: String(live), kind: 'live', title: `${live} Freund${live === 1 ? '' : 'e'} hören gerade` };
+    return { text: '', kind: '', title: '' };
+  }
+
+  function expiresIn(expires, now) {
+    const hours = Math.max(0, Math.round((expires - now) / 3600000));
+    if (hours < 1) return 'läuft gleich ab';
+    if (hours < 48) return `noch ${hours} Std.`;
+    return `noch ${Math.round(hours / 24)} Tage`;
+  }
+
   window.CMSocial = {
     EMOJIS,
     REPORT_REASONS,
@@ -298,5 +395,13 @@
     FRIENDS_IDLE_GAP,
     GROUPS_GAP,
     pollPlan,
+    ONLINE_NOTICE_GAP,
+    friendStatus,
+    sortFriends,
+    onlineNotices,
+    onlineText,
+    newRequests,
+    navBadge,
+    expiresIn,
   };
 })();

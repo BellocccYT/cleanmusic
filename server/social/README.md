@@ -12,6 +12,7 @@ mit dem CleanMusic-Cloudflare-Konto – vorher mit `npx wrangler whoami` prüfen
   reicht nur das IP-Präfix (/24 bzw. /48) weiter.
 - `src/hub.js` – Endpunkte, Signaturprüfung, Proof-of-Work, Rate-Limits, Aufräumen (Alarm
   alle 10 Minuten).
+- `src/requests.js` (2.1) – Freundschaftsanfragen; `src/presence.js` (2.1) – Online-Status (opt-in).
 - `../../lib/social-names.js`, `../../lib/social-protocol.js` – gemeinsam mit der App
   (Namensfilter, Zufallsnamen, Kürzel, signierter Text, Freundescodes).
 
@@ -23,10 +24,12 @@ mit dem CleanMusic-Cloudflare-Konto – vorher mit `npx wrangler whoami` prüfen
 | POST | `/v1/account` | Konto anlegen (Proof-of-Work), Zufallsname |
 | DELETE | `/v1/account` | alles sofort löschen (geht auch bei Not-Aus) |
 | POST | `/v1/name` | eigener Name (Filter, 1×/Tag) oder `{ random: true }` |
-| POST | `/v1/friend-code` | Code (24 h, einmal nutzbar, max. 5 offen); `{ revoke: true }` widerruft |
-| POST | `/v1/friend/redeem` | Code einlösen (max. 200 Freunde) |
+| POST | `/v1/friend-code` | Code (24 h, einmal nutzbar, max. 5 offen); `{ revoke: true }` widerruft; 2.1: `{ requests: true }` = Einlösen schickt eine Anfrage |
+| POST | `/v1/friend/redeem` | Code einlösen (max. 200 Freunde); Frage-Code → Anfrage (2.1: 202 `pending` mit `requests: true`, sonst 409 `anfrage-gesendet`) |
+| POST | `/v1/friend/accept` · `/v1/friend/decline` | 2.1: Anfrage annehmen bzw. still ablehnen, `{ withdraw: true }` zieht die eigene zurück (7 Tage, max. 20 offen) |
+| POST | `/v1/presence` | 2.1: „Mir online zeigen“ `{ show }` (Standard aus, nur Minuten-Zeitstempel, 6 min) |
 | POST | `/v1/friend/remove` | Freundschaft beenden |
-| GET | `/v1/friends` | Freunde, Aktivität (10 min), Reaktionen (24 h), Blockierte |
+| GET | `/v1/friends` | Freunde, Aktivität (10 min), `online`, Reaktionen (24 h), Blockierte, 2.1: `requests`/`sent` |
 | POST | `/v1/activity` | eigener Song als Referenz oder `{ clear: true }` |
 | POST | `/v1/react` | 🔥 ❤️ 😂 🎧 👀 auf den aktuellen Song eines Freundes |
 | POST | `/v1/report` | Melden (`name`/`spam`/`other`); 3× Name → Zufallsname |

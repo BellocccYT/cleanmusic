@@ -10,12 +10,16 @@
  * friend codes (hashed, 24 h), the last activity (10 min), reactions (24 h),
  * reports (30 days), nonces (10 min), rate-limit counters (IP prefixes only
  * as a daily-salted hash, at most 24 h). Inactive accounts go after 12 months.
+ * 2.1: friend requests (7 days, src/requests.js) and – only with the switch
+ * "Mir online zeigen" – one minute-rounded timestamp (src/presence.js).
  */
 import { DurableObject } from 'cloudflare:workers';
 import names from '../../../lib/social-names.js';
 import proto from '../../../lib/social-protocol.js';
 import { json, fail, TOO_MANY } from './http.js';
 import * as groups from './groups.js';
+import * as requests from './requests.js';
+import * as presence from './presence.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -38,6 +42,8 @@ const RATE = {
   random: [10, 10, DAY],
   friends: [30, 30, MIN],
   ...groups.GROUP_RATE,
+  ...requests.REQUEST_RATE,
+  ...presence.PRESENCE_RATE,
 };
 
 const SCHEMA = [
@@ -98,9 +104,13 @@ export class SocialHub extends DurableObject {
       activityTtlMs: Number(test.activityTtlMs) || proto.LIMITS.activityTtlMs,
       codeTtlMs: Number(test.codeTtlMs) || proto.LIMITS.codeTtlMs,
       accountsPerIp: Number(test.accountsPerIp) || 3,
+      requestTtlMs: Number(test.requestTtlMs) || proto.LIMITS.requestTtlMs,
+      openRequests: Number(test.openRequests) || proto.LIMITS.openRequests,
+      onlineTtlMs: Number(test.onlineTtlMs) || proto.LIMITS.onlineTtlMs,
     };
     ctx.blockConcurrencyWhile(async () => {
-      SCHEMA.concat(groups.GROUP_SCHEMA).forEach((statement) => this.sql.exec(statement));
+      SCHEMA.concat(groups.GROUP_SCHEMA, requests.REQUEST_SCHEMA, presence.PRESENCE_SCHEMA).forEach((statement) => this.sql.exec(statement));
+      requests.migrateRequests(this);
       if (!(await ctx.storage.getAlarm())) await ctx.storage.setAlarm(Date.now() + 10 * MIN);
     });
   }
@@ -240,6 +250,7 @@ export class SocialHub extends DurableObject {
         const account = this.one('SELECT * FROM accounts WHERE id = ?', auth.id);
         if (!account) return fail(401, 'kein-konto', 'Zu diesem Schlüssel gibt es kein Konto.');
         if (now - account.seen > HOUR) this.run('UPDATE accounts SET seen = ? WHERE id = ?', now, account.id);
+        if (!deleting) presence.touchPresence(this, account.id, now);
         return this.route(method, path, account, data, extra, now);
       });
     } catch (error) {
@@ -292,7 +303,13 @@ export class SocialHub extends DurableObject {
       case '/v1/friend-code':
         return this.friendCode(account, data, extra, now);
       case '/v1/friend/redeem':
-        return this.redeem(account, extra, now);
+        return this.redeem(account, data, extra, now);
+      case '/v1/friend/accept':
+        return requests.acceptRequest(this, account, data, now);
+      case '/v1/friend/decline':
+        return requests.declineRequest(this, account, data, now);
+      case '/v1/presence':
+        return presence.setPresence(this, account, data, now);
       case '/v1/friend/remove':
         return this.removeFriend(account, data, now);
       case '/v1/friends':
@@ -355,6 +372,11 @@ export class SocialHub extends DurableObject {
     return this.one('SELECT COUNT(*) AS n FROM friends WHERE a = ?', id).n;
   }
 
+  befriend(a, b, now) {
+    this.run('INSERT INTO friends (a, b, since) VALUES (?, ?, ?), (?, ?, ?) ON CONFLICT (a, b) DO NOTHING', a, b, now, b, a, now);
+    requests.forgetRequests(this, a, b);
+  }
+
   createAccount(auth, extra, ip, now) {
     const existing = this.one('SELECT * FROM accounts WHERE id = ?', auth.id);
     if (existing) return json({ account: this.me(existing), created: false });
@@ -391,14 +413,16 @@ export class SocialHub extends DurableObject {
     const open = this.all('SELECT hash FROM codes WHERE owner = ? AND expires > ? ORDER BY expires DESC', account.id, now);
     open.slice(proto.LIMITS.openCodes - 1).forEach((row) => this.run('DELETE FROM codes WHERE hash = ?', row.hash));
     const expires = now + this.limits.codeTtlMs;
-    this.run('INSERT INTO codes (hash, owner, expires) VALUES (?, ?, ?)', extra.codeHash, account.id, expires);
-    return json({ code: extra.code, expires }, 201);
+    // 2.1 clients ask for codes that need a "yes" (friend requests); 2.0.x codes stay instant.
+    const ask = data.requests === true ? 1 : 0;
+    this.run('INSERT INTO codes (hash, owner, expires, ask) VALUES (?, ?, ?, ?)', extra.codeHash, account.id, expires, ask);
+    return json({ code: extra.code, expires, requests: Boolean(ask) }, 201);
   }
 
-  redeem(account, extra, now) {
+  redeem(account, data, extra, now) {
     if (!this.limit(account, 'redeem', now)) return TOO_MANY();
     if (!extra.codeHash) return fail(400, 'code', 'Das ist kein gültiger Freundescode.');
-    const row = this.one('SELECT owner, expires FROM codes WHERE hash = ?', extra.codeHash);
+    const row = this.one('SELECT hash, owner, expires, ask FROM codes WHERE hash = ?', extra.codeHash);
     const gone = () => fail(404, 'code', 'Der Code ist abgelaufen, schon benutzt oder ungültig.');
     if (!row || row.expires <= now) return gone();
     if (row.owner === account.id) return fail(400, 'eigener-code', 'Das ist dein eigener Code.');
@@ -411,7 +435,9 @@ export class SocialHub extends DurableObject {
     if (this.friendCount(account.id) >= this.limits.friends || this.friendCount(other.id) >= this.limits.friends) {
       return fail(409, 'voll', `Eine der beiden Freundeslisten ist voll (höchstens ${this.limits.friends}).`);
     }
-    this.run('INSERT INTO friends (a, b, since) VALUES (?, ?, ?), (?, ?, ?)', account.id, other.id, now, other.id, account.id, now);
+    const asked = requests.redeemAsRequest(this, account, other, row, data, now);
+    if (asked) return asked;
+    this.befriend(account.id, other.id, now);
     this.run('DELETE FROM codes WHERE hash = ?', extra.codeHash);
     return json({ friend: this.person(other) }, 201);
   }
@@ -433,13 +459,15 @@ export class SocialHub extends DurableObject {
     if (!this.limit(account, 'friends', now)) return TOO_MANY();
     const since = now - this.limits.activityTtlMs;
     const friends = this.all(
-      `SELECT a.id, a.name, f.since, act.ref, act.playing, act.at FROM friends f
+      `SELECT a.id, a.name, f.since, act.ref, act.playing, act.at, p.at AS online FROM friends f
        JOIN accounts a ON a.id = f.b
        LEFT JOIN activity act ON act.id = a.id AND act.at > ?
+       LEFT JOIN presence p ON p.id = a.id AND p.at > ?
        WHERE f.a = ? ORDER BY a.name`,
-      since, account.id
+      since, now - this.limits.onlineTtlMs, account.id
     ).map((row) => Object.assign(this.person(row), {
       since: row.since,
+      online: Boolean(row.online),
       activity: row.ref ? { ref: JSON.parse(row.ref), playing: Boolean(row.playing), at: row.at } : null,
     }));
     const reactions = this.all(
@@ -451,7 +479,8 @@ export class SocialHub extends DurableObject {
       'SELECT b.b AS id, a.name FROM blocks b LEFT JOIN accounts a ON a.id = b.b WHERE b.a = ? ORDER BY b.at DESC LIMIT 200',
       account.id
     ).map((row) => this.person(row));
-    return json({ me: this.me(account), friends, reactions, blocked, now });
+    const me = Object.assign(this.me(account), { showOnline: presence.showsOnline(this, account.id) });
+    return json(Object.assign({ me, friends, reactions, blocked, now }, requests.listRequests(this, account, now)));
   }
 
   activity(account, data, now) {
@@ -491,8 +520,9 @@ export class SocialHub extends DurableObject {
     const reason = String(data.reason || '');
     if (!proto.REPORT_REASONS.includes(reason)) return fail(400, 'grund', 'Bitte einen Grund wählen.');
     if (!names.validId(target) || target === account.id) return fail(400, 'id', 'Unbekannte Person.');
-    const known = this.isFriend(account.id, target) || this.one('SELECT 1 AS x FROM blocks WHERE a = ? AND b = ?', account.id, target);
-    if (!known) return fail(404, 'kein-freund', 'Melden geht nur für Freunde und Blockierte.');
+    const known = this.isFriend(account.id, target) || this.one('SELECT 1 AS x FROM blocks WHERE a = ? AND b = ?', account.id, target) ||
+      requests.hasRequest(this, target, account.id, now);
+    if (!known) return fail(404, 'kein-freund', 'Melden geht nur für Freunde, Anfragen und Blockierte.');
     if (!this.limit(account, 'report', now)) return TOO_MANY();
     this.run(
       `INSERT INTO reports (reporter, target, reason, at) VALUES (?, ?, ?, ?)
@@ -523,11 +553,14 @@ export class SocialHub extends DurableObject {
     if (!this.limit(account, 'block', now)) return TOO_MANY();
     this.run('INSERT INTO blocks (a, b, at) VALUES (?, ?, ?) ON CONFLICT (a, b) DO UPDATE SET at = excluded.at', account.id, target, now);
     this.unfriend(account.id, target);
+    requests.forgetRequests(this, account.id, target);
     return json({ ok: true, blocked: true });
   }
 
   deleteAccount(id) {
     groups.deleteAccountGroups(this, id);
+    requests.deleteAccountRequests(this, id);
+    presence.deletePresence(this, id);
     this.run('DELETE FROM accounts WHERE id = ?', id);
     this.run('DELETE FROM friends WHERE a = ? OR b = ?', id, id);
     this.run('DELETE FROM blocks WHERE a = ? OR b = ?', id, id);
@@ -597,6 +630,8 @@ export class SocialHub extends DurableObject {
       this.run('DELETE FROM reactions WHERE at < ?', now - proto.LIMITS.reactionTtlMs);
       this.run('DELETE FROM reports WHERE at < ?', now - REPORT_KEEP_MS);
       groups.cleanupGroups(this, now);
+      requests.cleanupRequests(this, now);
+      presence.cleanupPresence(this, now, this.limits.onlineTtlMs);
       this.all('SELECT id FROM accounts WHERE seen < ? LIMIT 200', now - INACTIVE_MS).forEach((row) => this.deleteAccount(row.id));
     });
   }

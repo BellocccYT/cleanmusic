@@ -102,6 +102,56 @@ Verlassen/Entfernen, die Leitung geht an das älteste Mitglied, leere Gruppen ve
 - Gemeinsame Gruppen-Playlist: Referenzen, höchstens 200 Titel. Alle dürfen hinzufügen,
   der Ersteller darf entfernen.
 
+### 2.1 – Freundschaftsanfragen und Online-Status (gebaut 25.11.2026, Server-Deploy offen)
+
+**Anfragen statt Sofort-Freundschaft.** `POST /v1/friend-code { requests: true }` legt einen
+„Frage-Code“ an (Spalte `codes.ask`, per `ALTER TABLE` ergänzt). Wer ihn mit
+`POST /v1/friend/redeem` einlöst, macht eine Anfrage (Tabelle `requests`); erst
+`POST /v1/friend/accept { id }` des Code-Inhabers macht beide zu Freunden.
+`POST /v1/friend/decline { id }` lehnt still ab (für den Absender „wartet“ die Anfrage weiter,
+bis sie abläuft), `{ id, withdraw: true }` zieht die eigene Anfrage zurück. `GET /v1/friends`
+liefert `requests` (an dich) und `sent` (von dir) mit. Grenzen: 7 Tage (`LIMITS.requestTtlMs`),
+höchstens 20 offene je Richtung (`LIMITS.openRequests`), Rate-Limit `answer` 60/h (neue Konten 20/h).
+Blockieren löscht Anfragen beider Seiten, „Konto löschen“ ebenso; wer dich anfragt, kann gemeldet
+werden. Haben sich beide gegenseitig angefragt (oder löst du den Code von jemandem ein, der dich
+schon gefragt hat), seid ihr sofort Freunde. Code: `server/social/src/requests.js`.
+
+**Rückwärtskompatibel (Entscheidung):** Nur Codes mit dem Kennzeichen erzeugen Anfragen – und das
+Kennzeichen setzt nur die App ab 2.1. Wer eine Anfrage beantworten muss, ist also immer jemand mit
+2.1; ein 2.0.x-Nutzer bleibt nie auf einer Anfrage sitzen, die er nicht sehen kann. Codes aus 2.0.x
+(ohne Kennzeichen) machen wie bisher sofort Freunde, auch wenn ein 2.1-Client sie einlöst. Löst ein
+2.0.x-Client einen Frage-Code ein, entsteht die Anfrage ebenfalls; weil 2.0.x „pending“ nicht kennt,
+antwortet der Server ihm mit HTTP 409 `anfrage-gesendet` und einer lesbaren Meldung („Anfrage an …
+gesendet – sobald die Person annimmt, seid ihr Freunde“), die 2.0.x als Toast zeigt. 2.1-Clients
+schicken beim Einlösen `requests: true` und bekommen 202 `{ friend, pending: true }`. Ein Server vor
+2.1 ignoriert das Kennzeichen – dann bleibt alles sofort, und die App sagt das beim Code dazu.
+
+**Online-Status (opt-in).** Schalter „Mir online zeigen“, Standard aus: `POST /v1/presence
+{ show }`. Nur solange er an ist, gibt es eine Zeile in `presence` mit einem auf die Minute
+gerundeten Zeitpunkt der letzten signierten Anfrage (höchstens ein Schreibzugriff pro Minute);
+die Aufräumrunde setzt ihn nach 6 Minuten (`LIMITS.onlineTtlMs`) auf 0, Ausschalten löscht die
+Zeile. Freunde bekommen in `GET /v1/friends` nur `online: true/false` – kein „zuletzt online“,
+und wer den Schalter aus hat, sieht genauso aus wie jemand, der offline ist. Keine zusätzlichen
+Anfragen: der bestehende Poll (`pollPlan`) und der Aktivitäts-Herzschlag halten ihn frisch; bei
+verstecktem Fenster ohne geteilte Aktivität wirkt man nach etwa 6 Minuten offline. Keine
+Gegenseitigkeit: auch wer sich selbst verbirgt, sieht, wer online ist. Code: `src/presence.js`.
+
+**App.** `renderer/core/social.js`: `normalizeFriends` (Anfragen, `online`, `features` – ältere
+Server liefern beides nicht), `sortFriends`/`friendStatus`, `onlineNotices` (Toast nur bei
+offline → online zwischen zwei Polls, nie beim ersten Laden, nie für neue Freunde, höchstens
+einmal je Freund in 30 min), `onlineText`, `newRequests`, `navBadge`, `expiresIn`. Lokaler Zustand
+`cleanmusic.social.v1` um `showOnline` (Standard aus) und `onlineToasts` (Standard an) ergänzt –
+kein neuer Schlüssel. Ansicht „Freunde“ neu gegliedert: Kopf mit Name, Kürzel und Schalter-Chips,
+„Anfragen“ (Zähler, Annehmen/Ablehnen/⋯), „Online · hört gerade“, „Alle Freunde“ (hört gerade,
+online, Rest), Menü „⋯“ je Freund (Abspielen, Entfernen, Blockieren, Melden), „Freund hinzufügen“
+mit „Gesendete Anfragen“ (Zurückziehen), unten „Du & Privatsphäre“ mit den drei Schaltern.
+Die Seitenleiste zählt offene Anfragen (vor „hören gerade“). Im Smoke werden keine Toasts gezeigt,
+`socialRt.notes` hält sie für die Prüfung.
+
+**Reihenfolge beim Veröffentlichen:** erst den Worker deployen (`cd server/social && npm run
+deploy`, CleanMusic-Konto), dann die App 2.1.0 veröffentlichen. Umgekehrt ginge es auch (die App
+fällt auf das alte Verhalten zurück), aber dann gäbe es bis zum Deploy keine Anfragen.
+
 ### S3 – Gemeinsam hören (Listening-Party)
 
 - Raum per Code, höchstens 20 Leute. Der Host steuert, der Server verteilt nur
@@ -137,6 +187,8 @@ bräuchte.
     - `POST /v1/name`
     - `POST /v1/friend-code`
     - `POST /v1/friend/redeem`
+    - `POST /v1/friend/accept`, `POST /v1/friend/decline` (2.1)
+    - `POST /v1/presence` (2.1)
     - `GET /v1/friends`
     - `POST /v1/activity`
     - `POST /v1/react`
