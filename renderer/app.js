@@ -5832,6 +5832,12 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '1.27.0': [
+      'Stumme Titel: Hat ein automatisch gefundener voller Titel keinen Ton (zum Beispiel ein stummgeschalteter Upload), sucht CleanMusic nach wenigen Sekunden selbst einen anderen – jetzt auch bei ausgeschaltetem Visualizer.',
+      'Supporter-Extras: Ein paar optische Extras sind mit ♥ markiert und fragen einmal nach einem Code. Den bekommt jeder – auf Ko-fi, im Discord oder mit „Ohne Spende freischalten“. Wer CleanMusic schon genutzt hat, hat alles frei.',
+      'CleanMusic unterstützen: Unter Einstellungen → System gibt es jetzt einen Ko-fi-Link. Freiwillig – eine Spende kauft nichts Exklusives.',
+      'OBS-Audio-Visualizer 1.3.0 (optionales Plugin): sechs neue Stile, Farbverläufe, Glättung, Frequenzbereich und Pegelanzeige.',
+    ],
     '1.26.0': [
       'Playlists teilen: Der neue Knopf „Teilen“ in jeder Playlist kopiert einen Link. Deine Freunde tippen drauf, sehen die Titelliste und übernehmen die Playlist in ihr CleanMusic – ohne Konto, ohne Server.',
       'Discord: Wer dein Profil ansieht, bekommt den Knopf „In CleanMusic anhören“ und öffnet den Song direkt bei sich. Lokale Dateien und Radio werden nie geteilt; abschaltbar unter Einstellungen → Verbindungen.',
@@ -7934,7 +7940,9 @@
 
   function updateFriendsCount() {
     const nav = $('#nav-friends');
-    if (nav) nav.hidden = !socialAvailable();
+    // Until a Social server is live (none built in, none entered) "Freunde"
+    // stays out of the sidebar – the view itself still works once one is set.
+    if (nav) nav.hidden = !socialAvailable() || !(socialRt.info && socialRt.info.server);
     const count = $('#friends-count');
     if (!count) return;
     const live = socialLocal.enabled ? SOC.listening(socialRt.friends, Date.now(), socialRt.skew).length : 0;
