@@ -452,7 +452,7 @@ Radio, und nach 10 Minuten verfällt es. Antippen spielt den Song bei dir.
 Dafür braucht es einen kleinen Server (Cloudflare Worker, Daten in der EU) – Code und
 Anleitung in [`server/social/README.md`](server/social/README.md). Solange keiner eingetragen
 ist, bleibt die Ansicht **Freunde** leer. Was gespeichert wird:
-[Datenschutz für Social](https://bellocccyt.github.io/cleanmusic/privacy/social/) (Entwurf).
+[Datenschutz für Social](https://bellocccyt.github.io/cleanmusic/privacy/social/).
 
 ### Discord Rich Presence (optional)
 

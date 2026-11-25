@@ -31,7 +31,7 @@
     h2 { margin: 34px 0 8px; font-size: 22px; }
     .lead { color: var(--muted); font-size: 17px; margin: 0; }
     .draft, .placeholder { border: 2px dashed var(--warn); border-radius: 14px; padding: 12px 16px; margin: 18px 0; background: var(--panel2); }
-    .draft strong, .placeholder strong { color: var(--warn); }
+    .draft strong, .placeholder strong, .placeholder-inline { color: var(--warn); font-weight: 700; }
     .table { width: 100%; overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 560px; }
     th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--border); }
@@ -49,11 +49,14 @@
     <h1>Was der Social-Server speichert</h1>
     <p class="lead">Social ist in CleanMusic freiwillig und standardmäßig aus. Ohne Social schickt CleanMusic nichts an diesen Server. Hier steht, was passiert, wenn du Social einschaltest.</p>
 
-    <div class="draft"><strong>Entwurf – noch nicht in Betrieb.</strong> Diese Seite beschreibt die Technik von CleanMusic Social. Die Angaben zum Verantwortlichen, zum Impressum und zur Übermittlung in Drittländer muss der Betreiber vor dem Start ergänzen und prüfen. Keine Rechtsberatung.</div>
-
     <h2>Verantwortlicher</h2>
-    <div class="placeholder"><strong>[PLATZHALTER – vom Betreiber auszufüllen]</strong><br />
-      Vollständiger Name des Verantwortlichen (Art. 13 Abs. 1 lit. a DSGVO), ladungsfähige Anschrift und E-Mail-Adresse für Datenschutzanfragen.</div>
+    <p>
+      Belloccc<br />
+      c/o Block Services<br />
+      Stuttgarter Str. 106<br />
+      70736 Fellbach<br />
+      E-Mail: <a href="mailto:business@belloccc.de">business@belloccc.de</a>
+    </p>
 
     <h2>Kurz gesagt</h2>
     <ul>
@@ -90,24 +93,28 @@
 
     <h2>Hosting</h2>
     <p>Der Social-Server läuft als Cloudflare Worker mit Durable Objects (SQLite). Die gespeicherten Daten liegen per Jurisdiktion in der EU. Cloudflare verarbeitet als Auftragsverarbeiter die Verbindungsdaten (einschließlich der IP-Adresse), um Anfragen zuzustellen.</p>
-    <div class="placeholder"><strong>[PLATZHALTER – vom Betreiber zu prüfen und zu ergänzen]</strong><br />
-      Auftragsverarbeitungsvertrag mit Cloudflare, Inc. (Cloudflare Data Processing Addendum) und Grundlage für eine mögliche Übermittlung in die USA (z. B. EU-US Data Privacy Framework oder Standardvertragsklauseln).</div>
+    <p>Mit Cloudflare, Inc. (101 Townsend St., San Francisco, CA 94107, USA) besteht ein Vertrag zur Auftragsverarbeitung (Cloudflare Data Processing Addendum, Teil der Cloudflare-Nutzungsbedingungen). Für eine mögliche Übermittlung in die USA ist Cloudflare nach dem EU-US Data Privacy Framework zertifiziert; ergänzend gelten die Standardvertragsklauseln der EU-Kommission aus dem Data Processing Addendum.</p>
 
-    <h2>Rechtsgrundlage (Entwurf)</h2>
+    <h2>Rechtsgrundlage</h2>
     <ul>
       <li>Art. 6 Abs. 1 lit. b DSGVO – Bereitstellung der Funktion, die du selbst einschaltest.</li>
       <li>Art. 6 Abs. 1 lit. f DSGVO – Schutz vor Missbrauch (Anfrage-Grenzen, Meldungen, Sperrliste).</li>
     </ul>
 
     <h2>Mindestalter</h2>
-    <p>Social ist ab 16 Jahren gedacht. <span class="muted">[vom Betreiber zu bestätigen]</span></p>
+    <p>Social ist ab 16 Jahren gedacht.</p>
 
     <h2>Deine Rechte</h2>
     <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Widerspruch und Datenübertragbarkeit (Art. 15–21 DSGVO) sowie auf Beschwerde bei einer Datenschutz-Aufsichtsbehörde (Art. 77 DSGVO). Löschen kannst du jederzeit selbst: <em>Freunde → Konto → Konto löschen</em>. Weil es keine E-Mail und keinen Namen gibt, kann der Betreiber dich nur über die Konto-ID zuordnen, die du in der App siehst.</p>
 
     <h2>Impressum</h2>
-    <div class="placeholder"><strong>[PLATZHALTER – vom Betreiber auszufüllen]</strong><br />
-      Angaben nach § 5 DDG (u. a. Vor- und Nachname, ladungsfähige Anschrift, E-Mail).</div>
+    <p>
+      Belloccc<br />
+      c/o Block Services<br />
+      Stuttgarter Str. 106<br />
+      70736 Fellbach<br />
+      E-Mail: <a href="mailto:business@belloccc.de">business@belloccc.de</a>
+    </p>
 
     <p class="muted">Stand: 25.11.2026 · Technische Details: <code>server/social/</code> im Repository.</p>
   </main>
