@@ -33,7 +33,7 @@ module.exports = {
   async search(query) { return [/* Item */]; },
   async playlist(url) { return { name: 'Meine Playlist', items: [/* Item */] }; },
   async resolve(refId, force) { return { refId, url: 'https://…', duration: 0 }; },
-  async match({ title, artist, album, duration }, force) { return { refId, url: 'https://…' }; },
+  async match({ title, artist, album, duration, exclude }, force) { return { refId, url: 'https://…' }; },
   async related(refId, limit) { return [/* Item */]; },
 };
 ```
@@ -58,6 +58,13 @@ Optional für schwierige Quellen (ab CleanMusic 1.17):
 Scheitert ein voller Titel trotz Alternates und Neuauflösung, spielt CleanMusic
 automatisch die passende 30-Sekunden-Vorschau aus dem Katalog, statt die
 Warteschlange anzuhalten.
+
+**Stumme Treffer (ab 1.27.0):** Spielt ein über `match` gefundener Titel nur digitale
+Stille (z. B. ein Re-Upload, dessen Ton wegen eines Urheberrechtsanspruchs
+stummgeschaltet ist), merkt sich CleanMusic dessen `refId` und fragt erneut. `match`
+bekommt dann `exclude`: ein Array mit bis zu 100 `refId`s, die übersprungen werden
+sollen. Ältere Plugins ignorieren das Feld; liefern sie trotzdem eine ausgeschlossene
+`refId`, spielt CleanMusic die Vorschau.
 
 **`ctx`** (an `setup`):
 

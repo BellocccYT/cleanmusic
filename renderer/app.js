@@ -4961,6 +4961,28 @@
     return item.url || null;
   }
 
+  // Matches that only played silence (e.g. a re-upload whose sound was muted
+  // over a copyright claim). The plugin is asked to skip them next time.
+  const silentRefs = new Set(
+    (readJSON(STORAGE.silentRefs, []) || []).filter((ref) => typeof ref === 'string' && ref).slice(-300)
+  );
+
+  function markSilentRef(refId) {
+    if (!refId) return;
+    silentRefs.delete(refId);
+    silentRefs.add(refId);
+    writeJSON(STORAGE.silentRefs, Array.from(silentRefs).slice(-300));
+  }
+
+  function forgetMatch(item) {
+    const plugin = matchPlugin();
+    if (!plugin || !item) return;
+    const key = `${plugin.id}|${matchKey(item)}`;
+    if (!state.matches[key]) return;
+    delete state.matches[key];
+    writeJSON(STORAGE.matches, state.matches);
+  }
+
   function rememberMatch(key, refId) {
     state.matches[key] = refId;
     const keys = Object.keys(state.matches);
@@ -4978,7 +5000,7 @@
     const known = state.matches[key];
     const label = plugin.source.label;
 
-    if (known && plugin.capabilities.resolve) {
+    if (known && plugin.capabilities.resolve && !silentRefs.has(known)) {
       const result = await bridge.pluginResolve(plugin.id, known, force);
       if (result && result.ok) {
         return { url: result.stream.url, mode: 'matched', stream: result.stream, label };
@@ -4990,11 +5012,16 @@
       artist: item.artist,
       album: item.album,
       duration: item.duration,
-      force: Boolean(force && !known),
+      force: Boolean(force && (!known || silentRefs.has(known))),
+      exclude: Array.from(silentRefs).slice(-100),
     });
 
     if (!result || !result.ok) {
       throw new Error((result && result.error) || 'Kein voller Titel gefunden');
+    }
+    // An older plugin ignores `exclude` and may hand the muted upload back.
+    if (result.stream.refId && silentRefs.has(result.stream.refId)) {
+      throw new Error('Kein voller Titel mit Ton gefunden');
     }
 
     if (result.stream.refId) rememberMatch(key, result.stream.refId);
@@ -5126,6 +5153,7 @@
     setPlayLoading(false);
     state.nowMode = source.mode;
     state.nowLabel = source.label || null;
+    state.nowRef = (source.stream && source.stream.refId) || '';
     state.fallbackUrls =
       source.stream && Array.isArray(source.stream.alternates) ? source.stream.alternates.slice(0, 3) : [];
     if (source.stream && !item.duration && source.stream.duration) {
@@ -9758,9 +9786,15 @@
   // silent intro should not be restarted.
   function silenceDecision(sample) {
     const { time, silentFor, mode, tries } = sample || {};
-    if (!(Number(time) > 8) || !(Number(silentFor) > 10000)) return 'wait';
+    // A title found automatically gets checked sooner (6 s of exact silence after
+    // 4 s) – the user did not pick that upload and can not tell what went wrong.
+    const needTime = mode === 'matched' ? 4 : 8;
+    const needSilent = mode === 'matched' ? 6000 : 10000;
+    if (!(Number(time) > needTime) || !(Number(silentFor) > needSilent)) return 'wait';
     if (mode === 'plugin' || mode === 'matched') {
-      if (Number(tries) < 1) return 'reload';
+      // A match plays only silence (muted upload): reloading would bring the
+      // same video back – look for another one instead.
+      if (Number(tries) < 1) return mode === 'matched' ? 'rematch' : 'reload';
       if (Number(tries) < 2) return 'preview';
     }
     return 'tell';
@@ -9779,6 +9813,11 @@
       silence.tries = 0;
     }
     if (item.kind === 'radio') return;
+    // Works with the visualizer switched off as well: while a full title plays,
+    // the analyser taps the element (nothing is drawn) and is read here.
+    const fullTitle = state.nowMode === 'plugin' || state.nowMode === 'matched';
+    if (typeof viz.setWatching === 'function') viz.setWatching(fullTitle, 'silence');
+    if (fullTitle && typeof viz.probeSilence === 'function') viz.probeSilence();
 
     const decision = silenceDecision({
       time: audio.currentTime,
@@ -9787,6 +9826,15 @@
       tries: silence.tries,
     });
     if (decision === 'wait') return;
+
+    if (decision === 'rematch') {
+      silence.tries = 1;
+      markSilentRef(state.nowRef);
+      forgetMatch(item);
+      toast('Der gefundene volle Titel hat keinen Ton – suche einen anderen …');
+      playFromQueue(state.queue.index, { force: true, retry: true });
+      return;
+    }
 
     if (decision === 'reload') {
       silence.tries = 1;
@@ -15378,13 +15426,27 @@ ${updatePanel()}
     silenceGuard: (sample) => silenceDecision(sample),
     // Smoke: play a URL for a moment and report whether the analyser sees
     // digital silence (a silent WAV must be flagged, music must not).
-    silenceProbe: async (url) => {
+    silenceProbe: async (url, options = {}) => {
+      const viz = window.CMVisualizer;
+      const wasEnabled = viz.isEnabled();
+      if (options.visualizerOff) viz.setEnabled(false);
       const previous = audio.src;
       audio.pause();
       audio.loop = true;
       audio.src = url;
       await audio.play().catch(() => {});
-      await new Promise((resolve) => setTimeout(resolve, 2600));
+      if (options.visualizerOff) {
+        // What checkSilence does on every timeupdate while a full title plays
+        // (own reason: checkSilence switches 'silence' off for the probe file).
+        viz.setWatching(true, 'probe');
+        for (let i = 0; i < 11; i += 1) {
+          viz.probeSilence();
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        viz.probeSilence();
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 2600));
+      }
       const result = {
         playing: !audio.paused,
         time: Number(audio.currentTime.toFixed(2)),
@@ -15397,8 +15459,13 @@ ${updatePanel()}
       audio.pause();
       audio.loop = false;
       if (previous) audio.src = previous;
+      if (options.visualizerOff) {
+        viz.setWatching(false, 'probe');
+        viz.setEnabled(wasEnabled);
+      }
       return result;
     },
+    silentRefs: () => Array.from(silentRefs),
     visualizer: () => ({
       enabled: window.CMVisualizer.isEnabled(),
       analysing: window.CMVisualizer.isAnalysing(),

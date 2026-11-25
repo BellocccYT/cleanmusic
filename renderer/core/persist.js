@@ -16,6 +16,7 @@
     playback: 'cleanmusic.playback.v1',
     collection: 'cleanmusic.collection.v1',
     matches: 'cleanmusic.matches.v1',
+    silentRefs: 'cleanmusic.silentrefs.v1', // [refId] full-title matches that played only silence
     recs: 'cleanmusic.recs.v1',
     credits: 'cleanmusic.credits.v1',
     openverseCache: 'cleanmusic.ovcache.v1',

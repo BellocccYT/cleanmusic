@@ -60,6 +60,7 @@
     schemaSnapshot: 'object',
     group: 'object',
     supporter: 'object',
+    silentRefs: 'array',
   };
 
   // Human-readable names for messages in the UI.

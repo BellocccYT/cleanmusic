@@ -1459,10 +1459,14 @@ function createMainWindow() {
                   silentFor: Math.round(window.CMVisualizer.silentFor()),
                 };
                 const probe = await cm.silenceProbe(${JSON.stringify(silentUrl)});
+                // Visualizer off: the guard must still hear the silence.
+                const probeOff = await cm.silenceProbe(${JSON.stringify(silentUrl)}, { visualizerOff: true });
                 return {
                   before,
                   probe,
+                  probeOff,
                   decisions: {
+                    rematch: cm.silenceGuard({ time: 12, silentFor: 12000, mode: 'matched', tries: 0 }),
                     short: cm.silenceGuard({ time: 3, silentFor: 2000, mode: 'plugin', tries: 0 }),
                     audible: cm.silenceGuard({ time: 12, silentFor: 0, mode: 'plugin', tries: 0 }),
                     reload: cm.silenceGuard({ time: 12, silentFor: 12000, mode: 'plugin', tries: 0 }),
@@ -1473,6 +1477,10 @@ function createMainWindow() {
               })()
             `);
             console.log('SMOKE_SILENCE:', JSON.stringify(silentResult));
+            // Visualizer off: the guard must still hear the silence (1.18 could not).
+            if (!(silentResult.probeOff && silentResult.probeOff.silentFor > 1500 && silentResult.decisions.rematch === 'rematch')) {
+              console.error('SMOKE_SILENCE_OFF_FAIL:', JSON.stringify(silentResult.probeOff));
+            }
           } catch (error) {
             console.error('SMOKE_SILENCE_FAIL:', error.message);
           } finally {
@@ -3097,6 +3105,135 @@ function createMainWindow() {
             console.log('SMOKE_PLUGIN:', JSON.stringify(pluginResult));
           } catch (error) {
             console.error('SMOKE_PLUGIN_FAIL:', error.message);
+          }
+
+
+          // Full titles with the audio chain on (bass +3): every title must be audible,
+          // not just "playing" (time runs, but silence).
+          try {
+            const audible = await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const cm = window.CleanMusic;
+                const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const audio = document.querySelector('#audio');
+                cm.setTone(3, 0);
+                const queries = ['linkin park numb', 'queen bohemian rhapsody', 'alan walker faded', 'eminem lose yourself', 'apache 207 roller', 'rick astley never gonna give you up'];
+                const titles = [];
+                for (const query of queries) {
+                  cm.search(query);
+                  cm.showView('search');
+                  let row = null;
+                  for (let i = 0; i < 60 && !row; i += 1) {
+                    await wait(500);
+                    row = document.querySelector('#plugin-results .song-row');
+                  }
+                  if (!row) { titles.push({ query, error: 'kein Treffer' }); continue; }
+                  row.click();
+                  let now = null;
+                  for (let i = 0; i < 80; i += 1) {
+                    await wait(500);
+                    now = cm.nowPlaying();
+                    if (now && now.mode !== 'loading' && now.time > 1.5) break;
+                  }
+                  let peak = 0;
+                  let samples = 0;
+                  for (let i = 0; i < 12; i += 1) {
+                    await wait(250);
+                    const value = window.CMVisualizer.signal();
+                    if (value !== null) { samples += 1; peak = Math.max(peak, value); }
+                  }
+                  const engine = window.CMVisualizer.engineState();
+                  titles.push({
+                    query,
+                    mode: now && now.mode,
+                    time: now && now.time,
+                    paused: audio.paused,
+                    host: (() => { try { return new URL(audio.currentSrc).hostname; } catch { return ''; } })(),
+                    peak: Number(peak.toFixed(4)),
+                    samples,
+                    gain: engine ? Number(engine.gain.toFixed(3)) : null,
+                    context: engine ? engine.context : null,
+                    volume: audio.volume,
+                    muted: audio.muted,
+                  });
+                }
+                cm.setTone(0, 0);
+                return titles;
+              })()
+            `);
+            const silent = audible.filter((title) => !title.error && title.time > 1.5 && (title.peak === 0 || title.gain === 0));
+            if (silent.length) throw new Error(JSON.stringify(audible));
+            console.log('SMOKE_PLUGIN_AUDIBLE:', JSON.stringify(audible));
+          } catch (error) {
+            console.error('SMOKE_PLUGIN_AUDIBLE_FAIL:', error.message);
+          }
+
+          // Playlist with crossfade + audio chain: the NEXT title must get its level
+          // back (a stuck fade looks exactly like "plays, but no sound").
+          for (const engineOn of [true, false]) {
+            try {
+              const fade = await mainWindow.webContents.executeJavaScript(`
+                (async () => {
+                  const cm = window.CleanMusic;
+                  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                  const audio = document.querySelector('#audio');
+                  cm.setTone(${engineOn ? 3 : 0}, 0);
+                  cm.setTransition('crossfade');
+                  cm.search('daft punk one more time');
+                  cm.showView('search');
+                  for (let i = 0; i < 60 && document.querySelectorAll('#plugin-results .song-row').length < 2; i += 1) await wait(500);
+                  for (let i = 0; i < 40 && !document.querySelector('#search-results .song-row'); i += 1) await wait(500);
+                  const id = cm.createPlaylist('Smoke Crossfade ' + Date.now());
+                  cm.addToPlaylistAt(id, 'ext', 0);
+                  cm.addToPlaylistAt(id, 'ext', 1);
+                  cm.addToPlaylistAt(id, 'search', 0);
+                  cm.playList('playlist:' + id, 0);
+                  const hops = [];
+                  for (let hop = 0; hop < 2; hop += 1) {
+                    let now = null;
+                    for (let i = 0; i < 80; i += 1) {
+                      await wait(500);
+                      now = cm.nowPlaying();
+                      if (now && now.mode !== 'loading' && now.time > 1 && Number.isFinite(audio.duration) && audio.duration > 20) break;
+                    }
+                    const from = now ? now.id : '';
+                    audio.currentTime = Math.max(0, audio.duration - 9);
+                    const timeline = [];
+                    let switched = 0;
+                    for (let i = 0; i < 70; i += 1) {
+                      await wait(500);
+                      const cur = cm.nowPlaying();
+                      const engine = window.CMVisualizer.engineState();
+                      const point = {
+                        t: i / 2,
+                        id: cur ? cur.id.slice(0, 22) : '',
+                        mode: cur ? cur.mode : '',
+                        time: cur ? cur.time : 0,
+                        paused: audio.paused,
+                        level: engine ? Number(engine.gain.toFixed(2)) : Number(audio.volume.toFixed(2)),
+                        signal: window.CMVisualizer.signal(),
+                      };
+                      timeline.push(point);
+                      if (cur && cur.id !== from && cur.mode !== 'loading' && cur.time > 1) switched += 1;
+                      if (switched >= 24) break;
+                    }
+                    const after = timeline.filter((p) => p.id && p.id !== from.slice(0, 22) && p.mode !== 'loading' && p.time > 1);
+                    const last = after[after.length - 1] || null;
+                    hops.push({ from: from.slice(0, 22), to: last ? last.id : '', mode: last ? last.mode : '', finalLevel: last ? last.level : null, finalSignal: last ? last.signal : null, timeline: timeline.filter((p, i) => i % 4 === 0).map((p) => [p.t, p.id.slice(-6), p.mode, p.time, p.paused ? 'P' : '', p.level, p.signal]) });
+                  }
+                  cm.setTransition('off');
+                  cm.setTone(0, 0);
+                  audio.pause();
+                  return hops;
+                })()
+              `);
+              const stuck = fade.filter((hop) => !hop.to || hop.finalLevel === null || hop.finalLevel < 0.3);
+              const line = (engineOn ? 'engine' : 'plain') + ' ' + JSON.stringify(fade);
+              if (stuck.length) console.error('SMOKE_PLUGIN_CROSSFADE_FAIL:', line);
+              else console.log('SMOKE_PLUGIN_CROSSFADE:', line);
+            } catch (error) {
+              console.error('SMOKE_PLUGIN_CROSSFADE_FAIL:', error.message);
+            }
           }
         }
 
@@ -7349,6 +7486,11 @@ ipcMain.handle('plugin-match', async (_event, id, track) => {
           artist: cleanText(input.artist),
           album: cleanText(input.album),
           duration: Number(input.duration) || 0,
+          // Ids the app found unusable (e.g. a muted upload) – skip them.
+          exclude: (Array.isArray(input.exclude) ? input.exclude : [])
+            .map((ref) => cleanText(ref, 200))
+            .filter(Boolean)
+            .slice(0, 100),
         },
         Boolean(input.force)
       )

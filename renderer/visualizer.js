@@ -37,6 +37,7 @@ window.CMVisualizer = (function () {
   // A plugin (e.g. the OBS visualizer) can ask for the spectrum while the
   // on-screen visualizer is switched off. It then owns the analyser tap.
   let watching = false;
+  const watchers = new Set(); // 'plugin' (OBS etc.), 'silence' (silence guard)
   let raf = 0;
   let lastDraw = 0;
   let lastDrawDelta = 0;
@@ -306,9 +307,12 @@ window.CMVisualizer = (function () {
     }
   }
 
-  // Plugin bridge: analyse without drawing anything on screen.
-  function setWatching(on) {
-    const next = Boolean(on);
+  // Analyse without drawing anything on screen – for plugins and the silence
+  // guard. Each reason switches itself on/off; the tap stays while any needs it.
+  function setWatching(on, reason = 'plugin') {
+    if (on) watchers.add(String(reason));
+    else watchers.delete(String(reason));
+    const next = watchers.size > 0;
     if (next === watching) return;
     watching = next;
     if (watching) {
@@ -662,6 +666,23 @@ window.CMVisualizer = (function () {
   // (a stream that carries no audio). Read by app.js ("silence guard").
   let quietSince = 0;
   let analyserAt = 0;
+
+  // Digital silence, measured in the time domain (the spectrum data is
+  // smoothed and would take seconds to settle). Every 8th sample is enough:
+  // silence means all of them sit exactly at 128. `wave` is fresh.
+  function noteSilence(t) {
+    analyserAt = t;
+    let deviation = 0;
+    for (let k = 0; k < wave.length; k += 8) {
+      const distance = wave[k] > 128 ? wave[k] - 128 : 128 - wave[k];
+      if (distance > deviation) deviation = distance;
+    }
+    if (deviation === 0 && audioEl && !audioEl.paused && !audioEl.ended) {
+      if (!quietSince) quietSince = t;
+    } else {
+      quietSince = 0;
+    }
+  }
   function watchdog(t) {
     if (!audioEl || audioEl.paused || audioEl.ended || !audioEl.getAttribute('src')) {
       silentSince = 0;
@@ -717,20 +738,7 @@ window.CMVisualizer = (function () {
       if ((source || tapped) && analyser) {
         analyser.getByteFrequencyData(freq);
         analyser.getByteTimeDomainData(wave);
-        analyserAt = t;
-        // Digital silence, measured in the time domain (the spectrum data is
-        // smoothed and would take seconds to settle). Every 8th sample is
-        // enough: silence means all of them sit exactly at 128.
-        let deviation = 0;
-        for (let k = 0; k < wave.length; k += 8) {
-          const distance = wave[k] > 128 ? wave[k] - 128 : 128 - wave[k];
-          if (distance > deviation) deviation = distance;
-        }
-        if (deviation === 0 && !audioEl.paused && !audioEl.ended) {
-          if (!quietSince) quietSince = t;
-        } else {
-          quietSince = 0;
-        }
+        noteSilence(t);
         let bass = 0;
         for (let k = 1; k < 10; k += 1) bass += freq[k];
         const level = bass / 9 / 255;
@@ -811,6 +819,16 @@ window.CMVisualizer = (function () {
     // How long the analyser has been at exact digital silence while the
     // element plays (0 = audible, or nothing analysed right now). Only
     // trusted while the analyser is actually being read.
+    // Without a drawing loop (visualizer off) the silence guard reads the
+    // analyser here, on every timeupdate. Returns false when nothing is tapped.
+    probeSilence: () => {
+      if (!analyser || !(source || tapped)) return false;
+      const t = window.performance.now();
+      if (raf && t - analyserAt < 500) return true; // the drawing loop measures
+      analyser.getByteTimeDomainData(wave);
+      noteSilence(t);
+      return true;
+    },
     silentFor: () => {
       const now = window.performance.now();
       if (!quietSince || !analyserAt || now - analyserAt > 1500) return 0;
