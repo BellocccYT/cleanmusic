@@ -9864,6 +9864,37 @@
     return encodeWav(slice.channels, slice.rate, slice.frames);
   }
 
+  // Studio: mix all clips in timeline order into one stereo channel pair.
+  // A clip's `transition` crossfades its head with the previous clip's tail.
+  function renderTimeline(clips, buffers, rate) {
+    const layout = CMStudio ? CMStudio.timelineLayout(clips) : { rows: [], total: 0 };
+    const totalFrames = Math.max(0, Math.round(layout.total * rate));
+    const master = [new Float32Array(totalFrames), new Float32Array(totalFrames)];
+    layout.rows.forEach((row, index) => {
+      const clip = clips[index];
+      const buffer = buffers.get(clip.key);
+      if (!buffer) return;
+      const nextOverlap = index + 1 < clips.length ? layout.rows[index + 1].overlap : 0;
+      const slice = processSlice(buffer, clip.in, clip.out, clip);
+      if (!slice.frames) return;
+      const inFade = Math.max(0, Math.round(row.overlap * rate));
+      const outFade = Math.max(0, Math.round(nextOverlap * rate));
+      const startFrame = Math.max(0, Math.round(row.start * rate));
+      for (let channel = 0; channel < 2; channel += 1) {
+        const data = slice.channels[channel] || new Float32Array(slice.frames);
+        const target = master[channel];
+        for (let frame = 0; frame < slice.frames; frame += 1) {
+          let envelope = 1;
+          if (inFade > 1 && frame < inFade) envelope *= frame / (inFade - 1);
+          if (outFade > 1 && frame >= slice.frames - outFade) envelope *= (slice.frames - 1 - frame) / (outFade - 1);
+          const at = startFrame + frame;
+          if (at >= 0 && at < totalFrames) target[at] += data[frame] * Math.max(0, envelope);
+        }
+      }
+    });
+    return { channels: master, frames: totalFrames };
+  }
+
   async function saveCut() {
     const entry = cutEntry();
     if (!entry || entry.id !== cut.id || !canExportCut(entry)) return;
@@ -9931,27 +9962,8 @@
         }
       }
       const rate = 44100;
-      const tracks = [[], []];
-      let total = 0;
-      clips.forEach((clip) => {
-        const buffer = buffers.get(clip.key);
-        if (!buffer) return;
-        const slice = processSlice(buffer, clip.in, clip.out, clip);
-        total += slice.frames;
-        for (let channel = 0; channel < 2; channel += 1) {
-          tracks[channel].push(slice.channels[channel] || new Float32Array(slice.frames));
-        }
-      });
-      const channels = [0, 1].map((channel) => {
-        const merged = new Float32Array(total);
-        let offset = 0;
-        tracks[channel].forEach((data) => {
-          merged.set(data, offset);
-          offset += data.length;
-        });
-        return merged;
-      });
-      const bytes = encodeWav(channels, rate, total);
+      const rendered = renderTimeline(clips, buffers, rate);
+      const bytes = encodeWav(rendered.channels, rate, rendered.frames);
       const result = await bridge.studioExport({
         bytes,
         name: project.name,
@@ -10055,6 +10067,21 @@
           else clip.out = Math.max(value, clip.in);
           persistCutProjects();
           renderCredits();
+        }
+        const clipFx = event.target.closest('[data-clip-fx]');
+        if (clipFx) {
+          const [at, field] = String(clipFx.dataset.clipFx).split(':');
+          const project = activeCutProject();
+          const clip = project && project.clips[Number(at)];
+          if (!clip) return;
+          if (field === 'normalize' || field === 'loop') clip[field] = event.target.checked;
+          else if (field === 'loopMs') clip.loopMs = Math.max(50, Math.min(500, Math.round(Number(event.target.value) || 150)));
+          else clip[field] = Math.max(0, Math.min(5, Number(event.target.value) || 0));
+          persistCutProjects();
+          if (field === 'transition' && CMStudio) {
+            const total = $('#studio-total');
+            if (total) total.textContent = fmtTime(CMStudio.totalDuration(project.clips));
+          }
         }
       });
     }
@@ -12015,7 +12042,7 @@
         ${
           project
             ? `<div class="studio-timeline">
-                <p class="muted small">${project.clips.length} Clip${project.clips.length === 1 ? '' : 's'} · Gesamtlänge ${fmtTime(layout.total)} · nicht-destruktiv – die Quellen bleiben unverändert.</p>
+                <p class="muted small">${project.clips.length} Clip${project.clips.length === 1 ? '' : 's'} · Gesamtlänge <span id="studio-total">${fmtTime(layout.total)}</span> · nicht-destruktiv – die Quellen bleiben unverändert.</p>
                 ${
                   project.clips.length
                     ? `<ol class="credits-list studio-clips">${project.clips
@@ -12032,6 +12059,17 @@
                                 <label>Ende <input type="number" min="0" step="0.1"${max} data-clip-out="${index}" value="${clip.out.toFixed(1)}" /> s</label>
                                 <span class="muted small">${fmtTime(Math.max(0, clip.out - clip.in))}</span>
                               </div>
+                              <details class="studio-clip-fx"${clip.fadeIn || clip.fadeOut || clip.transition || clip.normalize || clip.loop ? ' open' : ''}>
+                                <summary>Effekte</summary>
+                                <div class="studio-clip-fx-grid">
+                                  <label>Fade-in <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:fadeIn" value="${clip.fadeIn.toFixed(1)}" /> s</label>
+                                  <label>Fade-out <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:fadeOut" value="${clip.fadeOut.toFixed(1)}" /> s</label>
+                                  <label>Übergang <input type="number" min="0" max="5" step="0.1" data-clip-fx="${index}:transition" value="${clip.transition.toFixed(1)}" /> s</label>
+                                  <label class="toggle-row"><span>Normalisieren</span><input type="checkbox" data-clip-fx="${index}:normalize" ${clip.normalize ? 'checked' : ''} /></label>
+                                  <label class="toggle-row"><span>Loop</span><input type="checkbox" data-clip-fx="${index}:loop" ${clip.loop ? 'checked' : ''} /></label>
+                                  <label>Loop-Übergang <input type="number" min="50" max="500" step="50" data-clip-fx="${index}:loopMs" value="${clip.loopMs}" /> ms</label>
+                                </div>
+                              </details>
                             </div>
                             <div class="row studio-clip-actions">
                               <button class="icon-btn" data-clip-move="${index}:up" title="Nach oben" ${index === 0 ? 'disabled' : ''}>↑</button>
@@ -16826,6 +16864,7 @@ ${updatePanel()}
       project.clips[0].out = 4;
       project.clips[1].in = 0;
       project.clips[1].out = 4;
+      project.clips[1].transition = 1;
       const layout = CMStudio ? CMStudio.timelineLayout(project.clips) : { rows: [] };
       const safe = CMStudio ? CMStudio.isStreamSafe(project.clips) : false;
       const text = projectCreditsText(project);
@@ -16836,15 +16875,11 @@ ${updatePanel()}
         for (let i = 0; i < len; i += 1) data[i] = Math.sin(i * 0.05) * 0.4;
         return { sampleRate: rate, numberOfChannels: 1, length: len, getChannelData: () => data };
       };
-      const slices = project.clips.map((clip) => processSlice(make(clip.duration || clip.out), clip.in, clip.out, clip));
-      const total = slices.reduce((sum, slice) => sum + slice.frames, 0);
-      const merged = new Float32Array(total);
-      let offset = 0;
-      slices.forEach((slice) => {
-        merged.set(slice.channels[0] || new Float32Array(slice.frames), offset);
-        offset += slice.frames;
-      });
-      const bytes = encodeWav([merged], rate, total);
+      const buffers = new Map();
+      project.clips.forEach((clip) => buffers.set(clip.key, make(clip.duration || clip.out)));
+      const rendered = renderTimeline(project.clips, buffers, rate);
+      const total = rendered.frames;
+      const bytes = encodeWav(rendered.channels, rate, total);
       cutProjects.active = before.active;
       cutProjects.projects = before.projects;
       return {
@@ -16852,7 +16887,7 @@ ${updatePanel()}
         total,
         safe,
         riff: String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF',
-        ordered: layout.rows.length === 2 && layout.rows[0].end === 3 && layout.rows[1].start === 3,
+        ordered: layout.rows.length === 2 && layout.rows[0].end === 3 && layout.rows[1].start === 2 && layout.rows[1].overlap === 1,
         changes: /Änderungen/.test(text) && /Studio A/.test(text) && /Studio B/.test(text),
         bytes: bytes.length,
       };
@@ -16876,15 +16911,10 @@ ${updatePanel()}
         for (let i = 0; i < len; i += 1) data[i] = Math.sin(i * 0.05) * 0.4;
         return { sampleRate: rate, numberOfChannels: 1, length: len, getChannelData: () => data };
       };
-      const slices = project.clips.map((clip) => processSlice(make(clip.duration || clip.out), clip.in, clip.out, clip));
-      const total = slices.reduce((sum, slice) => sum + slice.frames, 0);
-      const merged = new Float32Array(total);
-      let offset = 0;
-      slices.forEach((slice) => {
-        merged.set(slice.channels[0] || new Float32Array(slice.frames), offset);
-        offset += slice.frames;
-      });
-      const bytes = encodeWav([merged], rate, total);
+      const buffers = new Map();
+      project.clips.forEach((clip) => buffers.set(clip.key, make(clip.duration || clip.out)));
+      const rendered = renderTimeline(project.clips, buffers, rate);
+      const bytes = encodeWav(rendered.channels, rate, rendered.frames);
       const result = bridge.studioExport
         ? await bridge.studioExport({
             bytes,

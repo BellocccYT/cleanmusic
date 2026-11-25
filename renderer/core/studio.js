@@ -59,6 +59,7 @@
       normalize: raw.normalize === true,
       loop: raw.loop === true,
       loopMs: clampLoop(raw.loopMs),
+      transition: clampFade(raw.transition),
       duration: clampSec(raw.duration),
     };
   }
@@ -120,20 +121,27 @@
     return base;
   }
 
-  // Each clip's start/end on the timeline and the total duration (sequential).
+  // Each clip's start/end on the timeline and the total duration. A clip's
+  // `transition` crossfades it with the previous clip (overlap in seconds).
   function timelineLayout(clips) {
     let cursor = 0;
+    let prevDuration = 0;
     const rows = clips.map((clip) => {
       const duration = Math.max(0, clip.out - clip.in);
-      const row = { key: clip.key, start: cursor, end: cursor + duration, duration };
-      cursor += duration;
+      const overlap = duration > 0 && prevDuration > 0
+        ? Math.max(0, Math.min(clip.transition || 0, prevDuration, duration))
+        : 0;
+      const start = Math.max(0, cursor - overlap);
+      const row = { key: clip.key, start, end: start + duration, duration, overlap };
+      cursor = row.end;
+      prevDuration = duration;
       return row;
     });
     return { rows, total: cursor };
   }
 
   function totalDuration(clips) {
-    return clips.reduce((sum, clip) => sum + Math.max(0, clip.out - clip.in), 0);
+    return timelineLayout(clips).total;
   }
 
   // "free" | "by" | "ncs" | "other" – same rules as app.js licenseKey().
@@ -154,6 +162,7 @@
     const parts = ['Ausschnitt'];
     if (clip.fadeIn) parts.push(`Fade-in ${clip.fadeIn.toFixed(1)} s`);
     if (clip.fadeOut) parts.push(`Fade-out ${clip.fadeOut.toFixed(1)} s`);
+    if (clip.transition) parts.push(`Übergang ${clip.transition.toFixed(1)} s`);
     if (clip.normalize) parts.push('normalisiert');
     if (clip.loop) parts.push(`Loop-Übergang ${clip.loopMs} ms`);
     return parts.join(', ');

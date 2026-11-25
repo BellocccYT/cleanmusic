@@ -126,11 +126,12 @@ Duplikatfreiheit ab.
 mit mehreren Clips – reine Logik in `renderer/core/studio.js` (Test
 `test/studio.test.js`), Timeline-UI in `renderer/app.js`, Export über
 `main.js` `studio-export` (WAV + Credit-.txt nach `_Studio/`), Smoke `SMOKE_STUDIO`.
-Je Clip: Start/Ende (Trim), Reihenfolge ↑/↓, Entfernen; Export rendert alle Clips in
-Reihenfolge und schreibt Lizenz + Änderungen in die Credit-.txt (stream-sicher-Prüfung:
-nur CC0/CC BY/PD/NCS). **Offen:** Übergänge zwischen Clips (Crossfade), Export-Presets
-MP3/M4A (kein Encoder im App-Code), BPM/Key-Batch und per-Clip-Fades/Normalisierung in
-der UI (im Datenmodell schon angelegt).
+Je Clip: Start/Ende (Trim), Reihenfolge ↑/↓, Entfernen und **Effekte** (Fade-in/out,
+Normalisieren, Loop und **Übergang/Crossfade** zur vorigen Spur). Export rendert alle
+Clips in Reihenfolge, mischt Überschneidungen per Crossfade und schreibt Lizenz +
+Änderungen in die Credit-.txt (stream-sicher-Prüfung: nur CC0/CC BY/PD/NCS).
+**Offen:** Export-Presets MP3/M4A (kein Encoder im App-Code), BPM/Key-Batch (Key fehlt)
+und eine Timeline-Vorschau im Player.
 
 ### Phase 5 – Plugin-API v3 (Muss 5)
 

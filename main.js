@@ -2887,7 +2887,7 @@ function createMainWindow() {
           // Studio (2.0): Timeline rendern (Datenmodell + WAV) und Export per IPC.
           try {
             const studio = await mainWindow.webContents.executeJavaScript('window.CleanMusic.studioSmoke()');
-            if (!(studio && studio.clips === 2 && studio.safe && studio.riff && studio.ordered && studio.changes && studio.total === 7 * 44100)) {
+            if (!(studio && studio.clips === 2 && studio.safe && studio.riff && studio.ordered && studio.changes && studio.total === 6 * 44100)) {
               throw new Error(JSON.stringify(studio));
             }
             const studioDir = fs.mkdtempSync(path.join(app.getPath('temp'), 'cleanmusic-smoke-studio-'));

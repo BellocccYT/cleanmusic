@@ -85,6 +85,21 @@ check('timeline layout places clips sequentially', () => {
   assert.equal(S.totalDuration([clip({ out: 10 }), clip({ in: 2, out: 7 })]), 15);
 });
 
+check('a transition crossfades a clip with the previous one', () => {
+  const clips = [clip({ key: 'a', out: 10 }), clip({ key: 'b', in: 0, out: 5, transition: 1 })];
+  const layout = S.timelineLayout(clips);
+  assert.equal(layout.total, 14);
+  assert.deepEqual(
+    layout.rows.map((row) => [row.key, row.start, row.end, row.overlap]),
+    [['a', 0, 10, 0], ['b', 9, 14, 1]]
+  );
+  assert.equal(S.totalDuration(clips), 14);
+  // The overlap is clamped to the shorter of the two clips.
+  const clamped = S.timelineLayout([clip({ key: 'a', out: 1 }), clip({ key: 'b', in: 0, out: 5, transition: 4 })]);
+  assert.equal(clamped.rows[1].overlap, 1);
+  assert.match(S.clipChanges(clip({ transition: 0.5 })), /Übergang 0\.5 s/);
+});
+
 check('licence key and stream-safety follow the app rules', () => {
   assert.equal(S.licenseKey('CC0'), 'free');
   assert.equal(S.licenseKey('Public Domain'), 'free');
