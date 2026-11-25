@@ -5362,8 +5362,8 @@
       'Freunde: Du siehst jetzt, was deine Freunde gerade hören, und reagierst mit einem Emoji. Kontakt nur per Freundescode – kein Chat, keine Suche nach Personen.',
       'Gruppen: Eine gemeinsame Wochenkarte (wer hört am meisten?) und eine geteilte Gruppen-Playlist – beitreten nur per Gruppencode.',
       'Ganz ohne Konto mit E-Mail oder Passwort: Dein Gerät erzeugt einen Schlüssel, der private Teil bleibt verschlüsselt auf diesem PC. Mehr dazu unter „Datenschutz für Social“ – abschaltbar.',
-    ],
-    '1.28.0': [
+      'Studio im Cutter-Modus: Das Cutting-Projekt ist jetzt eine Timeline mit mehreren Clips – Start/Ende, Fades, Normalisieren, Loop und Übergänge je Clip, Vorschau und Export als WAV samt Credit-.txt. Die Originale bleiben unverändert.',
+      'Rezepte mit Lizenz-Filter: Smart-Playlists filtern jetzt auch nach Lizenz (CC0/Public Domain, CC BY, NCS, andere).',
       'Neuer Songtext-Effekt „Lyric Video“: Kinetic Typography im TikTok-/Shorts-Stil – gestapelte Wörter in Condensed-Großbuchstaben, ein Schlüsselwort in der Coverfarbe, Hell/Dunkel-Wechsel auf den Beat.',
       'Supporter-Extras zum Ausprobieren: Neue Installationen haben alle mit ♥ markierten Extras 7 Tage frei. Wer in 1.27.0 noch nicht freigeschaltet hatte, bekommt die 7 Tage ab jetzt.',
       'Nach der Probezeit springen Theme, Hintergrund, Songtext-Effekt und Visualizer-Stil auf den Standard zurück. Den Freischalt-Code gibt es kostenlos auf Ko-fi und im Discord – eine Spende ist freiwillig und kauft nichts Exklusives.',
