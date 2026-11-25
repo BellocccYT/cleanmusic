@@ -41,6 +41,8 @@
   if (!CMPersist) throw new Error('renderer/core/persist.js fehlt');
   const { STORAGE } = CMPersist;
 
+  const CMStudio = window.CMStudio || null;
+
   const ICONS = {
     search:
       '<svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>',
@@ -9785,13 +9787,13 @@
     if (state.view === 'creator') drawWave();
   }
 
-  function wavBytes(buffer, from, to, options = {}) {
+  function processSlice(buffer, from, to, options = {}) {
     const rate = buffer.sampleRate;
     const channels = Math.min(2, buffer.numberOfChannels);
     const start = Math.max(0, Math.floor(from * rate));
     const end = Math.min(buffer.length, Math.floor(to * rate));
     const frames = Math.max(0, end - start);
-    if (!frames) return new Uint8Array(0);
+    if (!frames) return { channels: [], frames: 0, rate };
     const audioData = Array.from({ length: channels }, (_value, channel) => Float32Array.from(buffer.getChannelData(channel).subarray(start, end)));
     const fadeInFrames = Math.min(frames, Math.round(Math.max(0, Math.min(5, Number(options.fadeIn) || 0)) * rate));
     const fadeOutFrames = Math.min(frames, Math.round(Math.max(0, Math.min(5, Number(options.fadeOut) || 0)) * rate));
@@ -9823,30 +9825,43 @@
         audioData.forEach((channel) => { for (let i = 0; i < channel.length; i += 1) channel[i] *= scale; });
       }
     }
-    const out = new DataView(new ArrayBuffer(44 + frames * channels * 2));
+    return { channels: audioData, frames, rate };
+  }
+
+  function encodeWav(channels, rate, frames) {
+    const count = Math.max(0, Number.isFinite(frames) ? frames : (channels[0] ? channels[0].length : 0));
+    const ch = Math.max(1, Math.min(2, channels.length));
+    if (!count) return new Uint8Array(0);
+    const out = new DataView(new ArrayBuffer(44 + count * ch * 2));
     const write = (offset, textValue) => [...textValue].forEach((char, index) => out.setUint8(offset + index, char.charCodeAt(0)));
     write(0, 'RIFF');
-    out.setUint32(4, 36 + frames * channels * 2, true);
+    out.setUint32(4, 36 + count * ch * 2, true);
     write(8, 'WAVE');
     write(12, 'fmt ');
     out.setUint32(16, 16, true);
     out.setUint16(20, 1, true);
-    out.setUint16(22, channels, true);
+    out.setUint16(22, ch, true);
     out.setUint32(24, rate, true);
-    out.setUint32(28, rate * channels * 2, true);
-    out.setUint16(32, channels * 2, true);
+    out.setUint32(28, rate * ch * 2, true);
+    out.setUint16(32, ch * 2, true);
     out.setUint16(34, 16, true);
     write(36, 'data');
-    out.setUint32(40, frames * channels * 2, true);
+    out.setUint32(40, count * ch * 2, true);
     let offset = 44;
-    for (let frame = start; frame < end; frame += 1) {
-      for (let channel = 0; channel < channels; channel += 1) {
-        const sample = Math.max(-1, Math.min(1, audioData[channel][frame - start]));
+    for (let frame = 0; frame < count; frame += 1) {
+      for (let channel = 0; channel < ch; channel += 1) {
+        const sample = Math.max(-1, Math.min(1, channels[channel][frame] || 0));
         out.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
         offset += 2;
       }
     }
     return new Uint8Array(out.buffer);
+  }
+
+  function wavBytes(buffer, from, to, options = {}) {
+    const slice = processSlice(buffer, from, to, options);
+    if (!slice.frames) return new Uint8Array(0);
+    return encodeWav(slice.channels, slice.rate, slice.frames);
   }
 
   async function saveCut() {
@@ -9884,6 +9899,77 @@
       toast(result && result.ok ? `Gespeichert: ${result.name} – zum Schnittprogramm ziehen` : (result && result.error) || 'Speichern fehlgeschlagen');
     } catch (error) {
       toast(`Speichern fehlgeschlagen: ${error.message}`);
+    }
+  }
+
+  // Studio: render the whole timeline (all clips in order) into one WAV.
+  async function exportProject() {
+    const project = activeCutProject();
+    if (!project || !project.clips.length) {
+      toast('Kein Projekt oder keine Clips zum Exportieren.');
+      return;
+    }
+    if (!bridge.studioExport) {
+      toast('Der Export ist nur in der Desktop-App verfügbar.');
+      return;
+    }
+    if (!CMStudio || !CMStudio.isStreamSafe(project.clips)) {
+      toast('Nicht alle Clips sind stream-sicher. Export nur mit CC0, CC BY, Public Domain oder NCS.');
+      return;
+    }
+    const clips = project.clips.filter((clip) => clip.url && clip.out > clip.in);
+    if (!clips.length) {
+      toast('Kein Clip hat einen hörbaren Ausschnitt (Start muss vor dem Ende liegen).');
+      return;
+    }
+    toast('Projekt wird gerendert …');
+    try {
+      const buffers = new Map();
+      for (const clip of clips) {
+        if (!buffers.has(clip.key)) {
+          buffers.set(clip.key, await decodeEntry({ id: clip.key, url: clip.url, kind: 'stream' }, { full: true, rate: 44100 }));
+        }
+      }
+      const rate = 44100;
+      const tracks = [[], []];
+      let total = 0;
+      clips.forEach((clip) => {
+        const buffer = buffers.get(clip.key);
+        if (!buffer) return;
+        const slice = processSlice(buffer, clip.in, clip.out, clip);
+        total += slice.frames;
+        for (let channel = 0; channel < 2; channel += 1) {
+          tracks[channel].push(slice.channels[channel] || new Float32Array(slice.frames));
+        }
+      });
+      const channels = [0, 1].map((channel) => {
+        const merged = new Float32Array(total);
+        let offset = 0;
+        tracks[channel].forEach((data) => {
+          merged.set(data, offset);
+          offset += data.length;
+        });
+        return merged;
+      });
+      const bytes = encodeWav(channels, rate, total);
+      const result = await bridge.studioExport({
+        bytes,
+        name: project.name,
+        text: projectCreditsText(project),
+        clips: clips.map((clip) => ({
+          title: clip.title,
+          artist: clip.artist,
+          license: clip.license,
+          credit: clip.credit,
+          from: clip.in,
+          to: clip.out,
+          changes: CMStudio.clipChanges(clip),
+        })),
+        folder: state.settings.downloadDir,
+      });
+      toast(result && result.ok ? `Projekt gespeichert: ${result.name} – inklusive Credit-.txt` : (result && result.error) || 'Export fehlgeschlagen');
+    } catch (error) {
+      toast(`Export fehlgeschlagen: ${error.message}`);
     }
   }
 
@@ -9958,6 +10044,18 @@
         } else if (event.target.id === 'cut-fade-in') cut.exportOptions.fadeIn = Number(event.target.value) || 0;
         else if (event.target.id === 'cut-fade-out') cut.exportOptions.fadeOut = Number(event.target.value) || 0;
         else if (event.target.id === 'cut-loop-ms') cut.exportOptions.loopMs = Number(event.target.value) || 150;
+        const clipTrim = event.target.closest('[data-clip-in], [data-clip-out]');
+        if (clipTrim) {
+          const project = activeCutProject();
+          const index = Number(clipTrim.dataset.clipIn != null ? clipTrim.dataset.clipIn : clipTrim.dataset.clipOut);
+          const clip = project && project.clips[index];
+          if (!clip) return;
+          const value = Math.max(0, Number(event.target.value) || 0);
+          if (clipTrim.dataset.clipIn != null) clip.in = Math.min(value, clip.out);
+          else clip.out = Math.max(value, clip.in);
+          persistCutProjects();
+          renderCredits();
+        }
       });
     }
     document.addEventListener('keydown', (event) => {
@@ -11410,16 +11508,10 @@
   const cutProjectData = readJSON(STORAGE.cutProjects, {}) || {};
   const cutProjects = {
     active: typeof cutProjectData.active === 'string' ? cutProjectData.active : null,
-    projects: (Array.isArray(cutProjectData.projects) ? cutProjectData.projects : []).filter((project) => project && typeof project.id === 'string').slice(0, 100).map((project) => ({
-      id: String(project.id).slice(0, 80),
-      name: String(project.name || 'Projekt').slice(0, 80),
-      created: Number(project.created) || Date.now(),
-      items: (Array.isArray(project.items) ? project.items : []).filter((item) => item && typeof item.key === 'string' && typeof item.credit === 'string').slice(0, 2000).map((item) => ({
-        key: String(item.key).slice(0, 240), title: String(item.title || '').slice(0, 200), artist: String(item.artist || '').slice(0, 200),
-        license: String(item.license || '').slice(0, 80), licenseUrl: String(item.licenseUrl || '').slice(0, 1000), credit: String(item.credit || '').slice(0, 2000),
-        source: String(item.source || '').slice(0, 80), url: String(item.url || '').slice(0, 1000),
-      })),
-    })),
+    projects: (Array.isArray(cutProjectData.projects) ? cutProjectData.projects : [])
+      .slice(0, 100)
+      .map((project) => (CMStudio ? CMStudio.normalizeProject(project) : null))
+      .filter((project) => project && project.id),
   };
   if (cutProjects.active && !cutProjects.projects.some((project) => project.id === cutProjects.active)) cutProjects.active = null;
 
@@ -11438,20 +11530,13 @@
       return false;
     }
     const key = String(entry.id || entry.url || `${entry.title}|${entry.artist}`);
-    if (project.items.some((item) => item.key === key)) {
+    if (project.clips.some((clip) => clip.key === key)) {
       if (!silent) toast('Dieser Titel ist schon im Projekt.');
       return false;
     }
-    project.items.push({
-      key,
-      title: String(entry.title || '').slice(0, 200),
-      artist: String(entry.artist || '').slice(0, 200),
-      license: String(entry.license || '').slice(0, 80),
-      licenseUrl: String(entry.licenseUrl || '').slice(0, 1000),
-      credit: String(entry.credit || '').slice(0, 2000),
-      source: String(entry.sourceLabel || entry.source || '').slice(0, 80),
-      url: String(entry.link || entry.url || '').slice(0, 1000),
-    });
+    const clip = CMStudio ? CMStudio.clipOf(entry, key) : null;
+    if (!clip) return false;
+    project.clips.push(clip);
     persistCutProjects();
     if (state.view === 'creator') renderCredits();
     if (!silent) toast(`„${entry.title}“ zum Projekt „${project.name}“ hinzugefügt.`);
@@ -11462,7 +11547,7 @@
     const answer = await askText({ title: 'Neues Cutting-Projekt', message: 'Name für dein Video-Projekt:', value: 'Mein Video-Projekt', confirm: 'Erstellen' });
     const name = String(answer || '').trim().slice(0, 80);
     if (!name) return;
-    const project = { id: uid(), name, created: Date.now(), items: [] };
+    const project = { id: uid(), name, created: Date.now(), clips: [] };
     cutProjects.projects.unshift(project);
     cutProjects.active = project.id;
     persistCutProjects();
@@ -11471,28 +11556,12 @@
 
   function projectCreditsText(project) {
     if (!project) return '';
-    const groups = new Map();
-    const seen = new Set();
-    project.items.forEach((item) => {
-      const license = item.license || 'Lizenz nicht angegeben';
-      const credit = item.credit.trim() || `„${item.title}“${item.artist ? ` von ${item.artist}` : ''}${item.source ? ` (${item.source})` : ''}`;
-      const key = credit.toLowerCase().replace(/\s+/g, ' ').trim();
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      if (!groups.has(license)) groups.set(license, []);
-      groups.get(license).push(credit);
-    });
-    return [
-      `Musik & Sounds – ${project.name}`,
-      '',
-      ...Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, 'de')).flatMap((license) => [license, ...groups.get(license), '']),
-      'Zusammengestellt mit CleanMusic',
-    ].join('\n').trim();
+    return CMStudio ? CMStudio.studioCreditText(project) : '';
   }
 
   async function saveCutProjectCredits() {
     const project = activeCutProject();
-    if (!project || !project.items.length || !bridge.projectCreditsSave) return;
+    if (!project || !project.clips.length || !bridge.projectCreditsSave) return;
     const result = await bridge.projectCreditsSave({ name: project.name, folder: state.settings.downloadDir || state.downloadDefault || '', text: projectCreditsText(project) });
     if (result && result.ok) toast(`Projekt-Credits gespeichert: ${result.name}`);
     else toast(result && result.error || 'Credits konnten nicht gespeichert werden.');
@@ -11932,21 +12001,57 @@
   function cutProjectPanelHtml() {
     const project = activeCutProject();
     const projects = cutProjects.projects;
+    const layout = project && CMStudio ? CMStudio.timelineLayout(project.clips) : { total: 0 };
     return `
       <section class="cut-projects-panel">
-        <div class="credits-head"><h3>Cutting-Projekte</h3><span class="credits-count">${projects.length}</span></div>
+        <div class="credits-head"><h3>Studio</h3><span class="credits-count">${projects.length}</span></div>
         <div class="row">
-          <select id="cut-project-select" class="select-input" aria-label="Aktives Cutting-Projekt">
+          <select id="cut-project-select" class="select-input" aria-label="Aktives Projekt">
             <option value="">Kein Projekt</option>
             ${projects.map((entry) => `<option value="${esc(entry.id)}" ${entry.id === cutProjects.active ? 'selected' : ''}>${esc(entry.name)}</option>`).join('')}
           </select>
           <button class="btn ghost small" data-project-action="new">Neues Projekt</button>
         </div>
-        ${project ? `<p class="muted small">${project.items.length} Titel/Sounds im Projekt · erfolgreiche „Nur Cutting“-Downloads werden automatisch ergänzt.</p>
-          ${project.items.length ? `<ol class="credits-list">${project.items.map((item, index) => `<li><div><strong>${esc(item.title)}</strong><span>${esc([item.artist, item.license].filter(Boolean).join(' · '))}</span></div><button class="icon-btn" data-project-remove="${index}" title="Aus Projekt entfernen">${ICONS.close}</button></li>`).join('')}</ol>
-            <div class="row"><button class="btn primary small" data-project-action="copy">Credits kopieren</button><button class="btn ghost small" data-project-action="save">Credits als .txt speichern</button><button class="btn ghost small danger" data-project-action="delete">Projekt löschen</button></div>`
-            : `<p class="credits-empty">Füge Titel im Cutter mit „Zum Projekt“ hinzu.</p><button class="btn ghost small danger" data-project-action="delete">Projekt löschen</button>`}`
-          : '<p class="credits-empty">Lege ein Projekt an, um Musik und Sounds für ein Video zu sammeln.</p>'}
+        ${
+          project
+            ? `<div class="studio-timeline">
+                <p class="muted small">${project.clips.length} Clip${project.clips.length === 1 ? '' : 's'} · Gesamtlänge ${fmtTime(layout.total)} · nicht-destruktiv – die Quellen bleiben unverändert.</p>
+                ${
+                  project.clips.length
+                    ? `<ol class="credits-list studio-clips">${project.clips
+                        .map((clip, index) => {
+                          const max = clip.duration ? ` max="${clip.duration.toFixed(1)}"` : '';
+                          return `<li>
+                            <div class="studio-clip">
+                              <div class="studio-clip-meta">
+                                <strong>${esc(clip.title)}</strong>
+                                <span>${esc([clip.artist, clip.license].filter(Boolean).join(' · '))}${clip.url ? '' : ' · ohne Audio (nur Credit)'}</span>
+                              </div>
+                              <div class="studio-clip-trim">
+                                <label>Start <input type="number" min="0" step="0.1"${max} data-clip-in="${index}" value="${clip.in.toFixed(1)}" /> s</label>
+                                <label>Ende <input type="number" min="0" step="0.1"${max} data-clip-out="${index}" value="${clip.out.toFixed(1)}" /> s</label>
+                                <span class="muted small">${fmtTime(Math.max(0, clip.out - clip.in))}</span>
+                              </div>
+                            </div>
+                            <div class="row studio-clip-actions">
+                              <button class="icon-btn" data-clip-move="${index}:up" title="Nach oben" ${index === 0 ? 'disabled' : ''}>↑</button>
+                              <button class="icon-btn" data-clip-move="${index}:down" title="Nach unten" ${index === project.clips.length - 1 ? 'disabled' : ''}>↓</button>
+                              <button class="icon-btn" data-clip-remove="${index}" title="Aus Timeline entfernen">${ICONS.close}</button>
+                            </div>
+                          </li>`;
+                        })
+                        .join('')}</ol>`
+                    : `<p class="credits-empty">Füge Titel im Cutter mit „Zum Projekt“ hinzu – sie werden zu Clips in der Timeline.</p>`
+                }
+                <div class="row">
+                  <button class="btn primary small" data-project-action="export" ${project.clips.length ? '' : 'disabled'}>Als WAV exportieren</button>
+                  <button class="btn ghost small" data-project-action="copy">Credits kopieren</button>
+                  <button class="btn ghost small" data-project-action="save">Credits als .txt</button>
+                  <button class="btn ghost small danger" data-project-action="delete">Löschen</button>
+                </div>
+              </div>`
+            : '<p class="credits-empty">Lege ein Projekt an, um eine Timeline für dein Video zu bauen.</p>'
+        }
       </section>`;
   }
 
@@ -15690,11 +15795,26 @@ ${updatePanel()}
 
     // Cutter mode
     $('#view-creator').addEventListener('click', async (event) => {
-      const projectRemove = event.target.closest('[data-project-remove]');
-      if (projectRemove) {
+      const clipRemove = event.target.closest('[data-clip-remove]');
+      if (clipRemove) {
         const project = activeCutProject();
-        if (project) {
-          project.items.splice(Number(projectRemove.dataset.projectRemove), 1);
+        const index = Number(clipRemove.dataset.clipRemove);
+        if (project && project.clips[index]) {
+          project.clips.splice(index, 1);
+          persistCutProjects();
+          renderCredits();
+        }
+        return;
+      }
+      const clipMove = event.target.closest('[data-clip-move]');
+      if (clipMove) {
+        const project = activeCutProject();
+        const [at, direction] = String(clipMove.dataset.clipMove).split(':');
+        const index = Number(at);
+        const other = direction === 'up' ? index - 1 : index + 1;
+        if (project && project.clips[index] && project.clips[other]) {
+          const [clip] = project.clips.splice(index, 1);
+          project.clips.splice(other, 0, clip);
           persistCutProjects();
           renderCredits();
         }
@@ -15705,6 +15825,7 @@ ${updatePanel()}
         const project = activeCutProject();
         switch (projectAction.dataset.projectAction) {
           case 'new': await createCutProject(); return;
+          case 'export': exportProject(); return;
           case 'copy': {
             if (!project) return;
             const ok = await bridge.copyText(projectCreditsText(project));
@@ -16684,7 +16805,7 @@ ${updatePanel()}
     equalizerState: () => ({ enabled: eqState.enabled, preset: eqState.preset, gains: eqState.gains.slice(), custom: eqState.custom.length }),
     cutProjectSmoke: () => {
       const before = JSON.parse(JSON.stringify(cutProjects));
-      cutProjects.projects = [{ id: 'smoke-project', name: 'Smoke Video', created: Date.now(), items: [] }];
+      cutProjects.projects = [{ id: 'smoke-project', name: 'Smoke Video', created: Date.now(), clips: [] }];
       cutProjects.active = 'smoke-project';
       addEntryToCutProject({ id: 'smoke-a', title: 'Smoke Song', artist: 'Smoke Artist', license: 'CC BY 4.0', credit: 'Smoke Artist – Smoke Song (CC BY 4.0)' }, true);
       addEntryToCutProject({ id: 'smoke-b', title: 'Smoke Song', artist: 'Smoke Artist', license: 'CC BY 4.0', credit: 'Smoke Artist – Smoke Song (CC BY 4.0)' }, true);
@@ -16692,7 +16813,90 @@ ${updatePanel()}
       const text = projectCreditsText(project);
       cutProjects.active = before.active;
       cutProjects.projects = before.projects;
-      return { count: project.items.length, deduped: (text.match(/Smoke Artist – Smoke Song/g) || []).length === 1, text };
+      return { count: project.clips.length, deduped: (text.match(/Smoke Artist – Smoke Song/g) || []).length === 1, text };
+    },
+    studioSmoke: () => {
+      const before = JSON.parse(JSON.stringify(cutProjects));
+      cutProjects.projects = [{ id: 'smoke-studio', name: 'Smoke Studio', created: Date.now(), clips: [] }];
+      cutProjects.active = 'smoke-studio';
+      addEntryToCutProject({ id: 'studio-a', title: 'Studio A', artist: 'X', license: 'CC BY 4.0', credit: 'Studio A (CC BY 4.0)', url: 'https://example.com/a.mp3', duration: 5 }, true);
+      addEntryToCutProject({ id: 'studio-b', title: 'Studio B', artist: 'Y', license: 'CC0', credit: 'Studio B (CC0)', url: 'https://example.com/b.mp3', duration: 4 }, true);
+      const project = activeCutProject();
+      project.clips[0].in = 1;
+      project.clips[0].out = 4;
+      project.clips[1].in = 0;
+      project.clips[1].out = 4;
+      const layout = CMStudio ? CMStudio.timelineLayout(project.clips) : { rows: [] };
+      const safe = CMStudio ? CMStudio.isStreamSafe(project.clips) : false;
+      const text = projectCreditsText(project);
+      const rate = 44100;
+      const make = (seconds) => {
+        const len = Math.floor(seconds * rate);
+        const data = new Float32Array(len);
+        for (let i = 0; i < len; i += 1) data[i] = Math.sin(i * 0.05) * 0.4;
+        return { sampleRate: rate, numberOfChannels: 1, length: len, getChannelData: () => data };
+      };
+      const slices = project.clips.map((clip) => processSlice(make(clip.duration || clip.out), clip.in, clip.out, clip));
+      const total = slices.reduce((sum, slice) => sum + slice.frames, 0);
+      const merged = new Float32Array(total);
+      let offset = 0;
+      slices.forEach((slice) => {
+        merged.set(slice.channels[0] || new Float32Array(slice.frames), offset);
+        offset += slice.frames;
+      });
+      const bytes = encodeWav([merged], rate, total);
+      cutProjects.active = before.active;
+      cutProjects.projects = before.projects;
+      return {
+        clips: project.clips.length,
+        total,
+        safe,
+        riff: String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF',
+        ordered: layout.rows.length === 2 && layout.rows[0].end === 3 && layout.rows[1].start === 3,
+        changes: /Änderungen/.test(text) && /Studio A/.test(text) && /Studio B/.test(text),
+        bytes: bytes.length,
+      };
+    },
+    studioExportSmoke: async (folder) => {
+      const before = JSON.parse(JSON.stringify(cutProjects));
+      cutProjects.projects = [{ id: 'smoke-studio', name: 'Smoke Studio', created: Date.now(), clips: [] }];
+      cutProjects.active = 'smoke-studio';
+      addEntryToCutProject({ id: 'studio-a', title: 'Studio A', artist: 'X', license: 'CC BY 4.0', credit: 'Studio A (CC BY 4.0)', url: 'https://example.com/a.mp3', duration: 3 }, true);
+      addEntryToCutProject({ id: 'studio-b', title: 'Studio B', artist: 'Y', license: 'CC0', credit: 'Studio B (CC0)', url: 'https://example.com/b.mp3', duration: 2 }, true);
+      const project = activeCutProject();
+      project.clips[0].in = 0;
+      project.clips[0].out = 3;
+      project.clips[1].in = 0;
+      project.clips[1].out = 2;
+      const text = projectCreditsText(project);
+      const rate = 44100;
+      const make = (seconds) => {
+        const len = Math.floor(seconds * rate);
+        const data = new Float32Array(len);
+        for (let i = 0; i < len; i += 1) data[i] = Math.sin(i * 0.05) * 0.4;
+        return { sampleRate: rate, numberOfChannels: 1, length: len, getChannelData: () => data };
+      };
+      const slices = project.clips.map((clip) => processSlice(make(clip.duration || clip.out), clip.in, clip.out, clip));
+      const total = slices.reduce((sum, slice) => sum + slice.frames, 0);
+      const merged = new Float32Array(total);
+      let offset = 0;
+      slices.forEach((slice) => {
+        merged.set(slice.channels[0] || new Float32Array(slice.frames), offset);
+        offset += slice.frames;
+      });
+      const bytes = encodeWav([merged], rate, total);
+      const result = bridge.studioExport
+        ? await bridge.studioExport({
+            bytes,
+            name: project.name,
+            text,
+            clips: project.clips.map((clip) => ({ title: clip.title, artist: clip.artist, license: clip.license, credit: clip.credit, from: clip.in, to: clip.out, changes: CMStudio.clipChanges(clip) })),
+            folder: folder || '',
+          })
+        : { error: 'Kein Bridge' };
+      cutProjects.active = before.active;
+      cutProjects.projects = before.projects;
+      return { ok: Boolean(result && result.ok), name: result && result.name, error: result && result.error, safe: CMStudio.isStreamSafe(project.clips), changes: /Änderungen/.test(text) };
     },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),
@@ -16748,7 +16952,7 @@ ${updatePanel()}
       applyVolume();
       return { enabled: Boolean(actual), bands: actual && actual.eq ? actual.eq.length : 0, matches: Boolean(actual && actual.eq && actual.eq.length === 10 && Math.abs(actual.eq[0] - 5) < 0.2 && Math.abs(actual.eq[9] + 4) < 0.2) };
     },
-    projectState: () => ({ active: activeCutProject() ? activeCutProject().name : null, projects: cutProjects.projects.length, items: activeCutProject() ? activeCutProject().items.length : 0 }),
+    projectState: () => ({ active: activeCutProject() ? activeCutProject().name : null, projects: cutProjects.projects.length, items: activeCutProject() ? activeCutProject().clips.length : 0 }),
     projectText: (project) => projectCreditsText(project || activeCutProject()),
     reviewImageTest: (format) => reviewImageDataUrl(format || 'story'),
     setStreamSafe: (on) => setStreamSafe(on),

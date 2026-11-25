@@ -120,6 +120,7 @@ contextBridge.exposeInMainWorld('cm', {
   albumTracks: (id) => ipcRenderer.invoke('album-tracks', id),
   audioBytes: (url, options) => ipcRenderer.invoke('audio-bytes', url, options || null),
   cutSave: (item) => ipcRenderer.invoke('cut-save', item),
+  studioExport: (item) => ipcRenderer.invoke('studio-export', item),
   downloadsList: (folder) => ipcRenderer.invoke('downloads-list', folder || ''),
   onDeepLink: (listener) => {
     ipcRenderer.on('deep-link', (_event, link) => listener(link));

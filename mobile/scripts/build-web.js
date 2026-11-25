@@ -145,6 +145,7 @@ const mustExist = [
   'core/share.js',
   'core/supporter.js',
   'core/lyricvideo.js',
+  'core/studio.js',
   'core/text.js',
   'audio/queue.js',
   'onboarding-music.js',

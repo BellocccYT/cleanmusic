@@ -177,7 +177,7 @@ dein Quellen-Plugin wiederfindet. Lokale Dateien und Radio bleiben bei dir; bis 
 
 Unter `extras/browser-extension/cleanmusic-youtube/` liegt eine Manifest-V3-Erweiterung,
 die im Chrome Web Store veröffentlicht ist
-([Eintrag](https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc)):
+([Eintrag](https://chromewebstore.google.com/detail/cleanmusic-f%C3%BCr-youtube/hghnplimkfmogkheakonaplkefglciog)):
 Knopf unter dem Titel, in den Player-Steuerungen und schwebend auf YouTube Music/Shorts;
 Popup mit Vorschau und Katalogsuche; drei Rechtsklick-Einträge; drei Tastenkürzel;
 Einstellungen, Einrichtungs- und Datenschutzseite. Sie schickt nur Video-ID, Titel und Channel an die lokale App –
@@ -287,6 +287,12 @@ bis zu 100 Titel anzeigen; für vollständige Playlists bitte den Datei-Import v
 > Schleife abspielen, Zeitmarken kopieren – und bei CC0/CC BY/Public Domain im Modus „Nur
 > Cutting“ den Ausschnitt **als WAV** mit Credit-.txt in `CleanMusic Cutting\Schnitte`.
 >
+> **Studio (ab 2.0):** Das Cutting-Projekt ist jetzt eine **nicht-destruktive Timeline**
+> mit mehreren Clips. „Zum Projekt“ legt einen Clip an, Start/Ende lassen sich je Clip
+> setzen, die Reihenfolge per ↑/↓ ändern. **„Als WAV exportieren“** rendert alle Clips in
+> ihrer Reihenfolge zu einer Datei und schreibt eine Credit-.txt mit Lizenz und Änderungen
+> (nur stream-sicher: CC0, CC BY, Public Domain, NCS).
+
 > **Für dich (ab 1.5):** Vorschläge aus den Kategorien, die du am meisten nutzt – ohne
 > Titel, die du schon gecreditet hast (Mix, nur Musik, nur Sounds).
 >

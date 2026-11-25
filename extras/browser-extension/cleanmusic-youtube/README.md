@@ -9,7 +9,7 @@ keine Telemetrie. Alles bleibt auf dem Rechner.
 
 ## Installieren
 
-**Aus dem Chrome Web Store:** [CleanMusic für YouTube](https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc)
+**Aus dem Chrome Web Store:** [CleanMusic für YouTube](https://chromewebstore.google.com/detail/cleanmusic-f%C3%BCr-youtube/hghnplimkfmogkheakonaplkefglciog)
 öffnen → *Hinzufügen*. Kostet nichts, keine Anmeldung.
 
 **Entpackt (Entwicklung):**

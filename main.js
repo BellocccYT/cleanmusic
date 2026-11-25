@@ -2884,6 +2884,32 @@ function createMainWindow() {
             console.error('SMOKE_LYRIC_VIDEO_FAIL:', error.message);
           }
 
+          // Studio (2.0): Timeline rendern (Datenmodell + WAV) und Export per IPC.
+          try {
+            const studio = await mainWindow.webContents.executeJavaScript('window.CleanMusic.studioSmoke()');
+            if (!(studio && studio.clips === 2 && studio.safe && studio.riff && studio.ordered && studio.changes && studio.total === 7 * 44100)) {
+              throw new Error(JSON.stringify(studio));
+            }
+            const studioDir = fs.mkdtempSync(path.join(app.getPath('temp'), 'cleanmusic-smoke-studio-'));
+            let exportSmoke = null;
+            try {
+              const exported = await mainWindow.webContents.executeJavaScript(`window.CleanMusic.studioExportSmoke(${JSON.stringify(studioDir)})`);
+              const wavPath = exported && exported.name ? path.join(studioDir, '_Studio', exported.name) : '';
+              exportSmoke = {
+                ok: Boolean(exported && exported.ok),
+                safe: Boolean(exported && exported.safe),
+                changes: Boolean(exported && exported.changes),
+                wav: fs.existsSync(wavPath),
+                txt: fs.existsSync(wavPath && wavPath.replace(/\.wav$/i, '') + '.txt'),
+              };
+            } finally {
+              fs.rmSync(studioDir, { recursive: true, force: true });
+            }
+            console.log('SMOKE_STUDIO:', JSON.stringify({ render: studio, export: exportSmoke }));
+          } catch (error) {
+            console.error('SMOKE_STUDIO_FAIL:', error.message);
+          }
+
           // 1.6: artist page, share link, deep link (cleanmusic://).
           const deepOk = parseDeepLink('cleanmusic://play?src=deezer&id=3135553&t=One%20More%20Time&a=Daft%20Punk');
           const deepAdd = parseDeepLink('cleanmusic://add?src=youtube&id=dQw4w9WgXcQ&t=Never%20Gonna%20Give%20You%20Up&a=Rick%20Astley');
@@ -7676,6 +7702,41 @@ ipcMain.handle('cut-save', async (_event, input) => {
       .filter((line, index, lines) => line !== '' || (lines[index - 1] && lines[index - 1] !== ''))
       .join('\r\n');
     fs.writeFileSync(file.replace(/\.wav$/i, '') + '.txt', credit + '\r\n', 'utf8');
+    downloadedFiles.add(file);
+    return { ok: true, path: file, name: path.basename(file) };
+  } catch (error) {
+    return { error: cleanText(error.message, 200) };
+  }
+});
+
+// Studio (2.0): export a whole project timeline (all clips in order) as one
+// WAV plus one credit .txt. Same licence + host rules as the single-clip cut.
+ipcMain.handle('studio-export', async (_event, input) => {
+  const item = input && typeof input === 'object' ? input : {};
+  const clips = (Array.isArray(item.clips) ? item.clips : []).slice(0, 200);
+  if (!clips.length) return { error: 'Keine Clips zum Exportieren.' };
+  const licenses = clips.map((clip) => cleanText(clip && clip.license, 40));
+  if (licenses.some((license) => !DOWNLOAD_LICENSE.test(license))) {
+    return { error: 'Nur CC0, CC BY und Public Domain können exportiert werden.' };
+  }
+  const raw = item.bytes;
+  const bytes = raw instanceof Uint8Array ? Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength) : null;
+  if (!bytes || bytes.length < 44 || bytes.length > 600 * 1024 * 1024) return { error: 'Ungültige Audiodaten.' };
+  if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') return { error: 'Ungültige Audiodaten.' };
+  const name = cleanText(item.name, 80) || 'Projekt';
+  const text = typeof item.text === 'string' ? item.text.slice(0, 1024 * 1024) : '';
+  const folder = path.join(downloadBase(item.folder), '_Studio');
+  const stem = safeName(name, 'Projekt');
+  try {
+    fs.mkdirSync(folder, { recursive: true });
+    let file = path.join(folder, `${stem}.wav`);
+    let n = 2;
+    while (fs.existsSync(file)) {
+      file = path.join(folder, `${stem} (${n}).wav`);
+      n += 1;
+    }
+    fs.writeFileSync(file, bytes);
+    fs.writeFileSync(file.replace(/\.wav$/i, '') + '.txt', (text || '').replace(/\r?\n/g, '\r\n') + '\r\n', 'utf8');
     downloadedFiles.add(file);
     return { ok: true, path: file, name: path.basename(file) };
   } catch (error) {

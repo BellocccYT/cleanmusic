@@ -6,8 +6,8 @@ versprechen und nichts weglassen.
 
 > **Status: veröffentlicht.** Version 2.0.0, seit 24. November 2026 im Chrome Web Store,
 > Sichtbarkeit öffentlich.
-> Eintrag: https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc
-> Item-ID: `hghplimkfmogkheakonapklcfgioc`
+> Eintrag: https://chromewebstore.google.com/detail/cleanmusic-f%C3%BCr-youtube/hghnplimkfmogkheakonaplkefglciog
+> Item-ID: `hghnplimkfmogkheakonaplkefglciog`
 
 ## Basisdaten
 
