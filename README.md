@@ -648,6 +648,12 @@ musikreaktiver Visualizer für OBS: **Balken**, **Spiegel**, **Kreis** oder
 Cover. Einfach als transparente Browserquelle einfügen (ca. 800 × 300, Kreis
 420 × 420). Das Plugin meldet CleanMusic dafür `visualizer: true`; nur dann
 schickt die App das Spektrum etwa 25-mal pro Sekunde an den lokalen Server.
+Ab Plugin 1.3.0 kommen Effekte nach dem Vorbild des OBS-Plugins „Waveform“
+dazu: **gestufte Balken**, **Kreis gestuft**, **Kreis-Kurve**,
+**Pegelanzeige** (auch gestuft), **Pegel-Verlauf**, Farbmodi (einfarbig,
+Verlauf, nur Linien, pulsierend, dreifarbig), eigene Farben, Glättung/Trägheit,
+Frequenzbereich, gespiegelte Frequenzen, Halbkreis und Drehung, Lautstärke
+angleichen, Ausblenden bei Stille und Verzögerung.
 Anleitung: [extras/plugins/README.md](extras/plugins/README.md#obs-audio-visualizer-obs-visualizerjs).
 
 ---

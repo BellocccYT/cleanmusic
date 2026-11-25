@@ -55,6 +55,82 @@ der Rest bleibt transparent), **Abstand** zwischen den Balken (0–20 px),
 Empfindlichkeit, Leuchten, dunkler Hintergrund, Titel/Künstler einblenden und
 „Bei Pause ausblenden“.
 
+### Effekte ab Plugin 1.3.0 (nach dem Vorbild von „Waveform“)
+
+Angelehnt an das OBS-Plugin [Waveform](https://obsproject.com/forum/resources/waveform.1423/),
+aber eigener Code und nur mit den Daten, die CleanMusic liefert (32 Spektrum-Bänder
+von 30 Hz bis 16 kHz). Alle neuen Einstellungen starten so, dass bestehende Quellen
+genau wie vorher aussehen.
+
+Neue Stile:
+
+| Stil | URL | Empfohlene Größe |
+|---|---|---|
+| Gestufte Balken (LED-Optik) | `?style=steps` | 800 × 300 |
+| Kreis, gestuft | `?style=radial-steps` | 420 × 420 |
+| Kreis-Kurve (geschlossene Kurve um den Kreis) | `?style=radial-wave` | 420 × 420 |
+| Pegelanzeige (waagerecht in breiten, senkrecht in hohen Quellen) | `?style=meter` | 800 × 80 oder 80 × 400 |
+| Pegelanzeige, gestuft | `?style=meter-steps` | 800 × 80 |
+| Pegel-Verlauf (läuft von rechts nach links) | `?style=history` | 800 × 200 |
+
+Neue Einstellungen in der Plugin-Karte:
+
+- **Farbmodus:** *Automatisch* (wie bisher), *Einfarbig*, *Farbverlauf*, *Nur Linien*,
+  *Pulsieren (Lautstärke)* bzw. *(Tonhöhe)* – alles wechselt zwischen Grund- und
+  Spitzenfarbe –, *Dreifarbig* (leise/mittel/laut wie eine Aussteuerungsanzeige;
+  ohne eigene Farben: Cover-Farben plus Rot für die Spitze).
+- **Eigene Farben:** bis zu drei Farben, z. B. `#5b8cff, #35e0c0, #ffd166`
+  (Grundfarbe, Spitzenfarbe, Mittelfarbe für „Dreifarbig“). `#RRGGBBAA` setzt die
+  Deckkraft. Leer = Farben aus dem Cover.
+- **Glättung** (*Normal*, *Schnelle Spitzen*, *Zeitbasiert*, beides) und **Trägheit**
+  (0–98 %, Standard 88 %): wie schnell die Balken fallen. *Zeitbasiert* sieht bei
+  30 und 60 fps gleich aus.
+- **Frequenzbereich (Hz):** z. B. `30-250` für nur Bass, `200-5k` für Stimmen.
+- **Frequenzen spiegeln:** symmetrisch, Bass in der Mitte.
+- **Stufenhöhe** und **Stufenabstand** für die gestuften Stile.
+- **Kreis-Bogen** (10–360°) und **Kreis-Drehung** (0 = oben, im Uhrzeigersinn).
+  Halbkreis unten: Bogen 180, Drehung 90; oben: Bogen 180, Drehung 270. Teilbögen
+  werden in der Quelle zentriert und füllen sie aus.
+- **Pegel:** Durchschnitt (RMS) oder Spitze, für Pegelanzeige und Verlauf.
+- **Lautstärke angleichen:** leise Titel größer, laute kleiner (höchstens 4-fach).
+- **Bei Stille ausblenden** (nach ca. 1,5 s) und **Verzögerung** (0–1000 ms), falls
+  der Ton in OBS später ankommt als das Bild.
+
+**Pro Quelle über die URL:** Jede Einstellung außer dem Port lässt sich an der URL
+überschreiben, z. B. zwei Browserquellen mit unterschiedlichem Aussehen:
+`/visualizer?style=radial-wave&radialArc=180&radialRotation=270&colorMode=range`.
+Farben ohne `#` schreiben (`colors=ff4d8d,ffd166`), Schalter mit `1`/`0`.
+Diese Feinheiten gibt es **nur** als URL-Parameter:
+
+| Parameter | Wirkung | Bereich (Standard) |
+|---|---|---|
+| `minHeight` | Mindesthöhe der Balken in px | 0–200 (0) |
+| `rounded` | abgerundete Ecken | 1/0 (1) |
+| `inner` | Innenradius der Kreis-Stile in % | 5–90 (wie bisher) |
+| `invert` | Kreis-Balken wachsen nach innen | 1/0 (0) |
+| `slope` | Höhen anheben | 0–10 (0) |
+| `rolloff` | Ränder auslaufen lassen, in Oktaven | 0–4 (0) |
+| `blur` | Glätten über benachbarte Balken | 0–4 (0) |
+| `interp` | Zwischenwerte: `linear`, `cubic`, `nearest` | (`linear`) |
+| `scale` | Frequenzachse `log` oder `linear` | (`log`) |
+| `ratio` | Länge des Farbverlaufs | 0,25–4 (1) |
+| `floor` / `ceil` | Untergrenze/Obergrenze in % (Rauschen ausblenden) | 0–90 / 10–100 (0 / 100) |
+| `mid` / `crest` | Schwellen für „Dreifarbig“ in % | 5–95 / 6–100 (65 / 85) |
+| `seconds` | Länge des Pegel-Verlaufs in Sekunden | 1–30 (6) |
+| `maxGain` | höchste Verstärkung beim Angleichen | 1–8 (4) |
+
+Die Seite zeichnet höchstens 60 Bilder pro Sekunde (OBS-Browserquellen laufen
+standardmäßig mit 30). Browser erlauben etwa sechs Live-Verbindungen pro Adresse –
+wer mehr als sechs Visualizer-Quellen gleichzeitig nutzt, verteilt sie auf
+`127.0.0.1` und `localhost`.
+
+**Was von Waveform nicht geht** (CleanMusic liefert dafür keine Daten):
+echte Wellenform (Audio-Samples), Stereo bzw. einzelne Kanäle, FFT-Größe und
+Fensterfunktion (die Analyse steckt in CleanMusic), Pegel in dBFS (Pegelanzeige und
+Verlauf werden aus dem Spektrum geschätzt), Audioquelle bzw. OBS-Ausgabebus
+(der Visualizer zeigt immer die Musik aus CleanMusic). „Weiter analysieren bei
+Stummschaltung“ ist schon eingebaut: Die Analyse sitzt vor der Lautstärke.
+
 Der Visualizer braucht ein aktives Plugin mit der Fähigkeit
 `visualizer: true` (ab CleanMusic 1.15.0). Erst dann schickt CleanMusic das
 Spektrum mit etwa 25 Bildern pro Sekunde an den lokalen Server. Der Server
