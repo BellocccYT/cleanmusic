@@ -91,6 +91,15 @@ ohne Verhaltensänderung.
 
 **Fertig, wenn:** Queue-Tests grün, alle Smokes grün, `app.js` < 12.000 Zeilen.
 
+**Stand (2.0.0, begonnen):** `renderer/core/state.js` (`window.CMState`) ist da –
+`SETTINGS_DEFAULTS` (aus app.js ausgelagert), `normalizeSettings(stored)` und
+`createStore(state)` (umhüllt das bestehende State-Objekt **per Referenz**:
+`get`/`set`/`patch`/`subscribe`/`notify`, `store.settings`-Slice mit eigenem
+`subscribe`). app.js lädt die Settings-Defaults daraus und `saveSettings()` ruft
+`store.notify()`. Test `test/state.test.js` (7 Prüfungen), Smoke `SMOKE_STATE`.
+**Offen:** Queue, Player und Sammlung schrittweise auf den Store umstellen, damit
+`app.js` tatsächlich schrumpft.
+
 ### Phase 2 – Schema & Migrationen (Muss 2)
 
 - `cleanmusic.schema.v1` plus `migrations.js`.

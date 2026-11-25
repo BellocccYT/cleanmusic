@@ -2921,6 +2921,17 @@ function createMainWindow() {
             console.error('SMOKE_STUDIO_FAIL:', error.message);
           }
 
+          // Store foundation (2.0 Phase 1): wrap-by-reference, subscribe, settings.
+          try {
+            const stateStore = await mainWindow.webContents.executeJavaScript('window.CleanMusic.stateStoreTest()');
+            if (!(stateStore && stateStore.changed && stateStore.notified && stateStore.theme === 'nacht' && stateStore.normalized)) {
+              throw new Error(JSON.stringify(stateStore));
+            }
+            console.log('SMOKE_STATE:', JSON.stringify(stateStore));
+          } catch (error) {
+            console.error('SMOKE_STATE_FAIL:', error.message);
+          }
+
           // 1.6: artist page, share link, deep link (cleanmusic://).
           const deepOk = parseDeepLink('cleanmusic://play?src=deezer&id=3135553&t=One%20More%20Time&a=Daft%20Punk');
           const deepAdd = parseDeepLink('cleanmusic://add?src=youtube&id=dQw4w9WgXcQ&t=Never%20Gonna%20Give%20You%20Up&a=Rick%20Astley');

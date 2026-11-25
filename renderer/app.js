@@ -41,6 +41,9 @@
   if (!CMPersist) throw new Error('renderer/core/persist.js fehlt');
   const { STORAGE } = CMPersist;
 
+  const CMState = window.CMState;
+  if (!CMState) throw new Error('renderer/core/state.js fehlt');
+
   const CMStudio = window.CMStudio || null;
 
   const ICONS = {
@@ -275,54 +278,17 @@
       { shuffle: false, repeat: 'off' },
       readJSON(STORAGE.playback, {})
     ),
-    settings: Object.assign(
-      {
-        systemBrowser: false,
-        fullTracks: true,
-        visualizer: true,
-        fsVisualizer: true,
-        vizStyle: 'radial',
-        miniViz: true,
-        performance: 'balanced', // saver | balanced | quality
-
-        normalize: false,
-        volumeBoost: false,
-        bass: 0, // dB, −6 … +9
-        treble: 0, // dB, −6 … +6
-        theme: 'nacht',
-        coverAccent: false,
-        autoplay: true, // suggestions after single titles (search)
-        markAi: true, // "KI?" badge on labelled AI songs
-        background: 'none',
-        bgMotion: true,
-        bgPulse: false,
-        bgBatteryStop: true,
-        fsBackground: 'cover-moving',
-        streamSafe: false,
-        lyrics: false,
-        transition: 'off', // off | gapless | crossfade
-        layout: 'advanced', // simple | advanced
-        lyricsSize: 'm', // s | m | l | xl
-        lyricsAlign: 'left', // left | center
-        lyricsOffset: 0, // seconds, + = lines come earlier
-        lyricsScroll: true,
-        lyricsDim: true,
-        lyricsFocus: false, // big lyrics, no cover
-        vinyl: false, // cover as a spinning record + tonearm
-        lyricsEffect: 'pop', // none | pop | karaoke | kinetic
-        crossfadeSecs: 6,
-        onboarded: false,
-        downloads: 'off', // 'off' | 'cutting' – there is deliberately no "everything"
-        downloadDir: '',
-      },
-      readJSON(STORAGE.settings, {})
-    ),
+    settings: CMState.normalizeSettings(readJSON(STORAGE.settings, {})),
   };
 
   // 0.5.0 settings → plugin settings.
   if (state.settings.ytFull === false) state.settings.fullTracks = false;
   delete state.settings.ytFull;
   delete state.settings.ytdlp;
+
+  // Store foundation (2.0 Phase 1): wraps `state` by reference so old reads keep
+  // working; new code uses store.set/patch + subscribers (see core/state.js).
+  const store = CMState.createStore(state);
 
   const audio = $('#audio');
   let favIds = new Set(state.collection.favorites.map((entry) => entry.id));
@@ -356,6 +322,7 @@
   function saveSettings() {
     writeJSON(STORAGE.settings, state.settings);
     syncDiagnosticState();
+    store.notify();
   }
 
   function syncDiagnosticState() {
@@ -17154,6 +17121,24 @@ ${updatePanel()}
         effects: /data-clip-fx=/.test(html),
         transitions: /data-clip-fx="1:transition"/.test(html),
         total: /0:04/.test(html),
+      };
+    },
+    stateStoreTest: () => {
+      const before = state.settings.lyrics;
+      let notified = 0;
+      const off = store.settings.subscribe(() => {
+        notified += 1;
+      });
+      store.settings.set({ lyrics: !before });
+      const changed = state.settings.lyrics === !before;
+      store.settings.set({ lyrics: before });
+      off();
+      return {
+        changed,
+        notified: notified >= 2,
+        theme: CMState.SETTINGS_DEFAULTS.theme,
+        normalized: CMState.normalizeSettings({ theme: 'x' }).theme === 'x' && CMState.normalizeSettings({ theme: 'x' }).layout === 'advanced',
+        listeners: store.listenerCount(),
       };
     },
     shareUrl: (entry) => shareUrl(entry || {}),
