@@ -20,6 +20,7 @@ import { json, fail, TOO_MANY } from './http.js';
 import * as groups from './groups.js';
 import * as requests from './requests.js';
 import * as presence from './presence.js';
+import * as rooms from './rooms.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -44,6 +45,7 @@ const RATE = {
   ...groups.GROUP_RATE,
   ...requests.REQUEST_RATE,
   ...presence.PRESENCE_RATE,
+  ...rooms.ROOM_RATE,
 };
 
 const SCHEMA = [
@@ -108,8 +110,18 @@ export class SocialHub extends DurableObject {
       openRequests: Number(test.openRequests) || proto.LIMITS.openRequests,
       onlineTtlMs: Number(test.onlineTtlMs) || proto.LIMITS.onlineTtlMs,
     };
+    this.roomLimits = Object.assign({}, proto.LIMITS, {
+      roomNoHostMs: Number(test.roomNoHostMs) || proto.LIMITS.roomNoHostMs,
+      roomAwayMs: Number(test.roomAwayMs) || proto.LIMITS.roomAwayMs,
+    });
+    // S3: "ping" on a room socket is answered without waking the object.
+    try {
+      ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    } catch {
+      /* older runtime: the hub answers in webSocketMessage */
+    }
     ctx.blockConcurrencyWhile(async () => {
-      SCHEMA.concat(groups.GROUP_SCHEMA, requests.REQUEST_SCHEMA, presence.PRESENCE_SCHEMA).forEach((statement) => this.sql.exec(statement));
+      SCHEMA.concat(groups.GROUP_SCHEMA, requests.REQUEST_SCHEMA, presence.PRESENCE_SCHEMA, rooms.ROOM_SCHEMA).forEach((statement) => this.sql.exec(statement));
       requests.migrateRequests(this);
       if (!(await ctx.storage.getAlarm())) await ctx.storage.setAlarm(Date.now() + 10 * MIN);
     });
@@ -234,6 +246,16 @@ export class SocialHub extends DurableObject {
         const code = proto.parseGroupCode(data.code);
         extra.codeHash = code ? proto.toBase64Url(await sha256(code)) : '';
       }
+      if (path === '/v1/room' && method === 'POST') {
+        extra.roomId = names.accountIdFromDigest(crypto.getRandomValues(new Uint8Array(15)));
+        extra.code = proto.roomCodeFrom(crypto.getRandomValues(new Uint8Array(12)));
+        extra.codeHash = proto.toBase64Url(await sha256(extra.code));
+      }
+      if (path === '/v1/room/join') {
+        const code = proto.parseRoomCode(data.code);
+        extra.codeHash = code ? proto.toBase64Url(await sha256(code)) : '';
+      }
+      if (path === '/v1/room/live') extra.request = request;
       if (path === '/v1/friend-code' && !data.revoke) {
         extra.code = proto.friendCodeFrom(crypto.getRandomValues(new Uint8Array(12)));
         extra.codeHash = proto.toBase64Url(await sha256(extra.code));
@@ -340,6 +362,16 @@ export class SocialHub extends DurableObject {
         return groups.addTrack(this, account, data, now);
       case '/v1/group/track/remove':
         return groups.removeTrack(this, account, data);
+      case '/v1/room':
+        return method === 'POST' ? rooms.createRoom(this, account, extra, now) : rooms.getRoom(this, account, now);
+      case '/v1/room/join':
+        return rooms.joinRoom(this, account, extra, now);
+      case '/v1/room/leave':
+        return rooms.leaveRoom(this, account, data, now);
+      case '/v1/room/kick':
+        return rooms.kickMember(this, account, data, now);
+      case '/v1/room/live':
+        return rooms.openLive(this, account, extra.request, now);
       default:
         return fail(404, 'unbekannt', 'Diese Adresse gibt es nicht.');
     }
@@ -558,6 +590,7 @@ export class SocialHub extends DurableObject {
   }
 
   deleteAccount(id) {
+    rooms.deleteAccountRooms(this, id, Date.now());
     groups.deleteAccountGroups(this, id);
     requests.deleteAccountRequests(this, id);
     presence.deletePresence(this, id);
@@ -591,6 +624,7 @@ export class SocialHub extends DurableObject {
       if (method === 'POST' && path === '/v1/admin/switch') {
         if (typeof data.enabled === 'boolean') this.setMeta('enabled', data.enabled ? '1' : '0');
         if (Number.isFinite(data.pow)) this.setMeta('pow', Math.round(data.pow));
+        if (data.enabled === false) rooms.closeAll(this, rooms.CLOSE.off, 'aus');
         return json(this.status());
       }
       if (method === 'POST' && path === '/v1/admin/ban') {
@@ -615,6 +649,34 @@ export class SocialHub extends DurableObject {
     });
   }
 
+  /* --- S3: room sockets (Hibernation API, see rooms.js) ------------------ */
+  async webSocketMessage(ws, message) {
+    if (message === 'ping') return ws.send('pong');
+    try {
+      this.ctx.storage.transactionSync(() => rooms.onMessage(this, ws, message, Date.now()));
+    } catch (error) {
+      console.error('social room', error && error.message);
+    }
+    return undefined;
+  }
+
+  async webSocketClose(ws, code) {
+    try {
+      this.ctx.storage.transactionSync(() => rooms.onClose(this, ws, Date.now()));
+    } catch (error) {
+      console.error('social room close', error && error.message);
+    }
+    try {
+      ws.close(code === 1005 || code === 1006 ? 1000 : code, 'tschüss');
+    } catch {
+      /* already closed */
+    }
+  }
+
+  async webSocketError(ws) {
+    await this.webSocketClose(ws, 1011);
+  }
+
   /* --- housekeeping every 10 minutes ------------------------------------ */
   async alarm() {
     this.cleanup(Date.now());
@@ -632,6 +694,7 @@ export class SocialHub extends DurableObject {
       groups.cleanupGroups(this, now);
       requests.cleanupRequests(this, now);
       presence.cleanupPresence(this, now, this.limits.onlineTtlMs);
+      rooms.cleanupRooms(this, now, this.roomLimits);
       this.all('SELECT id FROM accounts WHERE seen < ? LIMIT 200', now - INACTIVE_MS).forEach((row) => this.deleteAccount(row.id));
     });
   }

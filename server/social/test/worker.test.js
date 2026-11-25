@@ -449,3 +449,118 @@ test('2.1 online: opt-in, only friends, switched off looks offline, expires with
   assert.equal((await friendsOf(b)).friends[0].online, false, 'Schalter aus = offline');
   assert.equal((await friendsOf(a)).me.showOnline, false);
 });
+
+// S3: a live room socket over the hub (Hibernation API in workerd).
+async function live(who) {
+  const headers = signedHeaders(who, 'GET', '/v1/room/live', '');
+  headers.upgrade = 'websocket';
+  const response = await mf.dispatchFetch('http://social.test/v1/room/live', { headers });
+  if (response.status !== 101) return { status: response.status, data: await response.json() };
+  const ws = response.webSocket;
+  const inbox = [];
+  const socket = { status: 101, ws, inbox, closed: 0 };
+  ws.accept();
+  ws.addEventListener('message', (event) => {
+    if (String(event.data).startsWith('{')) inbox.push(JSON.parse(event.data));
+    else inbox.push({ t: String(event.data) });
+  });
+  ws.addEventListener('close', (event) => {
+    socket.closed = event.code;
+  });
+  ws.addEventListener('error', () => {});
+  socket.next = async (type) => {
+    for (let i = 0; i < 100; i += 1) {
+      const index = inbox.findIndex((message) => message.t === type);
+      if (index >= 0) return inbox.splice(index, 1)[0];
+      await wait(20);
+    }
+    throw new Error(`keine Nachricht ${type}: ${JSON.stringify(inbox)}`);
+  };
+  socket.send = (data) => ws.send(typeof data === 'string' ? data : JSON.stringify(data));
+  return socket;
+}
+
+test('S3 rooms: code, live sockets, host steers, reactions, time, kick, host hand-over', async () => {
+  const host = client();
+  const guest = client();
+  const third = client();
+  const outsider = client();
+  for (const who of [host, guest, third, outsider]) await account(who);
+  // (A refused upgrade is checked in the app smoke; Miniflare's proxy resets that socket.)
+  const plain = await call(outsider, 'GET', '/v1/room/live');
+  assert.equal(plain.status, 426, 'ohne Upgrade');
+  const made = await call(host, 'POST', '/v1/room', {});
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  assert.match(made.data.code, proto.ROOM_CODE_RE);
+  assert.equal(made.data.room.host, host.id);
+  assert.equal((await call(host, 'GET', '/v1/room/live')).status, 426, 'nur WebSocket');
+  assert.equal((await call(guest, 'POST', '/v1/room/join', { code: 'R1-0000-0000-0000' })).status, 404);
+  const joined = await call(guest, 'POST', '/v1/room/join', { code: made.data.code.toLowerCase().replace(/-/g, ' ') });
+  assert.equal(joined.status, 201, JSON.stringify(joined.data));
+  assert.equal(joined.data.room.members.length, 2);
+
+  const hs = await live(host);
+  const gs = await live(guest);
+  assert.equal(hs.status, 101);
+  const hello = await gs.next('hello');
+  assert.equal(hello.me, guest.id);
+  assert.equal(hello.room.members.length, 2);
+  assert.deepEqual((await hs.next('members')).members.map((m) => [m.host, m.online]), [[true, true], [false, true]]);
+  // Only the host steers; the server stamps a sane time and cleans the ref.
+  hs.send({ t: 'state', ref, pos: 42.5, at: Date.now(), playing: true, full: true });
+  const state = await gs.next('state');
+  assert.deepEqual(state.state.ref, ref);
+  assert.equal(state.state.pos, 42.5);
+  assert.equal(state.state.playing, true);
+  gs.send({ t: 'state', ref, pos: 1, playing: false });
+  assert.equal((await gs.next('error')).error, 'nur-host');
+  hs.send({ t: 'state', ref: { src: 'local', title: 'C:/x.mp3' }, playing: true });
+  assert.equal((await hs.next('error')).error, 'ref');
+  gs.send({ t: 'react', emoji: '🔥' });
+  const react = await hs.next('react');
+  assert.equal(react.emoji, '🔥');
+  assert.equal(react.from.id, guest.id);
+  gs.send({ t: 'react', emoji: '💩' });
+  assert.equal((await gs.next('error')).error, 'emoji');
+  const sent = Date.now();
+  gs.send({ t: 'time', c: sent });
+  const time = await gs.next('time');
+  assert.equal(time.c, sent);
+  assert.ok(Math.abs(time.s - Date.now()) < 5000);
+  gs.send('ping');
+  assert.equal((await gs.next('pong')).t, 'pong');
+  // The stored state comes with the snapshot (late joiners start there).
+  assert.equal((await call(guest, 'GET', '/v1/room')).data.room.state.pos, 42.5);
+
+  // Kick: socket closed, no way back in with the code.
+  assert.equal((await call(third, 'POST', '/v1/room/join', { code: made.data.code })).status, 201);
+  const ts = await live(third);
+  await ts.next('hello');
+  assert.equal((await call(guest, 'POST', '/v1/room/kick', { id: third.id })).data.error, 'nur-host');
+  assert.equal((await call(host, 'POST', '/v1/room/kick', { id: third.id })).status, 200);
+  assert.equal((await ts.next('closed')).reason, 'raus');
+  assert.equal((await call(third, 'POST', '/v1/room/join', { code: made.data.code })).data.error, 'raus');
+  assert.equal((await call(third, 'GET', '/v1/room')).data.room, null);
+
+  // Host leaves → the oldest member takes over; the old host's socket is closed.
+  assert.equal((await call(host, 'POST', '/v1/room/leave', {})).status, 200);
+  assert.equal((await hs.next('closed')).reason, 'verlassen');
+  let members = await gs.next('members');
+  while (members.host !== guest.id) members = await gs.next('members');
+  assert.equal(members.members.length, 1);
+  assert.equal((await call(guest, 'GET', '/v1/room')).data.room.host, guest.id);
+  // A new host may close the room for everyone; the code is dead afterwards.
+  assert.equal((await call(host, 'POST', '/v1/room/join', { code: made.data.code })).status, 201);
+  assert.equal((await call(guest, 'POST', '/v1/room/leave', { close: true })).data.closed, true);
+  assert.equal((await gs.next('closed')).reason, 'host');
+  assert.equal((await call(host, 'GET', '/v1/room')).data.room, null);
+  assert.equal((await call(outsider, 'POST', '/v1/room/join', { code: made.data.code })).status, 404);
+  for (const socket of [hs, gs, ts]) {
+    try {
+      socket.ws.close(1000, 'ende');
+    } catch {
+      /* already closed */
+    }
+  }
+  await wait(300);
+});

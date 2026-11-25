@@ -125,4 +125,44 @@ check('S2: group codes, ISO weeks (same as CMGroup) and week cards', () => {
   assert.ok(P.isEndpoint('GET', '/v1/groups') && P.isEndpoint('POST', '/v1/group/track/remove'));
 });
 
+check('S3: room codes, shared room state, clock offset, socket address', () => {
+  const code = P.roomCodeFrom(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 31]));
+  assert.equal(code, 'R1-0123-4567-89AZ');
+  assert.equal(P.parseRoomCode(`Komm rein: ${P.friendLink(code)}`), code);
+  assert.equal(P.parseRoomCode('r1 o123 4567 89az'), code, 'Tippfehler O/I/L');
+  assert.equal(P.parseFriendCode(code), '');
+  assert.equal(P.parseGroupCode(code), '');
+  assert.equal(P.parseRoomCode('F1-0123-4567-89AZ G1-0123-4567-89AZ'), '');
+  assert.equal(P.parseRoomCode('G1-AAAA-BBBB-CCCC R1-0123-4567-89AZ'), code);
+  assert.ok(P.isEndpoint('POST', '/v1/room/join') && P.isEndpoint('GET', P.ROOM_LIVE));
+  assert.deepEqual(P.ROOM_MESSAGES, ['state', 'react', 'time']);
+
+  const now = 1795500000000;
+  const ref = { src: 'deezer', id: '3135553', title: 'One More Time', artist: 'Daft Punk' };
+  assert.deepEqual(P.cleanRoomState({ ref, pos: 12.34567, at: now - 300, playing: true, full: true, extra: 'x' }, now), {
+    ref, pos: 12.346, at: now - 300, playing: true, full: true,
+  });
+  const far = P.cleanRoomState({ ref, pos: -5, at: now - 60000, playing: true }, now);
+  assert.equal(far.at, now, 'fremde Uhrzeit → Serverzeit');
+  assert.equal(far.pos, 0);
+  assert.equal(far.full, false);
+  assert.equal(P.cleanRoomState({ ref, pos: 1e9, playing: true }, now).pos, 86400);
+  // Nothing shareable (local file, radio): ref null, never "playing".
+  assert.deepEqual(P.cleanRoomState({ ref: null, pos: 4, playing: true }, now), { ref: null, pos: 4, at: now, playing: false, full: false });
+  assert.equal(P.cleanRoomState({ ref: { src: 'local', title: 'C:/a.mp3' }, playing: true }, now), null);
+  assert.equal(P.cleanRoomState('kaputt', now), null);
+
+  // Shortest round trip wins: 40 ms there and back, server 5 s ahead.
+  assert.deepEqual(P.skewFromSamples([
+    { c: 1000, s: 6300, r: 1400 },
+    { c: 2000, s: 7020, r: 2040 },
+    { c: 3000, s: 'x', r: 3001 },
+    { c: 4000, s: 9000, r: 3990 },
+  ]), { skew: 5000, rtt: 40 });
+  assert.equal(P.skewFromSamples([]), null);
+  assert.equal(P.roomSocketUrl('https://cleanmusic-social.cleanmusic.workers.dev'), 'wss://cleanmusic-social.cleanmusic.workers.dev/v1/room/live');
+  assert.equal(P.roomSocketUrl('http://127.0.0.1:8787'), 'ws://127.0.0.1:8787/v1/room/live');
+  assert.equal(P.roomSocketUrl('http://evil.example'), '');
+});
+
 console.log(`\n${checks} passed, 0 failed`);
