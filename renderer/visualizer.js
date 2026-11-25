@@ -799,6 +799,7 @@ window.CMVisualizer = (function () {
     performance: () => ({ ...performance, lastFrameDelta: Number(lastDrawDelta.toFixed(1)) }),
     eqFrequencies: () => EQ_FREQUENCIES.slice(),
     hasEngine: () => Boolean(engine),
+    contextState: () => (ctx ? { state: ctx.state, sampleRate: ctx.sampleRate } : null),
     engineState: () =>
       engine
         ? {

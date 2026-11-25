@@ -335,6 +335,10 @@
   let serviceMenuEntry = null;
   let ctxEntries = [];
   let drag = null;
+  // Diagnosis: the last playback failures and the skip guard (max 3 in a row).
+  const playbackProblems = [];
+  let failedPlayToken = 0;
+  const failGuard = { streak: 0, token: 0, timer: null };
 
   /* ---------------------------------------------------------------- *
    * Helpers
@@ -363,12 +367,19 @@
     if (!bridge.diagnosticState) return;
     const viz = window.CMVisualizer;
     const migration = window.CMMigrations ? window.CMMigrations.report() : null;
+    const audioContext =
+      viz && typeof viz.contextState === 'function' ? viz.contextState() : null;
     bridge.diagnosticState({
       audioChain: Boolean(viz && typeof viz.hasEngine === 'function' && viz.hasEngine()),
+      audioContext: audioContext ? audioContext.state : '',
+      sampleRate: audioContext ? audioContext.sampleRate : 0,
+      volume: CMVolume.percent(volumeLevel()),
+      muted: Boolean(vol.muted),
       layout: state.settings.layout,
       schema: migration ? migration.to : 0,
       quarantined: migration && Array.isArray(migration.quarantined) ? migration.quarantined.length : 0,
       migration: migration ? migration.skipped || (migration.ran && migration.ran.length ? 'migriert' : '') : '',
+      problems: playbackProblems.slice(-10),
     });
   }
 
@@ -4696,9 +4707,7 @@
     } catch (error) {
       if (token !== playToken) return;
       setPlayLoading(false);
-      state.nowMode = 'error';
-      setNowPlaying(item);
-      toast(error.message || 'Titel konnte nicht geladen werden');
+      failPlayback(item, error.message || 'Titel konnte nicht geladen werden');
       return;
     }
 
@@ -5103,6 +5112,208 @@
     repeatButton.title = CMPlayback.repeatLabel(repeat);
   }
 
+  /* ---------------------------------------------------------------- *
+   * Playback failures: shared by the element's error event and the
+   * stall guard. The retry chain stays as it was (alternate URL, same
+   * URL again, fresh resolve, preview, give up); what is new is that a
+   * title that really failed is skipped after 1.5 s instead of leaving
+   * the queue silent – at most three failures in a row.
+   * ---------------------------------------------------------------- */
+
+  function mediaHost(url) {
+    try {
+      return new URL(String(url || '')).host.slice(0, 120);
+    } catch {
+      return '';
+    }
+  }
+
+  // One entry per title (playToken), never the full URL. The main process
+  // cleans and limits the list again before it lands in the diagnostic text.
+  function notePlaybackProblem(reason) {
+    if (failedPlayToken === playToken) return;
+    failedPlayToken = playToken;
+    const item = currentItem();
+    const source = audio.currentSrc || audio.getAttribute('src') || '';
+    const error = audio.error;
+    const art =
+      reason === 'stall'
+        ? 'hängt 12 s'
+        : error
+          ? `Fehlercode ${error.code}`
+          : 'Fehler';
+    playbackProblems.push({
+      at: new Date().toISOString(),
+      art,
+      mode: state.nowMode || '',
+      readyState: Number(audio.readyState) || 0,
+      networkState: Number(audio.networkState) || 0,
+      host: mediaHost(source),
+      title: String((item && item.title) || '').slice(0, 120),
+    });
+    if (playbackProblems.length > 10) playbackProblems.splice(0, playbackProblems.length - 10);
+    syncDiagnosticState();
+  }
+
+  function scheduleNextAfterFailure(item) {
+    const token = playToken;
+    if (failGuard.token === token) return true;
+    failGuard.token = token;
+    if (roomHolds()) return false;
+
+    const { items, index } = state.queue;
+    const atEnd = index >= items.length - 1;
+    if (state.playback.repeat === 'off' && atEnd && !autoplayEligible()) return false;
+
+    failGuard.streak += 1;
+    if (failGuard.streak >= 3) {
+      clearTimeout(failGuard.timer);
+      failGuard.timer = null;
+      try {
+        audio.pause();
+      } catch {
+        /* nothing was loaded */
+      }
+      toast('Mehrere Titel nicht abspielbar – Plugin/Internet prüfen');
+      return true;
+    }
+
+    toast(`„${(item && item.title) || 'Titel'}“ – nächster Titel`);
+    clearTimeout(failGuard.timer);
+    failGuard.timer = setTimeout(() => {
+      failGuard.timer = null;
+      if (token !== playToken || roomHolds()) return;
+      stepQueue(1);
+    }, 1500);
+    return true;
+  }
+
+  function failPlayback(item, message) {
+    state.nowMode = 'error';
+    setNowPlaying(item);
+    if (!scheduleNextAfterFailure(item) && message) toast(message);
+  }
+
+  function playbackFailed(reason) {
+    if (!audio.getAttribute('src')) return;
+    const item = currentItem();
+    if (!item) return;
+
+    notePlaybackProblem(reason);
+
+    if (reason !== 'stall' && audio.error) {
+      console.warn(`Audio error ${audio.error.code} (${item.kind}): ${audio.error.message || ''}`);
+    }
+
+    // Streams: 0) try another URL the plugin offered, 1) same URL again
+    // after a moment (some CDNs reject the first request), 2) resolve a
+    // fresh URL, 3) fall back to the catalogue preview, 4) give up.
+    if (!state.retry || state.retry.id !== item.id) state.retry = { id: item.id, count: 0 };
+    const retry = state.retry;
+    const streamed = state.nowMode === 'plugin' || state.nowMode === 'matched';
+
+    if (streamed && state.fallbackUrls.length) {
+      const next = state.fallbackUrls.shift();
+      const token = playToken;
+      setTimeout(() => {
+        if (token !== playToken) return;
+        audio.src = next;
+        audio.play().catch(() => {});
+      }, 300);
+      return;
+    }
+
+    if (item.kind !== 'local' && item.kind !== 'radio' && retry.count < 2) {
+      retry.count += 1;
+
+      if (retry.count === 1 && streamed) {
+        const src = audio.getAttribute('src');
+        const token = playToken;
+        setTimeout(() => {
+          if (token !== playToken) return;
+          audio.src = src;
+          audio.play().catch(() => {});
+        }, 1200);
+        return;
+      }
+
+      playFromQueue(state.queue.index, { force: true, retry: true });
+      return;
+    }
+
+    // A full title that still fails after a fresh resolve: play the 30 s
+    // preview instead of leaving the queue silent.
+    if (streamed && !retry.preview) {
+      retry.preview = true;
+      const token = playToken;
+      freshPreview(item, true)
+        .then((url) => {
+          if (token !== playToken) return;
+          if (url) {
+            state.nowMode = 'preview';
+            state.nowLabel = null;
+            setNowPlaying(item);
+            audio.src = url;
+            audio.play().catch(() => {});
+            toast('Voller Titel nicht verfügbar – 30-s-Vorschau läuft.');
+            return;
+          }
+          failPlayback(item, 'Der Titel konnte nicht abgespielt werden.');
+        })
+        .catch(() => {
+          if (token !== playToken) return;
+          failPlayback(item, 'Der Titel konnte nicht abgespielt werden.');
+        });
+      return;
+    }
+
+    failPlayback(
+      item,
+      item.kind === 'radio'
+        ? 'Der Sender ist gerade nicht erreichbar.'
+        : item.kind === 'local'
+          ? 'Die Datei ist nicht lesbar oder wurde verschoben.'
+          : 'Der Titel konnte nicht abgespielt werden.'
+    );
+  }
+
+  // A title that never moves on is treated like a failed one. Polling is
+  // deliberate: a stalled element stops firing timeupdate entirely.
+  const stallWatch = { token: 0, position: 0, at: 0, handledToken: 0 };
+
+  function tickStallGuard() {
+    const token = playToken;
+    const position = Number(audio.currentTime) || 0;
+    if (stallWatch.token !== token) {
+      stallWatch.token = token;
+      stallWatch.position = position;
+      stallWatch.at = Date.now();
+      stallWatch.handledToken = 0;
+    }
+
+    const idle = audio.paused || audio.ended || audio.seeking || !audio.getAttribute('src');
+    if (idle || Math.abs(position - stallWatch.position) > 0.25) {
+      stallWatch.position = position;
+      stallWatch.at = Date.now();
+    }
+
+    const item = currentItem();
+    const decision = CMPlayback.stallDecision({
+      hasSrc: Boolean(audio.getAttribute('src')),
+      paused: audio.paused,
+      ended: audio.ended,
+      seeking: audio.seeking,
+      kind: item ? item.kind : '',
+      mode: state.nowMode,
+      stalledFor: Date.now() - stallWatch.at,
+      handled: stallWatch.handledToken === token,
+    });
+    if (decision !== 'fail') return;
+
+    stallWatch.handledToken = token;
+    playbackFailed('stall');
+  }
+
   function wirePlayer() {
     const playButton = $('#btn-play');
 
@@ -5199,91 +5410,7 @@
       stepQueue(1);
     });
 
-    audio.addEventListener('error', () => {
-      if (!audio.getAttribute('src')) return;
-      const item = currentItem();
-      if (!item) return;
-
-      if (audio.error) {
-        console.warn(`Audio error ${audio.error.code} (${item.kind}): ${audio.error.message || ''}`);
-      }
-
-      // Streams: 0) try another URL the plugin offered, 1) same URL again
-      // after a moment (some CDNs reject the first request), 2) resolve a
-      // fresh URL, 3) fall back to the catalogue preview, 4) give up.
-      if (!state.retry || state.retry.id !== item.id) state.retry = { id: item.id, count: 0 };
-      const retry = state.retry;
-      const streamed = state.nowMode === 'plugin' || state.nowMode === 'matched';
-
-      if (streamed && state.fallbackUrls.length) {
-        const next = state.fallbackUrls.shift();
-        const token = playToken;
-        setTimeout(() => {
-          if (token !== playToken) return;
-          audio.src = next;
-          audio.play().catch(() => {});
-        }, 300);
-        return;
-      }
-
-      if (item.kind !== 'local' && item.kind !== 'radio' && retry.count < 2) {
-        retry.count += 1;
-
-        if (retry.count === 1 && streamed) {
-          const src = audio.getAttribute('src');
-          const token = playToken;
-          setTimeout(() => {
-            if (token !== playToken) return;
-            audio.src = src;
-            audio.play().catch(() => {});
-          }, 1200);
-          return;
-        }
-
-        playFromQueue(state.queue.index, { force: true, retry: true });
-        return;
-      }
-
-      // A full title that still fails after a fresh resolve: play the 30 s
-      // preview instead of leaving the queue silent.
-      if (streamed && !retry.preview) {
-        retry.preview = true;
-        const token = playToken;
-        freshPreview(item, true)
-          .then((url) => {
-            if (token !== playToken) return;
-            if (url) {
-              state.nowMode = 'preview';
-              state.nowLabel = null;
-              setNowPlaying(item);
-              audio.src = url;
-              audio.play().catch(() => {});
-              toast('Voller Titel nicht verfügbar – 30-s-Vorschau läuft.');
-              return;
-            }
-            state.nowMode = 'error';
-            setNowPlaying(item);
-            toast('Der Titel konnte nicht abgespielt werden.');
-          })
-          .catch(() => {
-            if (token !== playToken) return;
-            state.nowMode = 'error';
-            setNowPlaying(item);
-            toast('Der Titel konnte nicht abgespielt werden.');
-          });
-        return;
-      }
-
-      state.nowMode = 'error';
-      setNowPlaying(item);
-      toast(
-        item.kind === 'radio'
-          ? 'Der Sender ist gerade nicht erreichbar.'
-          : item.kind === 'local'
-            ? 'Die Datei ist nicht lesbar oder wurde verschoben.'
-            : 'Der Titel konnte nicht abgespielt werden.'
-      );
-    });
+    audio.addEventListener('error', () => playbackFailed('error'));
 
     audio.addEventListener('loadedmetadata', () => {
       pushPresence();
@@ -5330,9 +5457,18 @@
       if (state.retry && audio.currentTime > 5 && state.retry.count > 0) {
         state.retry = { id: state.retry.id, count: 0 };
       }
+      // A title that really played for a while ends the failure streak.
+      if (failGuard.streak && !audio.paused && audio.currentTime > 5) {
+        failGuard.streak = 0;
+        clearTimeout(failGuard.timer);
+        failGuard.timer = null;
+      }
     });
 
     audio.addEventListener('timeupdate', checkSilence);
+
+    // The stall guard needs its own clock: a stuck title sends no timeupdate.
+    setInterval(tickStallGuard, 2000);
 
     $('#seek').addEventListener('input', (event) => {
       const value = Number(event.target.value);
@@ -5373,6 +5509,7 @@
       'Gemeinsam hören: Starte unter „Freunde“ einen Raum und schick den Code an bis zu 19 Leute. Was du abspielst, läuft bei allen – Titelwechsel, Pause und Spulen inklusive.',
       'Jedes Gerät sucht die Songs selbst und spielt sie ab: volle Titel laufen sekundengenau mit, 30-Sekunden-Vorschauen ungefähr. Über den Server geht nur, welcher Song wo läuft – nie Audio, nie lokale Dateien oder Radio.',
       'Im Raum gibt es nur Emoji-Reaktionen, keinen Chat. Pausierst oder spulst du selbst, hörst du für dich weiter – „Wieder synchron“ holt dich zurück. Verlässt der Host den Raum, übernimmt das älteste Mitglied.',
+      'Titel, die hängen oder nicht laden, werden übersprungen – nach drei Fehlschlägen in Folge hält CleanMusic an und bittet dich, Plugin und Internet zu prüfen.',
     ],
     '2.0.1': [
       'Behoben: CleanMusic 2.0.0 blieb bei vielen bestehenden Profilen leer – Startseite, Suche und Player reagierten nicht. Deine Daten waren nie betroffen, sie sind alle wieder da.',
@@ -16722,6 +16859,22 @@ ${updatePanel()}
     playList,
     openPlaylist,
     shareCurrent: () => shareEntry(currentItem()),
+    // Smoke only: play a URL as a normal catalogue preview entry, so the
+    // diagnosis can see a failing media request and a playback problem.
+    diagnosticPlay: (url) => {
+      // A direct stream, not a catalogue preview: with a match plugin active a
+      // preview would be re-resolved and the smoke would never reach the URL.
+      const entry = CMEntries.openverseEntry({
+        id: `diagnostic:${Date.now()}`,
+        title: 'Diagnose-Smoke',
+        artist: '',
+        url: String(url || ''),
+        sourceLabel: 'Diagnose',
+      });
+      state.sharedList = [entry];
+      playList('shared', 0);
+      return entry.id;
+    },
     toggleFavoriteAt: (key, index) => toggleFavorite(entryAt(key, index)),
     createPlaylist: (name) => createPlaylist(name).id,
     matchKey: (entry) => matchKey(entry || {}),

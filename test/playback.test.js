@@ -76,4 +76,43 @@ check('titles and single-title contexts', () => {
   assert.equal(P.singleContext(true, 'search', null), false);
 });
 
+check('stall guard waits for 12 s of a running, non-radio title', () => {
+  const running = {
+    hasSrc: true,
+    paused: false,
+    ended: false,
+    seeking: false,
+    kind: 'plugin',
+    mode: 'plugin',
+    stalledFor: 11999,
+  };
+  assert.equal(P.STALL_MS, 12000);
+  assert.equal(P.stallDecision(running), 'wait');
+  assert.equal(P.stallDecision({ ...running, stalledFor: 12000 }), 'fail');
+  assert.equal(P.stallDecision({ ...running, stalledFor: 15000 }), 'fail');
+});
+
+check('stall guard leaves pauses, seeks, radio, local and handled titles alone', () => {
+  const running = {
+    hasSrc: true,
+    paused: false,
+    ended: false,
+    seeking: false,
+    kind: 'preview',
+    mode: 'preview',
+    stalledFor: 20000,
+  };
+  assert.equal(P.stallDecision({ ...running, paused: true }), 'wait');
+  assert.equal(P.stallDecision({ ...running, ended: true }), 'wait');
+  assert.equal(P.stallDecision({ ...running, seeking: true }), 'wait');
+  assert.equal(P.stallDecision({ ...running, kind: 'radio' }), 'wait');
+  assert.equal(P.stallDecision({ ...running, kind: 'local' }), 'wait');
+  assert.equal(P.stallDecision({ ...running, mode: 'loading' }), 'wait');
+  assert.equal(P.stallDecision({ ...running, mode: 'error' }), 'wait');
+  assert.equal(P.stallDecision({ ...running, handled: true }), 'wait');
+  assert.equal(P.stallDecision({ ...running, hasSrc: false }), 'wait');
+  assert.equal(P.stallDecision({ ...running, stalledFor: NaN }), 'wait');
+  assert.equal(P.stallDecision(null), 'wait');
+});
+
 console.log(`\n${checks} passed, 0 failed`);

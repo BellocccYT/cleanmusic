@@ -3,6 +3,8 @@ dist/
 out/
 release/
 /plugins/
+/.claude/
+/videos/
 *.log
 .DS_Store
 Thumbs.db

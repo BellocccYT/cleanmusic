@@ -3774,6 +3774,12 @@ function createMainWindow() {
           console.error('SMOKE_MIGRATIONS_FAIL:', error.message);
         }
 
+        try {
+          console.log('SMOKE_DIAGNOSE:', JSON.stringify(await smokeDiagnose()));
+        } catch (error) {
+          console.error('SMOKE_DIAGNOSE_FAIL:', error.message);
+        }
+
         // Restart with stored data: the run above starts from an empty
         // profile, so code that only runs while restoring saved state
         // (recs, favorites, playlists, history …) was never executed at
@@ -6599,6 +6605,53 @@ async function smokeMigrations() {
   return summary;
 }
 
+async function smokeDiagnose() {
+  if (!isSmoke) throw new Error('Diagnose-Smoke ist nur im Smoke-Profil erlaubt.');
+  const server = http.createServer((request, response) => {
+    if (request.url && request.url.startsWith('/forbidden')) {
+      response.writeHead(403, { 'content-type': 'audio/mpeg', 'content-length': '4' });
+      response.end('nein');
+      return;
+    }
+    response.writeHead(404, { 'content-type': 'text/plain' });
+    response.end('nicht da');
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const port = server.address().port;
+  const url = `http://127.0.0.1:${port}/forbidden.mp3`;
+  try {
+    await mainWindow.webContents.executeJavaScript(
+      `window.CleanMusic.diagnosticPlay(${JSON.stringify(url)})`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const text = await diagnosticText();
+    const result = {
+      forbidden: text.includes('HTTP 403'),
+      audio: text.includes('Audio:'),
+      problems: text.includes('Wiedergabe-Probleme (letzte 10)'),
+      media: text.includes('Medien-Anfragen mit Fehler (letzte 15)'),
+      hostOnly: text.includes(`127.0.0.1:${port}`) && !text.includes('/forbidden'),
+      sample: text.split('\n').filter((line) => /Audio:|HTTP 403|Wiedergabe-Probleme|Fehlercode|hängt 12 s/.test(line)).slice(0, 8),
+    };
+    if (!result.forbidden || !result.audio || !result.problems || !result.media || !result.hostOnly) {
+      throw new Error(JSON.stringify(result));
+    }
+    return result;
+  } finally {
+    await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const audio = document.querySelector('#audio');
+        if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+        return true;
+      })()
+    `).catch(() => {});
+    server.close();
+  }
+}
+
 async function smokeRemote() {
   if (!isSmoke) throw new Error('Fernbedienungs-Smoke ist nur im Smoke-Profil erlaubt.');
   const defaultOff = !remoteServer && !readConfig().remoteEnabled;
@@ -6678,7 +6731,7 @@ async function smokeRemote() {
   const taskbarIcons = ['previous', 'play', 'pause', 'next'].every((name) => {
     try { return fs.statSync(path.join(ROOT, 'renderer', 'assets', 'thumbar', `${name}.png`)).size > 0; } catch { return false; }
   });
-  const diagnostic = diagnosticText();
+  const diagnostic = await diagnosticText();
   const diagnosticsSafe = diagnostic.includes(`CleanMusic ${app.getVersion()}`) && !diagnostic.includes(os.homedir());
   const disabledFeatures = !readConfig().globalShortcuts && !readConfig().startOnLogin && readConfig().taskbarProgress !== false;
   let miniBridge = false;
@@ -7137,6 +7190,51 @@ function cleanText(value, max = 300) {
 
 const diagnosticErrors = [];
 let rendererDiagnosticState = {};
+const mediaRequestErrors = [];
+
+const DIAGNOSTIC_MODES = ['plugin', 'matched', 'preview', 'stream', 'local', 'radio', 'loading', 'error'];
+
+function cleanHost(value) {
+  const host = cleanText(value, 120).trim().toLowerCase();
+  return /^[a-z0-9.-]+(?::\d{1,5})?$/.test(host) ? host : '';
+}
+
+function mediaHost(value) {
+  try {
+    return cleanHost(new URL(String(value || '')).host);
+  } catch {
+    return '';
+  }
+}
+
+function recordMediaRequestError(what, url) {
+  mediaRequestErrors.push({
+    at: new Date().toISOString(),
+    what: redactDiagnostic(cleanText(what, 60)),
+    host: mediaHost(url),
+  });
+  if (mediaRequestErrors.length > 15) {
+    mediaRequestErrors.splice(0, mediaRequestErrors.length - 15);
+  }
+}
+
+function cleanDiagnosticProblems(input) {
+  return (Array.isArray(input) ? input : [])
+    .slice(-10)
+    .map((problem) => {
+      const row = problem && typeof problem === 'object' ? problem : {};
+      const mode = DIAGNOSTIC_MODES.includes(row.mode) ? row.mode : '';
+      return {
+        at: cleanText(row.at, 40),
+        art: redactDiagnostic(cleanText(row.art, 60)),
+        mode,
+        readyState: Math.max(0, Math.min(4, Math.floor(Number(row.readyState) || 0))),
+        networkState: Math.max(0, Math.min(3, Math.floor(Number(row.networkState) || 0))),
+        host: cleanHost(row.host),
+        title: redactDiagnostic(cleanText(row.title, 80)),
+      };
+    });
+}
 
 function redactDiagnostic(value) {
   let text = String(value == null ? '' : value).slice(0, 4000);
@@ -7155,27 +7253,65 @@ function recordDiagnosticError(source, error) {
   if (diagnosticErrors.length > 30) diagnosticErrors.splice(0, diagnosticErrors.length - 30);
 }
 
-function activePluginDiagnostics() {
+async function activePluginDiagnostics() {
   const { enabled } = pluginConfig();
-  return Array.from(plugins.values())
-    .filter((plugin) => plugin.module && enabled.includes(plugin.id))
-    .map((plugin) => ({
-      name: cleanText(plugin.module.name || plugin.id, 80),
-      version: cleanText(plugin.module.version || 'unbekannt', 30),
-    }));
+  const active = Array.from(plugins.values()).filter(
+    (plugin) => plugin.module && enabled.includes(plugin.id)
+  );
+  return Promise.all(
+    active.map(async (plugin) => {
+      try {
+        const info = await pluginInfo(plugin, true, false);
+        return {
+          name: cleanText(info.name || plugin.id, 80),
+          version: cleanText(info.version || 'unbekannt', 30),
+          status: cleanText((info.status && info.status.text) || '', 160),
+        };
+      } catch (error) {
+        return {
+          name: cleanText(plugin.id, 80),
+          version: 'unbekannt',
+          status: `Status-Fehler: ${cleanText(error && error.message, 100)}`,
+        };
+      }
+    })
+  );
 }
 
-function diagnosticText() {
+async function diagnosticText() {
   const config = readConfig();
+  const audio = rendererDiagnosticState;
+  const pluginRows = await activePluginDiagnostics();
+  const pluginLine =
+    pluginRows
+      .map((plugin) => `${plugin.name} ${plugin.version}${plugin.status ? ` (${plugin.status})` : ''}`)
+      .join(', ') || 'keine';
   const lines = [
     `CleanMusic ${app.getVersion()} (${isInstalledCopy() ? 'installiert' : 'portable'})`,
     `Electron ${process.versions.electron} · Chrome ${process.versions.chrome} · Windows ${os.release()}`,
-    `Plugins: ${activePluginDiagnostics().map((plugin) => `${plugin.name} ${plugin.version}`).join(', ') || 'keine'}`,
-    `Audio-Kette: ${rendererDiagnosticState.audioChain ? 'an' : 'aus'} · Fernbedienung: ${config.remoteEnabled ? 'an' : 'aus'} · Layout: ${rendererDiagnosticState.layout || 'unbekannt'}`,
-    `Daten-Schema: ${rendererDiagnosticState.schema || '?'}${rendererDiagnosticState.migration ? ` (${rendererDiagnosticState.migration})` : ''} · Quarantäne: ${rendererDiagnosticState.quarantined || 0}`,
+    `Plugins: ${pluginLine}`,
+    `Audio: ${audio.audioContext || 'unbekannt'} · ${audio.sampleRate ? `${audio.sampleRate} Hz` : 'Abtastrate unbekannt'} · Lautstärke ${audio.volume || 0}%${audio.muted ? ' · stumm' : ''} · Audio-Kette ${audio.audioChain ? 'an' : 'aus'}`,
+    `Fernbedienung: ${config.remoteEnabled ? 'an' : 'aus'} · Layout: ${audio.layout || 'unbekannt'}`,
+    `Daten-Schema: ${audio.schema || '?'}${audio.migration ? ` (${audio.migration})` : ''} · Quarantäne: ${audio.quarantined || 0}`,
     '',
-    'Letzte Fehler (maximal 30):',
+    'Wiedergabe-Probleme (letzte 10):',
   ];
+  if (!audio.problems || !audio.problems.length) lines.push('Keine.');
+  else {
+    audio.problems.forEach((problem) => {
+      lines.push(
+        `[${problem.at}] ${problem.art} · Modus ${problem.mode || 'unbekannt'} · readyState ${problem.readyState} · networkState ${problem.networkState} · ${problem.host || 'ohne Host'} · ${problem.title || 'ohne Titel'}`
+      );
+    });
+  }
+  lines.push('', 'Medien-Anfragen mit Fehler (letzte 15):');
+  if (!mediaRequestErrors.length) lines.push('Keine.');
+  else {
+    mediaRequestErrors.forEach((error) => {
+      lines.push(`[${error.at}] ${error.what} · ${error.host || 'ohne Host'}`);
+    });
+  }
+  lines.push('', 'Letzte Fehler (maximal 30):');
   if (!diagnosticErrors.length) lines.push('Keine Fehler seit dem Start.');
   else diagnosticErrors.forEach((error) => lines.push(`[${error.at}] ${error.source}: ${error.message}`));
   return redactDiagnostic(lines.join('\n'));
@@ -7192,13 +7328,20 @@ ipcMain.on('diagnostic-state', (event, payload) => {
   if (!mainWindow || event.sender !== mainWindow.webContents || !payload || typeof payload !== 'object') return;
   rendererDiagnosticState = {
     audioChain: Boolean(payload.audioChain),
+    audioContext: cleanText(payload.audioContext, 30),
+    sampleRate: Math.max(0, Math.min(384000, Math.floor(Number(payload.sampleRate) || 0))),
+    volume: Math.max(0, Math.min(150, Math.floor(Number(payload.volume) || 0))),
+    muted: Boolean(payload.muted),
     layout: payload.layout === 'simple' ? 'Einfach' : 'Erweitert',
     schema: Math.max(0, Math.floor(Number(payload.schema) || 0)),
     quarantined: Math.max(0, Math.floor(Number(payload.quarantined) || 0)),
     migration: cleanText(payload.migration || '', 40),
+    problems: cleanDiagnosticProblems(payload.problems),
   };
 });
-ipcMain.handle('diagnostic-copy', (event) => (mainWindow && event.sender === mainWindow.webContents ? diagnosticText() : ''));
+ipcMain.handle('diagnostic-copy', async (event) =>
+  mainWindow && event.sender === mainWindow.webContents ? diagnosticText() : ''
+);
 
 function cleanUrl(value, pattern = /^https?:\/\//i) {
   const url = String(value || '');
@@ -8670,6 +8813,20 @@ app.whenReady().then(async () => {
   if (!hasInstanceLock) return;
   Menu.setApplicationMenu(null);
   installPluginStreamHeaders();
+  // Diagnosis: failed media requests (streams, previews) – only host and
+  // status/error, never the full URL, which may carry a token.
+  const mediaFilter = { urls: ['<all_urls>'] };
+  session.defaultSession.webRequest.onCompleted(mediaFilter, (details) => {
+    if (!details || details.resourceType !== 'media') return;
+    if (!(Number(details.statusCode) >= 400)) return;
+    recordMediaRequestError(`HTTP ${details.statusCode}`, details.url);
+  });
+  session.defaultSession.webRequest.onErrorOccurred(mediaFilter, (details) => {
+    if (!details || details.resourceType !== 'media') return;
+    const error = String(details.error || '');
+    if (!error || error === 'net::ERR_ABORTED') return;
+    recordMediaRequestError(error, details.url);
+  });
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
   updateLoginItem();
   if (readConfig().globalShortcuts) configureGlobalShortcuts(true);

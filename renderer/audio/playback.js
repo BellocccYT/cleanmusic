@@ -70,6 +70,25 @@
     return (Array.isArray(contexts) ? contexts : []).includes(key);
   }
 
+  // A title can "play" without ever moving on: a stream that never delivers
+  // data, a CDN that keeps the connection open, a stuck decoder. Radio and
+  // local files are excluded (live gaps are normal, a broken file is reported
+  // by the element itself), as are paused/seeking titles and titles that are
+  // still loading or already failed.
+  const STALL_MS = 12000;
+
+  function stallDecision(sample) {
+    const input = sample && typeof sample === 'object' ? sample : {};
+    if (!input.hasSrc) return 'wait';
+    if (input.paused || input.ended || input.seeking) return 'wait';
+    if (input.kind === 'radio' || input.kind === 'local') return 'wait';
+    if (input.mode === 'loading' || input.mode === 'error') return 'wait';
+    if (input.handled) return 'wait';
+    const still = Number(input.stalledFor);
+    if (!Number.isFinite(still) || still < STALL_MS) return 'wait';
+    return 'fail';
+  }
+
   window.CMPlayback = {
     REPEAT,
     normalize,
@@ -82,5 +101,7 @@
     blocksAutoplay,
     shuffleTitle,
     singleContext,
+    STALL_MS,
+    stallDecision,
   };
 })();
