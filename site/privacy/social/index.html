@@ -66,6 +66,7 @@
       <li>„Meine Aktivität zeigen“ ist standardmäßig aus. Eingeschaltet sehen nur deine Freunde Titel und Artist des laufenden Songs. Lokale Dateien und Radio werden nie geteilt. Es läuft kein Audio über den Server.</li>
       <li>„Mir online zeigen“ ist standardmäßig aus. Eingeschaltet sehen nur deine Freunde, ob CleanMusic bei dir in den letzten Minuten aktiv war – kein „zuletzt online“, kein Verlauf.</li>
       <li>Gruppen gibt es nur per Gruppencode. Die Gruppe sieht deinen Namen und deine Wochenkarte (Hörzeit, Anzahl Titel, Top-3-Artists), dazu kommt eine gemeinsame Playlist aus Song-Referenzen.</li>
+      <li>Gemeinsam hören gibt es nur per Raumcode (bis zu 20 Personen). Der Raum sieht deinen Namen; über den Server geht nur, welcher Song wo läuft – jedes Gerät spielt selbst ab.</li>
       <li>„Konto löschen“ in der App entfernt alles sofort.</li>
     </ul>
 
@@ -85,6 +86,7 @@
         <tr><td>Gruppencodes – nur als SHA-256-Hash</td><td>Beitreten per Code</td><td>höchstens 24 Stunden</td></tr>
         <tr><td>Wochenkarte: Kalenderwoche, Hörzeit, Anzahl Titel, Top-3-Artists – nur solange du in einer Gruppe bist</td><td>Rangliste in deinen Gruppen</td><td>die letzten zwei Wochen; beim Verlassen der letzten Gruppe sofort gelöscht</td></tr>
         <tr><td>Gruppen-Playlist: Song-Referenzen (wie bei der Aktivität) und wer sie hinzugefügt hat</td><td>gemeinsame Playlist</td><td>bis der Titel entfernt wird, die Gruppe leer ist oder du dein Konto löschst</td></tr>
+        <tr><td>Gemeinsam hören: Raum (wer Host ist, Mitglieder, Beitrittszeit), Raumcode nur als SHA-256-Hash, der zuletzt geteilte Stand des Hosts (Song-Referenz, Position, läuft/pausiert) und vom Host Entfernte</td><td>Raum zum gemeinsamen Hören</td><td>solange der Raum besteht: er schließt, wenn der Host ihn beendet, der Host 30 Minuten weg ist oder nach spätestens 24 Stunden; wer 30 Minuten ohne Verbindung ist, verlässt den Raum. Reaktionen im Raum werden nur weitergereicht, nicht gespeichert</td></tr>
         <tr><td>Meldungen (wer, wen, Grund aus einer festen Liste)</td><td>Missbrauchsschutz; nach drei Meldungen wird ein anstößiger Name durch einen Zufallsnamen ersetzt</td><td>30 Tage</td></tr>
         <tr><td>Einmalwerte (Nonces) der Anfragen</td><td>Schutz gegen wiederholte Anfragen</td><td>10 Minuten</td></tr>
         <tr><td>Zähler für Anfrage-Grenzen je Konto und je Netz: das IP-Präfix (IPv4 /24, IPv6 /48) nur als Hash mit täglich wechselndem Zufallswert</td><td>Schutz vor Massen-Konten und Spam</td><td>höchstens 24 Stunden</td></tr>

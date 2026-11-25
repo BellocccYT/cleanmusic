@@ -41,6 +41,7 @@
     supporter: 'cleanmusic.supporter.v1', // { unlocked, how: code|free|legacy, at, trialUntil, trialReset, trialNotice } – see core/supporter.js
     kofiHint: 'cleanmusic.kofihint.v1', // { at, off } Ko-fi hint after 10 h of listening – see core/supporter.js
     social: 'cleanmusic.social.v1', // { enabled, showActivity, seenReactions } – see core/social.js (Weg B)
+    room: 'cleanmusic.room.v1', // { code, room, at } – the listening room you are in (S3), to share its code again
     schemaSnapshot: 'cleanmusic.schema.snapshot.v1', // local pre-migration snapshot (no file access)
   };
 

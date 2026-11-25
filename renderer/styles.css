@@ -7160,6 +7160,13 @@ html[data-perf='saver'] .lv-silhouette {
 .social-big-emoji { font-size: 18px; }
 .social-code { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .social-code img { border-radius: 10px; background: #fff; padding: 4px; }
+.social-room.active { border-color: rgba(var(--accent-rgb), 0.45); }
+.social-room-now { margin: 6px 0; }
+.social-room-status.open { color: var(--accent); }
+.social-room-reactions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.social-room-react { font-size: 18px; }
+.social-room-react small { font-size: 11px; color: var(--muted); }
+.social-friend.offline .social-friend-name { opacity: 0.6; }
 .social-code-text { font: 700 18px/1.3 ui-monospace, Consolas, monospace; letter-spacing: 0.06em; }
 .social-report { display: flex; flex-direction: column; gap: 8px; }
 #home-friends[hidden] { display: none; }

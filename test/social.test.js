@@ -218,4 +218,69 @@ check('2.1 requests + online: payload, old servers, sorting, notices once per 30
   assert.equal(S.expiresIn(now + 3 * 86400000, now), 'noch 3 Tage');
 });
 
+check('S3 rooms: code, snapshot, guest follows (title, pause, seek), host sends, user takes over', () => {
+  assert.equal(S.parseRoomCode('Komm in meinen Raum: https://bellocccyt.github.io/cleanmusic/f/#R1-0123-4567-89AZ'), 'R1-0123-4567-89AZ');
+  for (const text of ['r1 o123 4567 89az', 'F1-0123-4567-89AZ', 'G1-0123-4567-89AZ R1-AAAA-BBBB-CCCC']) {
+    assert.equal(S.parseRoomCode(text), proto.parseRoomCode(text), text);
+  }
+  assert.equal(S.parseGroupCode('R1-0123-4567-89AZ'), '');
+  const room = S.normalizeRoom({
+    id: 'RRRRABCDEFGHJKMNPQRSTVWX',
+    host: A,
+    members: [{ id: A, name: 'Host', online: true }, { id: B, name: 'Gast' }, { id: 'kaputt' }],
+    state: { ref, pos: 10, at: 5, playing: true, full: true },
+  }, B);
+  assert.equal(room.isHost, false);
+  assert.deepEqual(plain(room.members.map((m) => [m.name, m.host, m.online, m.self])), [['Host', true, true, false], ['Gast', false, false, true]]);
+  assert.equal(S.roomState({ ref: { src: 'local', title: 'x' } }), null);
+  assert.equal(S.roomState({ ref: null, playing: true }).playing, false);
+
+  const key = S.refKey(S.validRef(ref));
+  const now = 1795500000000;
+  const state = { ref, pos: 60, at: now - 2000, playing: true, full: true };
+  assert.equal(S.expectedPosition(state, now), 62);
+  const plan = (local, extra) => plain(S.roomSyncPlan(Object.assign({ state, now, clock: 50000, lastSeekAt: 0, local: Object.assign({ key, position: 62, playing: true, full: true, duration: 300 }, local) }, extra)));
+  assert.equal(plan({}).action, 'none', 'synchron');
+  assert.deepEqual(plan({ key: 'anderer' }), { action: 'load', position: 62, reason: 'titel' });
+  assert.equal(plan({ loading: true, key: 'anderer' }).action, 'none');
+  assert.deepEqual(plan({ position: 58 }), { action: 'seek', position: 62.25, reason: 'spulen' });
+  assert.equal(plan({ position: 62.8 }).action, 'none', 'unter 1 s');
+  assert.equal(plan({ position: 58 }, { lastSeekAt: 48000 }).action, 'none', 'nach dem Spulen kurz warten');
+  assert.deepEqual(plan({ playing: false }), { action: 'play', position: null, reason: 'play' });
+  assert.deepEqual(plan({ playing: false, position: 0 }), { action: 'play', position: 62.25, reason: 'play' });
+  // Preview against a full title: only title and play/pause follow.
+  assert.equal(plan({ full: false, position: 5, duration: 30 }).action, 'none');
+  assert.equal(plan({ full: false, playing: false, ended: true, position: 30, duration: 30 }).action, 'none', 'Vorschau vorbei: warten');
+  // Host paused (and jumped back).
+  const paused = Object.assign({}, state, { playing: false, pos: 20 });
+  assert.deepEqual(plain(S.roomSyncPlan({ state: paused, now, clock: 50000, local: { key, position: 62, playing: true, full: true } })), { action: 'pause', position: 20, reason: 'pause' });
+  assert.equal(S.roomSyncPlan({ state: paused, now, clock: 50000, local: { key, position: 20.5, playing: false, full: true } }).action, 'none');
+  // Host plays something unshareable (local file, radio).
+  assert.equal(S.roomSyncPlan({ state: { ref: null, pos: 0, at: now, playing: false }, now, local: { key, playing: true } }).action, 'pause');
+  assert.equal(plan({ position: 299.9 }, { state: Object.assign({}, state, { pos: 299.8 }) }).action, 'none', 'Ende');
+
+  // Host: start, track change, pause, seek, heartbeat, gap.
+  const host = (input) => plain(S.roomHostPlan(Object.assign({ key, position: 10, playing: true, full: true, clock: 100000, last: { key, pos: 0, playing: true, full: true, at: 90000 } }, input)));
+  assert.equal(host({ last: null }).reason, 'start');
+  assert.equal(host({}).send, false, '10 s gespielt = erwartet');
+  assert.equal(host({ key: 'neu' }).reason, 'titel');
+  assert.equal(host({ playing: false }).reason, 'pause');
+  assert.equal(host({ position: 40 }).reason, 'spulen');
+  assert.equal(host({ position: 30, last: { key, pos: 0, playing: true, full: true, at: 70000 } }).reason, 'herzschlag');
+  assert.equal(host({ key: 'neu', last: { key, pos: 0, playing: true, full: true, at: 99800 } }).send, false, 'höchstens alle 0,4 s');
+  assert.equal(host({ full: false }).reason, 'quelle');
+
+  // The user takes over: own pause/play/seek – but not the end of a title or our own seek.
+  const input = { state, now, local: { key, position: 62, playing: false, full: true } };
+  assert.equal(S.roomDeviation('pause', input), true);
+  assert.equal(S.roomDeviation('pause', { state, now, local: { key, ended: true } }), false);
+  assert.equal(S.roomDeviation('play', { state: paused, now, local: { key } }), true);
+  assert.equal(S.roomDeviation('play', input), false);
+  assert.equal(S.roomDeviation('seeked', { state, now, local: { key, position: 120, full: true } }), true);
+  assert.equal(S.roomDeviation('seeked', { state, now, local: { key, position: 62.4, full: true } }), false);
+
+  assert.deepEqual(plain(S.normalizeRoomLocal({ code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5 })), { code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5 });
+  assert.deepEqual(plain(S.normalizeRoomLocal({ code: '<x>', room: 'R' })), { code: '', room: '', at: 0 });
+});
+
 console.log(`\n${checks} passed, 0 failed`);

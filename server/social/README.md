@@ -40,6 +40,9 @@ mit dem CleanMusic-Cloudflare-Konto – vorher mit `npx wrangler whoami` prüfen
 | GET | `/v1/groups` | eigene Gruppen mit Mitgliedern, Wochenkarten der aktuellen Woche und Playlist |
 | POST | `/v1/week` | eigene Wochenkarte (nur in Gruppen, nur diese/letzte Woche) |
 | POST | `/v1/group/track` · `/v1/group/track/remove` | Gruppen-Playlist (max. 200, Entfernen durch Leitung oder Hinzufügende) |
+| POST · GET | `/v1/room` | S3: Raum starten (Code `R1-…`, nur Hash gespeichert) bzw. eigener Raum (Mitglieder, Host, letzter Stand) |
+| POST | `/v1/room/join` · `/v1/room/leave` · `/v1/room/kick` | Beitreten (max. 20, ein Raum je Konto), Verlassen (`close: true` = für alle beenden), Entfernen (nur Host) |
+| GET | `/v1/room/live` | WebSocket (signierter Handshake, Hibernation): `state` (nur Host), `react`, `time`; `ping` → `pong` automatisch |
 
 Jede Anfrage außer `/v1/status` ist signiert: ECDSA P-256 über
 `CM-SOCIAL-1 · Methode · Pfad · Zeit (±5 min) · Nonce · SHA-256(Body)` in den Headern

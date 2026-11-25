@@ -5180,6 +5180,8 @@
         toast('Schlaf-Timer: Wiedergabe angehalten. Gute Nacht!');
         return;
       }
+      // "Gemeinsam hören": the host decides what comes next.
+      if (roomHolds()) return;
       if (state.playback.repeat === 'one') {
         audio.currentTime = 0;
         audio.play().catch(() => {});
@@ -5368,6 +5370,9 @@
       'Online-Status (freiwillig): Mit „Mir online zeigen“ sehen deine Freunde, wenn CleanMusic bei dir gerade aktiv ist. Standardmäßig aus – der Server merkt sich dafür nur einen auf die Minute gerundeten Zeitpunkt.',
       'Kurze Meldung „… ist jetzt online“, wenn ein Freund online kommt – höchstens einmal pro Freund in 30 Minuten und nie für alle auf einmal beim Start. In den Einstellungen der Freunde-Ansicht abschaltbar.',
       'Neue Freunde-Ansicht: Anfragen oben mit Zähler, „Online · hört gerade“, alle Freunde mit Online zuerst und ein Menü „⋯“ je Freund (Entfernen, Blockieren, Melden). Offene Anfragen zählt auch „Freunde“ in der Seitenleiste.',
+      'Gemeinsam hören: Starte unter „Freunde“ einen Raum und schick den Code an bis zu 19 Leute. Was du abspielst, läuft bei allen – Titelwechsel, Pause und Spulen inklusive.',
+      'Jedes Gerät sucht die Songs selbst und spielt sie ab: volle Titel laufen sekundengenau mit, 30-Sekunden-Vorschauen ungefähr. Über den Server geht nur, welcher Song wo läuft – nie Audio, nie lokale Dateien oder Radio.',
+      'Im Raum gibt es nur Emoji-Reaktionen, keinen Chat. Pausierst oder spulst du selbst, hörst du für dich weiter – „Wieder synchron“ holt dich zurück. Verlässt der Host den Raum, übernimmt das älteste Mitglied.',
     ],
     '2.0.1': [
       'Behoben: CleanMusic 2.0.0 blieb bei vielen bestehenden Profilen leer – Startseite, Suche und Player reagierten nicht. Deine Daten waren nie betroffen, sie sind alle wieder da.',
@@ -7508,6 +7513,7 @@
   }
 
   async function disableSocial() {
+    if (roomRt.room) await leaveRoom({ confirm: true });
     await clearSocialActivity();
     socialLocal.enabled = false;
     persistSocial();
@@ -7707,6 +7713,7 @@
   }
 
   async function redeemFriendCode(text, options = {}) {
+    if (SOC.parseRoomCode(text) && !SOC.parseFriendCode(text) && !SOC.parseGroupCode(text)) return joinRoomCode(text, options);
     if (SOC.parseGroupCode(text) && !SOC.parseFriendCode(text)) return joinGroupCode(text, options);
     const code = SOC.parseFriendCode(text);
     if (!code) {
@@ -7731,6 +7738,7 @@
 
   // cleanmusic://friend?c=… (from the page site/f/#F1-…): ask first, then redeem.
   async function importFriendLink(code, options = {}) {
+    if (SOC.parseRoomCode(code)) return joinRoomCode(code, options);
     if (SOC.parseGroupCode(code)) return joinGroupCode(code, options);
     if (!socialAvailable()) {
       toast('Freunde gibt es vorerst nur in der Desktop-App.');
@@ -8089,6 +8097,7 @@
     if (!options.confirm && !(await askConfirm({ title: 'Social-Konto löschen?', text: 'Dein Konto, dein Name, deine Freundesliste, Blockierungen, Codes, Aktivität und Reaktionen werden auf dem Server sofort gelöscht, der Schlüssel auf diesem PC ebenso. Das lässt sich nicht rückgängig machen.', confirm: 'Endgültig löschen', danger: true }))) return false;
     if (!(await socialCall('DELETE', '/v1/account', null))) return false;
     stopSocialTimers();
+    roomForget();
     socialLocal = SOC.normalizeState({});
     persistSocial();
     Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], requests: [], sent: [], features: { requests: false, presence: false }, onlineSeen: null, onlineNotified: {}, requestIds: null, code: null, last: null, nameMsg: '', loaded: 0, groupsLoaded: 0, groups: [], groupWeek: '', groupCodes: {}, lastWeek: null });
@@ -8168,7 +8177,7 @@
     const host = $('#view-friends');
     if (!host) return;
     const keep = {};
-    ['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code'].forEach((id) => {
+    ['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code', 'social-room-code'].forEach((id) => {
       const field = document.getElementById(id);
       if (field && field.dataset.touched) keep[id] = field.value;
     });
@@ -8318,6 +8327,8 @@
       ${requestsPanel}
 
       ${onlinePanel}
+
+      ${roomPanelHtml()}
 
       <div class="panel social-all">
         <div class="home-section-head"><h3>Alle Freunde · ${socialRt.friends.length}/200</h3><button class="btn ghost small" data-social="refresh">Aktualisieren</button></div>
@@ -8502,13 +8513,42 @@
         case 'group-import':
           importGroupPlaylist(button.dataset.gid);
           break;
+        case 'room-create':
+          createRoom();
+          break;
+        case 'room-join': {
+          const field = $('#social-room-code');
+          joinRoomCode(field ? field.value : '');
+          break;
+        }
+        case 'room-copy':
+          if (roomLocal.code) toast((await bridge.copyText(roomInviteText(roomLocal.code))) ? 'Einladung kopiert.' : 'Kopieren nicht möglich');
+          break;
+        case 'room-leave':
+          leaveRoom();
+          break;
+        case 'room-close':
+          leaveRoom({ close: true });
+          break;
+        case 'room-kick':
+          kickRoomMember(id);
+          break;
+        case 'room-react':
+          reactInRoom(button.dataset.emoji);
+          break;
+        case 'room-follow':
+          followRoomAgain();
+          break;
+        case 'room-connect':
+          if (roomRt.room) roomEnter({ id: roomRt.room.id, host: roomRt.room.host, members: roomRt.room.members, state: roomRt.state });
+          break;
         default:
           break;
       }
     });
     document.addEventListener('input', (event) => {
       const field = event.target;
-      if (!field || !['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code'].includes(field.id)) return;
+      if (!field || !['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code', 'social-room-code'].includes(field.id)) return;
       field.dataset.touched = '1';
       if (field.id !== 'social-name' || !bridge.socialNameCheck) return;
       clearTimeout(socialNameTimer);
@@ -8530,6 +8570,7 @@
       if (event.target.id === 'social-name') saveSocialName();
       if (event.target.id === 'social-group-code') joinGroupCode(event.target.value);
       if (event.target.id === 'social-group-name') createSocialGroup();
+      if (event.target.id === 'social-room-code') joinRoomCode(event.target.value);
     });
   }
 
@@ -8537,11 +8578,12 @@
     updateFriendsCount();
     if (!socialAvailable()) return;
     wireSocial();
+    wireRoom();
     await refreshSocialInfo();
     updateFriendsCount();
     if (socialLocal.enabled && socialRt.info && socialRt.info.registered) {
       startSocialTimers();
-      refreshFriends({ quiet: true });
+      refreshFriends({ quiet: true }).then(() => refreshRoom());
     } else if (socialLocal.enabled) {
       socialLocal.enabled = false;
       persistSocial();
@@ -8555,6 +8597,509 @@
       if (state.view !== 'friends') return;
       if (socialLocal.enabled && Date.now() - socialRt.loaded > 15000) refreshFriends({ quiet: true });
       else renderFriends();
+      if (socialLocal.enabled && roomRt.status === 'off') refreshRoom();
+    });
+  }
+
+  /* --- Social S3: "Gemeinsam hören" (listening rooms) ---------------------- *
+   * A room per code (R1-…), up to 20 people. The host steers; the server only
+   * passes on { ref, pos, at, playing, full } – every device looks the song
+   * up itself (findSharedEntry) and plays it. Full titles follow to the second
+   * (clock offset from the room socket), previews only title and play/pause.
+   * Own pause/seek/song as a guest = "du hörst selbst" until "Wieder synchron".
+   * The socket lives in the main process (social-main.js); rules in
+   * core/social.js (roomSyncPlan, roomHostPlan, roomDeviation). */
+  let roomLocal = SOC ? SOC.normalizeRoomLocal(readJSON(STORAGE.room, {})) : { code: '', room: '', at: 0 };
+  const roomRt = {
+    supported: true,
+    room: null,
+    state: null,
+    status: 'off',
+    skew: null,
+    following: true,
+    lastSent: null,
+    lastSeekAt: 0,
+    applyUntil: 0,
+    loading: '',
+    loadedKey: '',
+    loadedEntryId: '',
+    missingKey: '',
+    reason: '',
+    reactions: [],
+    entries: new Map(),
+    timer: 0,
+    wired: false,
+  };
+
+  function roomAvailable() {
+    return socialAvailable() && Boolean(bridge.socialRoom && bridge.onSocialRoom && SOC.roomSyncPlan);
+  }
+
+  function socialMyId() {
+    return (socialRt.info && socialRt.info.id) || (socialRt.me && socialRt.me.id) || '';
+  }
+
+  function persistRoomLocal() {
+    writeJSON(STORAGE.room, roomLocal);
+  }
+
+  function roomNow() {
+    return Date.now() + (roomRt.skew == null ? socialRt.skew : roomRt.skew);
+  }
+
+  function roomHostName() {
+    const room = roomRt.room;
+    const host = room && room.members.find((member) => member.host);
+    return host ? SOC.display(host) : 'dem Host';
+  }
+
+  // Full title (plugin / matched) or a 30-second preview?
+  function roomFull() {
+    return state.nowMode === 'matched' || state.nowMode === 'plugin';
+  }
+
+  function roomLocalKey() {
+    const entry = currentItem();
+    if (!entry) return '';
+    if (roomRt.loadedEntryId && entry.id === roomRt.loadedEntryId) return roomRt.loadedKey;
+    return SOC.refKey(window.CMShare ? window.CMShare.refOf(entry) : null);
+  }
+
+  function roomPlayer() {
+    return {
+      key: roomLocalKey(),
+      position: audio.currentTime || 0,
+      playing: !audio.paused,
+      full: roomFull(),
+      duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+      ended: audio.ended,
+      loading: Boolean(roomRt.loading) || state.nowMode === 'loading',
+    };
+  }
+
+  // A guest who follows: the queue holds at the end of a title, no autoplay.
+  function roomHolds() {
+    try {
+      return Boolean(roomRt.room && !roomRt.room.isHost && roomRt.following);
+    } catch {
+      return false; // called before this section ran (start-up)
+    }
+  }
+
+  function roomApply(run) {
+    roomRt.applyUntil = Date.now() + 1500;
+    try {
+      run();
+    } catch {
+      /* the player was not ready */
+    }
+  }
+
+  async function roomLoad(ref, key) {
+    roomRt.loading = key;
+    let entry = roomRt.entries.get(key) || null;
+    if (!entry) {
+      entry = await findSharedEntry(ref);
+      if (entry) {
+        roomRt.entries.set(key, entry);
+        if (roomRt.entries.size > 40) roomRt.entries.delete(roomRt.entries.keys().next().value);
+      }
+    }
+    if (roomRt.loading !== key || !roomRt.room) return false;
+    roomRt.loading = '';
+    if (!entry) {
+      roomRt.missingKey = key;
+      toast(`„${ref.title}“ wurde bei dir nicht gefunden – der Raum läuft weiter.`);
+      renderRoomViews();
+      return false;
+    }
+    roomRt.applyUntil = Date.now() + 4000;
+    roomRt.loadedKey = key;
+    roomRt.loadedEntryId = entry.id;
+    roomRt.lastSeekAt = 0;
+    state.sharedList = [entry];
+    playList('shared', 0);
+    renderRoomViews();
+    return true;
+  }
+
+  // Guest: bring the own player to the host's state.
+  function roomFollow() {
+    if (!roomHolds() || !roomRt.state) return 'none';
+    const current = currentItem();
+    // The user picked another song while the host's one is unchanged → they listen themselves.
+    if (roomRt.loadedEntryId && current && current.id !== roomRt.loadedEntryId && !roomRt.loading &&
+      roomRt.state.ref && SOC.refKey(roomRt.state.ref) === roomRt.loadedKey && Date.now() > roomRt.applyUntil) {
+      roomStopFollowing();
+      return 'eigen';
+    }
+    const plan = SOC.roomSyncPlan({ state: roomRt.state, now: roomNow(), clock: Date.now(), lastSeekAt: roomRt.lastSeekAt, local: roomPlayer() });
+    roomRt.reason = plan.reason;
+    const key = roomRt.state.ref ? SOC.refKey(roomRt.state.ref) : '';
+    if (plan.action === 'load') {
+      if (roomRt.missingKey !== key) roomLoad(roomRt.state.ref, key);
+    } else if (plan.action === 'seek') {
+      roomRt.lastSeekAt = Date.now();
+      roomApply(() => {
+        audio.currentTime = plan.position;
+      });
+    } else if (plan.action === 'play') {
+      roomApply(() => {
+        if (plan.position != null) {
+          roomRt.lastSeekAt = Date.now();
+          audio.currentTime = plan.position;
+        }
+        audio.play().catch(() => {});
+      });
+    } else if (plan.action === 'pause') {
+      roomApply(() => {
+        audio.pause();
+        if (plan.position != null) audio.currentTime = plan.position;
+      });
+    }
+    return plan.action;
+  }
+
+  // Host: send the own state when something changed (or as a heartbeat).
+  async function roomHostTick(force) {
+    if (!roomRt.room || !roomRt.room.isHost || roomRt.status !== 'open' || state.nowMode === 'loading') return false;
+    const entry = currentItem();
+    const ref = entry && window.CMShare ? window.CMShare.refOf(entry) : null;
+    const key = SOC.refKey(ref);
+    const playing = Boolean(ref) && !audio.paused;
+    const position = audio.currentTime || 0;
+    const full = roomFull();
+    const plan = SOC.roomHostPlan({ key, position, playing, full, clock: Date.now(), last: force ? null : roomRt.lastSent });
+    if (!plan.send) return false;
+    roomRt.lastSent = { key, pos: position, playing, full, at: Date.now() };
+    const result = await bridge.socialRoom('send', { t: 'state', ref, pos: position, at: roomNow(), playing, full });
+    if (!result || !result.ok) roomRt.lastSent = null;
+    roomRt.state = SOC.roomState({ ref, pos: position, at: roomNow(), playing, full });
+    return Boolean(result && result.ok);
+  }
+
+  function roomTick() {
+    if (!roomRt.room) return null;
+    if (roomRt.room.isHost) return roomHostTick();
+    return roomFollow();
+  }
+
+  function startRoomTimer() {
+    clearInterval(roomRt.timer);
+    roomRt.timer = setInterval(roomTick, 1000);
+  }
+
+  function roomStopFollowing() {
+    if (!roomRt.following) return;
+    roomRt.following = false;
+    toast('Du hörst jetzt selbst. „Wieder synchron“ holt dich zum Host zurück.');
+    renderRoomViews();
+  }
+
+  function followRoomAgain() {
+    if (!roomRt.room) return false;
+    roomRt.following = true;
+    roomRt.lastSeekAt = 0;
+    roomRt.missingKey = '';
+    roomRt.loadedEntryId = '';
+    roomRt.loadedKey = '';
+    roomFollow();
+    renderRoomViews();
+    return true;
+  }
+
+  // Audio events: the host reports at once, a guest may take over.
+  function roomOnAudio(event) {
+    if (!roomRt.room || !SOC) return;
+    if (roomRt.room.isHost) {
+      roomHostTick();
+      return;
+    }
+    if (!roomRt.following || Date.now() < roomRt.applyUntil) return;
+    if (SOC.roomDeviation(event, { state: roomRt.state, now: roomNow(), local: roomPlayer() })) roomStopFollowing();
+  }
+
+  function roomEnter(raw, code) {
+    const room = SOC.normalizeRoom(raw, socialMyId());
+    if (!room) return null;
+    const same = roomRt.room && roomRt.room.id === room.id;
+    Object.assign(roomRt, { room, state: room.state, following: same ? roomRt.following : true, lastSent: null, missingKey: '', reactions: same ? roomRt.reactions : [] });
+    if (!same) Object.assign(roomRt, { loadedKey: '', loadedEntryId: '', lastSeekAt: 0 });
+    if (code) roomLocal = { code, room: room.id, at: Date.now() };
+    else if (roomLocal.room !== room.id) roomLocal = { code: '', room: room.id, at: Date.now() };
+    persistRoomLocal();
+    startRoomTimer();
+    bridge.socialRoom('connect');
+    renderRoomViews();
+    return room;
+  }
+
+  function roomForget(message) {
+    clearInterval(roomRt.timer);
+    roomRt.timer = 0;
+    if (bridge.socialRoom) bridge.socialRoom('disconnect');
+    Object.assign(roomRt, { room: null, state: null, status: 'off', following: true, lastSent: null, loading: '', loadedKey: '', loadedEntryId: '', missingKey: '', reactions: [] });
+    roomLocal = { code: '', room: '', at: 0 };
+    persistRoomLocal();
+    if (message) toast(message);
+    renderRoomViews();
+  }
+
+  async function roomCall(method, path, body, options = {}) {
+    let result = null;
+    try {
+      result = await bridge.socialRequest(method, path, body || null);
+    } catch {
+      result = null;
+    }
+    if (result && result.ok) return result.data || {};
+    if (result && result.error === 'unbekannt') {
+      roomRt.supported = false;
+      if (!options.quiet) toast('Gemeinsam hören braucht ein Update des Social-Servers – bald verfügbar.');
+    } else if (!options.quiet) toast((result && result.message) || 'Das hat nicht geklappt.');
+    return null;
+  }
+
+  function roomInviteText(code) {
+    return `🎧 Hör mit mir in CleanMusic! Raum öffnen oder Code eingeben (bis zu 20 Leute):\n${SOC.friendLink(code)}\n${code}`;
+  }
+
+  async function createRoom(options = {}) {
+    if (!roomAvailable()) return null;
+    if (!socialLocal.enabled && !(await enableSocial({ confirm: options.confirm }))) return null;
+    if (roomRt.room && !options.confirm && !(await askConfirm({ title: 'Neuen Raum starten?', text: 'Du verlässt dafür deinen jetzigen Raum.', confirm: 'Neuer Raum' }))) return null;
+    const data = await roomCall('POST', '/v1/room', {});
+    if (!data || !data.room || !SOC.ROOM_CODE_RE.test(String(data.code || ''))) return null;
+    const room = roomEnter(data.room, data.code);
+    const copied = await bridge.copyText(roomInviteText(data.code));
+    toast(copied ? 'Raum gestartet – Einladung kopiert. Was du jetzt abspielst, läuft bei allen.' : 'Raum gestartet.');
+    if (state.view !== 'friends') showView('friends');
+    return room ? { id: room.id, code: data.code } : null;
+  }
+
+  async function joinRoomCode(text, options = {}) {
+    const code = SOC ? SOC.parseRoomCode(text) : '';
+    if (!code) {
+      toast('Das ist kein gültiger Raumcode (R1-XXXX-XXXX-XXXX).');
+      return null;
+    }
+    if (!roomAvailable()) {
+      toast('Gemeinsam hören gibt es vorerst nur in der Desktop-App.');
+      return null;
+    }
+    if (!options.confirm) {
+      const ok = await askConfirm({
+        title: 'Gemeinsam hören?',
+        text: `Mit dem Code ${code} trittst du einem Raum bei. Der Host bestimmt, was läuft – dein CleanMusic sucht dieselben Songs und spielt sie selbst ab. Alle im Raum sehen deinen Namen. Kein Chat, nur Emoji-Reaktionen.`,
+        confirm: 'Beitreten',
+      });
+      if (!ok) return null;
+    }
+    if (!socialLocal.enabled && !(await enableSocial({ confirm: options.confirm }))) return null;
+    const data = await roomCall('POST', '/v1/room/join', { code });
+    if (!data || !data.room) return null;
+    const field = $('#social-room-code');
+    if (field) {
+      field.value = '';
+      delete field.dataset.touched;
+    }
+    const room = roomEnter(data.room, code);
+    toast(data.already ? 'Du bist schon in diesem Raum.' : `Du hörst jetzt mit ${roomHostName()}.`);
+    if (state.view !== 'friends') showView('friends');
+    return room;
+  }
+
+  async function leaveRoom(options = {}) {
+    if (!roomRt.room) return false;
+    const host = roomRt.room.isHost;
+    if (!options.confirm) {
+      const ok = await askConfirm(options.close
+        ? { title: 'Raum für alle beenden?', text: 'Der Raum schließt sofort, der Code gilt nicht mehr.', confirm: 'Beenden', danger: true }
+        : { title: 'Raum verlassen?', text: host ? 'Der Raum bleibt offen – das älteste Mitglied wird Host.' : 'Du hörst danach wieder für dich.', confirm: 'Verlassen' });
+      if (!ok) return false;
+    }
+    const data = await roomCall('POST', '/v1/room/leave', options.close ? { close: true } : {}, { quiet: true });
+    roomForget(data && data.closed ? 'Raum beendet.' : 'Du hast den Raum verlassen.');
+    return true;
+  }
+
+  async function kickRoomMember(id, options = {}) {
+    const member = roomRt.room ? roomRt.room.members.find((row) => row.id === id) : null;
+    if (!member) return false;
+    if (!options.confirm && !(await askConfirm({ title: 'Aus dem Raum entfernen?', text: `${SOC.display(member)} fliegt raus und kann mit diesem Code nicht wieder rein.`, confirm: 'Entfernen', danger: true }))) return false;
+    return Boolean(await roomCall('POST', '/v1/room/kick', { id }));
+  }
+
+  async function reactInRoom(emoji) {
+    if (!roomRt.room || !SOC.EMOJIS.includes(emoji)) return false;
+    const result = await bridge.socialRoom('send', { t: 'react', emoji });
+    if (result && result.ok) {
+      roomRt.reactions = [{ from: { name: 'Du', tag: '' }, emoji, at: Date.now() }].concat(roomRt.reactions).slice(0, 8);
+      renderRoomViews();
+    } else toast((result && result.message) || 'Keine Verbindung zum Raum.');
+    return Boolean(result && result.ok);
+  }
+
+  async function refreshRoom() {
+    if (!roomAvailable() || !socialLocal.enabled) return null;
+    const data = await roomCall('GET', '/v1/room', null, { quiet: true });
+    if (!data) return null;
+    if (!data.room) {
+      if (roomRt.room) roomForget('Der Raum ist zu.');
+      else if (roomLocal.room) {
+        roomLocal = { code: '', room: '', at: 0 };
+        persistRoomLocal();
+      }
+      return null;
+    }
+    const status = await bridge.socialRoom('status');
+    const live = status && ['open', 'connecting', 'retry'].includes(status.status);
+    if (roomRt.room || live) return roomEnter(data.room, roomLocal.room === data.room.id ? roomLocal.code : '');
+    // After a restart: still in the room, but nothing starts by itself.
+    roomRt.room = SOC.normalizeRoom(data.room, socialMyId());
+    roomRt.state = roomRt.room && roomRt.room.state;
+    roomRt.status = 'off';
+    renderRoomViews();
+    return roomRt.room;
+  }
+
+  function roomCloseMessage(reason) {
+    return {
+      raus: 'Der Host hat dich aus dem Raum entfernt.',
+      host: 'Der Host hat den Raum beendet.',
+      'kein-host': 'Der Raum ist zu – der Host war 30 Minuten weg.',
+      leer: 'Der Raum ist zu.',
+      alt: 'Der Raum ist zu.',
+      weg: 'Der Raum ist zu.',
+    }[reason] || '';
+  }
+
+  function onRoomEvent(event) {
+    if (!event || typeof event !== 'object' || !SOC) return;
+    if (event.type === 'status') {
+      roomRt.status = String(event.status || 'off');
+      renderRoomViews();
+      return;
+    }
+    if (event.type === 'skew') {
+      if (Number.isFinite(event.skew)) roomRt.skew = event.skew;
+      return;
+    }
+    if (event.type === 'closed') {
+      if (!event.final || !roomRt.room) return;
+      if (event.code === 4409) return; // replaced by a newer connection of this device
+      if (event.code === 4000 || event.error === 'kein-raum' || event.code === 4404 || event.code === 4403) {
+        roomForget(event.code === 4403 ? roomCloseMessage('raus') : event.code === 4000 ? '' : 'Der Raum ist zu.');
+      }
+      return;
+    }
+    if (event.type !== 'message' || !event.data) return;
+    const data = event.data;
+    const myId = socialMyId();
+    if (data.t === 'hello') {
+      if (roomRt.skew == null && Number.isFinite(data.now)) roomRt.skew = data.now - Date.now();
+      const room = SOC.normalizeRoom(data.room, myId);
+      if (!room) return;
+      const was = roomRt.room;
+      roomRt.room = room;
+      roomRt.state = room.state;
+      if (!was || was.id !== room.id) roomRt.following = true;
+      if (room.isHost) roomHostTick(true);
+      else roomFollow();
+      renderRoomViews();
+    } else if (data.t === 'state') {
+      roomRt.state = SOC.roomState(data.state);
+      roomRt.missingKey = roomRt.state && roomRt.state.ref && SOC.refKey(roomRt.state.ref) === roomRt.missingKey ? roomRt.missingKey : '';
+      roomFollow();
+      renderRoomViews();
+    } else if (data.t === 'members' && roomRt.room) {
+      const wasHost = roomRt.room.isHost;
+      roomRt.room.host = String(data.host || '');
+      roomRt.room.isHost = Boolean(myId) && roomRt.room.host === myId;
+      roomRt.room.members = SOC.roomMembers(data.members, roomRt.room.host, myId);
+      if (roomRt.room.isHost && !wasHost) {
+        toast('Du bist jetzt Host – was du abspielst, läuft bei allen.');
+        roomRt.lastSent = null;
+        roomHostTick(true);
+      }
+      renderRoomViews();
+    } else if (data.t === 'react') {
+      const from = SOC.normalizeFriends({ me: data.from }, Date.now()).me;
+      if (!from || !SOC.EMOJIS.includes(data.emoji)) return;
+      roomRt.reactions = [{ from, emoji: data.emoji, at: Date.now() }].concat(roomRt.reactions).slice(0, 8);
+      toast(`${data.emoji} von ${SOC.display(from)}`);
+      renderRoomViews();
+    } else if (data.t === 'closed') {
+      const message = roomCloseMessage(data.reason);
+      if (message) roomForget(message);
+    } else if (data.t === 'error' && data.error === 'zu-oft') {
+      toast(String(data.message || 'Zu viele Nachrichten – bitte kurz warten.'));
+    }
+  }
+
+  function renderRoomViews() {
+    if (state.view === 'friends') renderFriends();
+    updateFriendsCount();
+  }
+
+  function roomPanelHtml() {
+    if (!roomAvailable() || !roomRt.supported) return '';
+    const room = roomRt.room;
+    if (!room) {
+      return `<div class="panel social-room">
+          <h3>Gemeinsam hören</h3>
+          <p class="muted small">Starte einen Raum und schick den Code an bis zu 19 Leute. Du bestimmst, was läuft – jedes Gerät sucht die Songs und spielt sie selbst ab (volle Titel sekundengenau, Vorschauen ungefähr). Kein Chat, nur Emoji-Reaktionen; lokale Dateien und Radio werden nie geteilt.</p>
+          <div class="row"><button class="btn primary small" data-social="room-create">Raum starten</button></div>
+          <div class="rv-group-row" style="margin-top:10px">
+            <input id="social-room-code" type="text" placeholder="Raumcode oder Link (R1-…)" spellcheck="false" />
+            <button class="btn ghost small" data-social="room-join">Beitreten</button>
+          </div>
+        </div>`;
+    }
+    const st = roomRt.state;
+    const statusText = { open: 'verbunden', connecting: 'verbindet …', retry: 'Verbindung weg – neuer Versuch …', off: 'getrennt' }[roomRt.status] || roomRt.status;
+    const role = room.isHost
+      ? 'Du bist Host – was du abspielst, läuft bei allen im Raum.'
+      : roomRt.following
+        ? `Du hörst mit ${esc(roomHostName())}.`
+        : 'Du hörst gerade selbst.';
+    const now = st && st.ref
+      ? `<p class="social-room-now">${st.playing ? '▶' : '❚❚'} <strong>${esc(st.ref.title)}</strong>${st.ref.artist ? ` <span class="muted">· ${esc(st.ref.artist)}</span>` : ''}${roomRt.missingKey && roomRt.missingKey === SOC.refKey(st.ref) ? ' <span class="muted small">(bei dir nicht gefunden)</span>' : ''}</p>`
+      : `<p class="muted small">${st ? 'Der Host spielt gerade etwas, das sich nicht teilen lässt (lokale Datei oder Radio).' : 'Noch läuft nichts im Raum.'}</p>`;
+    const members = room.members
+      .map((member) => `<li class="social-friend${member.online ? '' : ' offline'}">
+          <span class="social-friend-name"><strong>${esc(member.name)}${member.self ? ' (du)' : ''}</strong> <span class="social-tag">· ${esc(member.tag)}</span>${member.host ? ' <span class="chip">Host</span>' : ''}
+            <small>${member.online ? 'ist da' : 'gerade weg'}</small></span>
+          ${room.isHost && !member.self ? `<span class="social-friend-actions"><button class="icon-btn small" data-social="room-kick" data-id="${esc(member.id)}" title="Aus dem Raum entfernen" aria-label="${esc(member.name)} entfernen">×</button></span>` : ''}
+        </li>`)
+      .join('');
+    const emojis = SOC.EMOJIS.map((emoji) => `<button class="social-emoji" data-social="room-react" data-emoji="${esc(emoji)}" title="An alle im Raum: ${esc(emoji)}" aria-label="Reaktion ${esc(emoji)}">${emoji}</button>`).join('');
+    const reactions = roomRt.reactions.map((reaction) => `<span class="social-room-react" title="${esc(reaction.from.name)}">${reaction.emoji} <small>${esc(reaction.from.name)}</small></span>`).join('');
+    const code = roomLocal.room === room.id ? roomLocal.code : '';
+    return `<div class="panel social-room active">
+        <div class="home-section-head"><h3>Gemeinsam hören <span class="muted small">· ${room.members.length}/${SOC.ROOM_MAX}</span></h3><span class="chip social-room-status ${esc(roomRt.status)}">${esc(statusText)}</span></div>
+        <p>${role}${!room.isHost && !roomRt.following ? ' <button class="btn primary small" data-social="room-follow">Wieder synchron</button>' : ''}</p>
+        ${now}
+        ${code ? `<p class="small">Raumcode <strong class="social-code-text">${esc(code)}</strong> · <a href="${esc(SOC.friendLink(code))}" target="_blank" rel="noreferrer">Link</a> <button class="btn ghost small" data-social="room-copy">Einladung kopieren</button></p>` : ''}
+        <div class="social-emojis">${emojis}</div>
+        ${reactions ? `<div class="social-room-reactions">${reactions}</div>` : ''}
+        <ul class="social-list">${members}</ul>
+        <div class="row" style="margin-top:10px">
+          ${roomRt.status === 'off' ? '<button class="btn primary small" data-social="room-connect">Wieder verbinden</button>' : ''}
+          <button class="btn ghost small" data-social="room-leave">Raum verlassen</button>
+          ${room.isHost ? '<button class="btn ghost small danger" data-social="room-close">Für alle beenden</button>' : ''}
+        </div>
+      </div>`;
+  }
+
+  function wireRoom() {
+    if (roomRt.wired || !roomAvailable()) return;
+    roomRt.wired = true;
+    bridge.onSocialRoom(onRoomEvent);
+    ['play', 'pause', 'seeked'].forEach((name) => audio.addEventListener(name, () => roomOnAudio(name)));
+    audio.addEventListener('loadedmetadata', () => {
+      if (roomRt.room && roomRt.room.isHost) roomHostTick();
+      else if (roomRt.room) roomFollow();
     });
   }
 
@@ -10274,6 +10819,7 @@
   function autoplayEligible() {
     const { items, index } = state.queue;
     if (!autoplayOn()) return false;
+    if (roomHolds()) return false;
     if (CMPlayback.blocksAutoplay(state.playback.repeat)) return false;
     if (index < 0 || index < items.length - 1) return false;
     return Boolean(autoplaySeed());
@@ -16277,6 +16823,24 @@ ${updatePanel()}
     socialGroupAdd: (gid) => addCurrentToGroup(gid),
     socialGroupUntrack: (gid, rid) => removeGroupTrack(gid, rid),
     socialGroupLeave: (gid) => leaveSocialGroup(gid, { confirm: true }),
+    socialRoomCreate: () => createRoom({ confirm: true }),
+    socialRoomJoin: (code) => joinRoomCode(code, { confirm: true }),
+    socialRoomLeave: (close) => leaveRoom({ confirm: true, close: Boolean(close) }),
+    socialRoomReact: (emoji) => reactInRoom(emoji),
+    socialRoomFollow: () => followRoomAgain(),
+    socialRoomTick: () => roomTick(),
+    socialRoomState: () => JSON.parse(JSON.stringify({
+      room: roomRt.room,
+      state: roomRt.state,
+      status: roomRt.status,
+      following: roomRt.following,
+      skew: roomRt.skew,
+      loadedKey: roomRt.loadedKey,
+      reason: roomRt.reason,
+      reactions: roomRt.reactions,
+      local: roomLocal,
+      player: { key: roomLocalKey(), position: audio.currentTime || 0, playing: !audio.paused, full: roomFull() },
+    })),
     groupReset: () => {
       group = GROUP.normalizeGroup({});
       persistGroup();

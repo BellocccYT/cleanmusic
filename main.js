@@ -2559,6 +2559,83 @@ function createMainWindow() {
             const groupOk = Boolean(gid) && /^G1-/.test(groupCode) && Boolean(groupDeep && groupDeep.action === 'friend') &&
               groupJoined.status === 201 && groupUi.groups === 1 && groupUi.ranking === 2 && groupUi.tracks === 1 && weekPushed &&
               untracked === true && added === true && groupTracks === 1 && left === true && groupsAfter === 0;
+            // S3 "Gemeinsam hören": the friend hosts a room, the app follows (title,
+            // pause, seek), takes over itself, follows again; then the host leaves,
+            // the app becomes host and the friend (as guest) gets its state.
+            const rooms = await (async () => {
+              const out = {};
+              const refA = { src: 'search', id: '', title: 'Numb', artist: 'Linkin Park' };
+              const refB = { src: 'deezer', id: '3135553', title: 'One More Time', artist: 'Daft Punk' };
+              const keyOf = (ref) => `${ref.src}:${ref.id}:${ref.title.toLowerCase()}`;
+              const roomState = () => js('window.CleanMusic.socialRoomState()');
+              const until = async (test, ms = 20000) => {
+                for (let waited = 0; waited < ms; waited += 250) {
+                  const now = await roomState();
+                  if (test(now)) return now;
+                  await pause(250);
+                }
+                return roomState();
+              };
+              const made = await friend.call('POST', '/v1/room', {});
+              const code = made.data.code || '';
+              const deepRoom = parseDeepLink(`cleanmusic://friend?c=${code}`);
+              out.deep = Boolean(deepRoom && deepRoom.action === 'friend' && deepRoom.code === code);
+              const hostSock = await friend.live();
+              out.hello = Boolean(await hostSock.next('hello'));
+              hostSock.send({ t: 'state', ref: refA, pos: 0, at: Date.now(), playing: true, full: false });
+              await pause(200);
+              const joined = await js(`window.CleanMusic.socialRoomJoin(${q(code)})`);
+              out.joined = Boolean(joined && joined.id);
+              out.members = ((await hostSock.next('members')) || { members: [] }).members.length;
+              let st = await until((now) => now.status === 'open' && now.loadedKey === keyOf(refA) && now.player.playing);
+              out.first = st.loadedKey === keyOf(refA) && st.player.playing;
+              out.skew = Number.isFinite(st.skew);
+              out.panel = await js('document.querySelectorAll("#view-friends .social-room.active .social-friend").length');
+              hostSock.send({ t: 'state', ref: refB, pos: 0, at: Date.now(), playing: true, full: false });
+              st = await until((now) => now.loadedKey === keyOf(refB) && now.player.key === keyOf(refB) && now.player.playing);
+              out.track = st.player.key === keyOf(refB) && st.player.playing;
+              hostSock.send({ t: 'state', ref: refB, pos: 3, at: Date.now(), playing: false, full: false });
+              st = await until((now) => !now.player.playing, 6000);
+              out.pause = !st.player.playing;
+              hostSock.send({ t: 'state', ref: refB, pos: 15, at: Date.now(), playing: true, full: false });
+              st = await until((now) => now.player.playing && now.player.position > 13 && now.player.position < 22, 8000);
+              out.seek = Math.round(st.player.position * 10) / 10;
+              await js('window.CleanMusic.socialRoomReact("🔥")');
+              const react = await hostSock.next('react');
+              out.react = react ? react.emoji : '';
+              await pause(1700);
+              await js('document.querySelector("#audio").pause()');
+              st = await until((now) => now.following === false, 4000);
+              out.takeOver = st.following === false;
+              await js('window.CleanMusic.socialRoomFollow()');
+              st = await until((now) => now.following && now.player.playing, 6000);
+              out.followAgain = st.following && st.player.playing;
+              await friend.call('POST', '/v1/room/leave', {});
+              st = await until((now) => now.room && now.room.isHost, 6000);
+              out.handOver = Boolean(st.room && st.room.isHost);
+              await pause(500);
+              await friend.call('POST', '/v1/room/join', { code });
+              const guestSock = await friend.live();
+              const hello = await guestSock.next('hello');
+              out.hostState = hello && hello.room.state && hello.room.state.ref ? hello.room.state.ref.title : '';
+              await pause(500);
+              await js('document.querySelector("#audio").pause()');
+              const paused = await guestSock.next('state');
+              out.hostPause = Boolean(paused && paused.state.playing === false);
+              await js('window.CleanMusic.socialRoomLeave(true)');
+              const closed = await guestSock.next('closed');
+              out.closed = closed ? closed.reason : '';
+              out.roomsAfter = fake.state().rooms.length;
+              st = await roomState();
+              out.left = !st.room && !st.local.code;
+              hostSock.close();
+              guestSock.close();
+              return out;
+            })().catch((error) => ({ error: error.message }));
+            const roomOk = rooms.deep && rooms.hello && rooms.joined && rooms.members === 2 && rooms.first && rooms.skew &&
+              rooms.panel === 2 && rooms.track && rooms.pause && rooms.seek > 13 && rooms.seek < 22 && rooms.react === '🔥' &&
+              rooms.takeOver && rooms.followAgain && rooms.handOver && rooms.hostState === 'One More Time' && rooms.hostPause &&
+              rooms.closed === 'host' && rooms.roomsAfter === 0 && rooms.left;
             fake.setEnabled(false);
             const off = await js('window.CleanMusic.socialRefresh()');
             fake.setEnabled(true);
@@ -2592,6 +2669,7 @@ function createMainWindow() {
               blocked: blocked.includes(friend2.id),
               killSwitch: off === null,
               groups: groupOk || { gid: Boolean(gid), groupCode, joined: groupJoined.status, groupUi, weekPushed, untracked, added, groupTracks, left, groupsAfter },
+              rooms: roomOk || rooms,
               signed: log.length > 0 && log.every((entry) => entry.signed),
               requests: log.length,
               deleted: Boolean(deleted) && !fs.existsSync(social.keyFile()) && !after.local.enabled && accountsLeft === 3,
@@ -2599,12 +2677,12 @@ function createMainWindow() {
             await social.setServer('');
             await fake.close();
             const ok = result.noServer === 'kein-server' && result.badServer === 'adresse' && result.allowlist === 'adresse,adresse' &&
-              enabled === true && result.keyEncrypted && result.bridge === 'socialInfo,socialNameCheck,socialRequest,socialServerSet,socialSetup' &&
+              enabled === true && result.keyEncrypted && result.bridge === 'onSocialRoom,socialInfo,socialNameCheck,socialRequest,socialRoom,socialServerSet,socialSetup' &&
               result.names === 'false,true' && result.me.startsWith('Smoke Tester') && requestsOk &&
               ui.home === 1 && ui.rows === 1 && ui.listen === 1 && ui.emojis === 5 && ui.count === '1' && result.qr &&
               reacted === true && result.played && tickOff === 'none' && result.shared === 'false,true' && result.inbox === 1 &&
               result.cleared && deepOk && result.viaLink && result.reports === 1 && result.blocked && result.killSwitch &&
-              result.signed && result.deleted && groupOk;
+              result.signed && result.deleted && groupOk && roomOk;
             if (!ok) throw new Error(JSON.stringify(result));
             console.log('SMOKE_SOCIAL_SERVER:', JSON.stringify(result));
           } catch (error) {
@@ -7828,10 +7906,10 @@ function parseDeepLink(raw) {
       const code = String(url.searchParams.get('d') || '');
       return /^P1\.[A-Za-z0-9_-]{8,12000}$/.test(code) ? { action: 'playlist', code } : null;
     }
-    // Social friend (F1-…) or group (G1-…) code from site/f/: only the format, used after a question.
+    // Social friend (F1-…), group (G1-…) or room (R1-…, S3) code from site/f/: only the format, used after a question.
     if (host === 'friend') {
       const code = String(url.searchParams.get('c') || '');
-      return /^[FG]1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code) ? { action: 'friend', code } : null;
+      return /^[FGR]1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code) ? { action: 'friend', code } : null;
     }
     if (host === 'group') {
       const code = String(url.searchParams.get('c') || '');

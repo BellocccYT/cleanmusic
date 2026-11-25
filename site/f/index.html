@@ -50,8 +50,9 @@
 (() => {
   // The code travels in the #fragment – it is never sent to a server.
   const code = decodeURIComponent((location.hash || '').slice(1)).trim().toUpperCase();
-  const valid = /^[FG]1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code);
+  const valid = /^[FGR]1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code);
   const isGroup = code.startsWith('G1-');
+  const isRoom = code.startsWith('R1-');
   const open = document.getElementById('open');
   const hint = document.getElementById('hint');
   const box = document.getElementById('code');
@@ -68,10 +69,17 @@
     open.textContent = 'In CleanMusic beitreten';
     hint.textContent = 'CleanMusic fragt dich vorher. Die Gruppe sieht deinen Namen und deine Wochenkarte. Der Code gilt 24 Stunden.';
   }
+  if (isRoom) {
+    document.title = 'Gemeinsam hören in CleanMusic';
+    document.querySelector('.eyebrow').textContent = 'Raumcode';
+    document.querySelector('h1').textContent = 'Hör mit uns in CleanMusic';
+    open.textContent = 'In CleanMusic mithören';
+    hint.textContent = 'CleanMusic fragt dich vorher. Der Host bestimmt, was läuft – dein CleanMusic spielt dieselben Songs selbst ab. Der Raum sieht deinen Namen. Kein Chat, nur Emoji-Reaktionen.';
+  }
   open.href = 'cleanmusic://friend?c=' + encodeURIComponent(code);
   box.textContent = code;
   box.addEventListener('click', () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => { hint.textContent = isGroup ? 'Code kopiert – in CleanMusic unter Freunde → Gruppen einfügen.' : 'Code kopiert – in CleanMusic unter Freunde → Freund hinzufügen einfügen.'; });
+    if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => { hint.textContent = isRoom ? 'Code kopiert – in CleanMusic unter Freunde → Gemeinsam hören einfügen.' : isGroup ? 'Code kopiert – in CleanMusic unter Freunde → Gruppen einfügen.' : 'Code kopiert – in CleanMusic unter Freunde → Freund hinzufügen einfügen.'; });
   });
   setTimeout(() => { location.href = open.href; }, 600);
 })();

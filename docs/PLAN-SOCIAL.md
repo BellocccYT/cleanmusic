@@ -2,7 +2,7 @@
 
 Stand: 25.11.2026 – **S1 ist gebaut** (Server, App-Anbindung, Tests). Der Server läuft seit 25.11.2026 unter
 `https://cleanmusic-social.cleanmusic.workers.dev` (Standard-Adresse ab dem nächsten Release);
-die Datenschutzseite `site/privacy/social/` ist ausgefüllt (25.11.2026). S2 und S3 sind offen. Weg A (ohne Server: Discord-Knopf, Playlist-Links,
+die Datenschutzseite `site/privacy/social/` ist ausgefüllt (25.11.2026). S2 ist live, S3 („Gemeinsam hören“) ist gebaut und wartet auf das Deploy mit 2.1.0. Weg A (ohne Server: Discord-Knopf, Playlist-Links,
 Wochenkarte per Code) ist fertig und bleibt als Offline-Weg erhalten.
 
 ## Grundidee
@@ -152,7 +152,24 @@ Die Seitenleiste zählt offene Anfragen (vor „hören gerade“). Im Smoke werd
 deploy`, CleanMusic-Konto), dann die App 2.1.0 veröffentlichen. Umgekehrt ginge es auch (die App
 fällt auf das alte Verhalten zurück), aber dann gäbe es bis zum Deploy keine Anfragen.
 
-### S3 – Gemeinsam hören (Listening-Party)
+### S3 – Gemeinsam hören (Listening-Party) ✅ gebaut (25.11.2026, für 2.1.0; Worker noch nicht deployt)
+
+Umgesetzt in `server/social/src/rooms.js` (Andockpunkte in `hub.js`: `ROOM_SCHEMA`, `ROOM_RATE`, Fälle in
+`route`, `webSocketMessage`/`webSocketClose`, `deleteAccountRooms`, `cleanupRooms`, Not-Aus schließt alle
+Sockets): Raumcode `R1-…` (nur Hash), max. 20 Leute, ein Raum je Konto. REST `POST/GET /v1/room`,
+`/v1/room/join`, `/v1/room/leave` (`close: true` = für alle beenden), `/v1/room/kick` (nur Host, Sperre je
+Raum). Live: ein signierter WebSocket `GET /v1/room/live` (Hibernation, `ping`/`pong` automatisch, ohne das
+Objekt zu wecken). Nachrichten: `state` (nur Host, `{ ref, pos, at, playing, full }`, `proto.cleanRoomState`),
+`react` (feste Emojis, nur weitergereicht), `time` (Zeitabgleich, `skewFromSamples`). Host-Übergabe an das
+älteste Mitglied, ohne Host stirbt der Raum nach 30 Minuten, Gäste ohne Verbindung fallen nach 30 Minuten
+raus, spätestens nach 24 Stunden ist Schluss. Kosten: Eingehende WebSocket-Nachrichten zählen bei Cloudflare
+1:20, Pings gar nicht – ein voller Raum über 2 Stunden bleibt unter ~500 Anfragen. Kein Polling.
+
+App: `lib/social-ws.js` (minimaler WebSocket, Electron 33 hat im Hauptprozess keinen), `social-main.js`
+(Verbindung, Ping 25 s, Neuaufbau 2–30 s, IPC `social-room` nur `connect`/`send`/`disconnect`/`status`,
+Nachrichten werden geprüft), reine Regeln in `renderer/core/social.js` (`roomSyncPlan`, `roomHostPlan`,
+`roomDeviation`), UI „Gemeinsam hören“ in der Ansicht „Freunde“. Wer als Gast selbst pausiert/spult/einen
+anderen Song wählt, hört selbst weiter („Wieder synchron“).
 
 - Raum per Code, höchstens 20 Leute. Der Host steuert, der Server verteilt nur
   `{ ref, position, at, playing }` über WebSocket (Durable Object, Hibernation).

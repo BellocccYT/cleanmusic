@@ -12,8 +12,14 @@
  * - Solves the proof-of-work for a new account in small chunks, so the main
  *   process stays responsive.
  *
+ * - S3 rooms ("Gemeinsam hören"): one signed WebSocket to /v1/room/live
+ *   (lib/social-ws.js – Electron 33's Node has no global WebSocket). Ping
+ *   every 25 s, clock offset from time pings, reconnect with backoff. The
+ *   renderer only says connect/send/disconnect; messages are checked here.
+ *
  * createFakeServer() is a small in-memory stand-in for the smoke test
- * (SMOKE_SOCIAL_SERVER); it checks signatures, time, nonces and PoW the same way.
+ * (SMOKE_SOCIAL_SERVER); it checks signatures, time, nonces and PoW the same way,
+ * and has rooms with live sockets.
  */
 
 const fs = require('node:fs');
@@ -22,6 +28,7 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const names = require('./lib/social-names');
 const proto = require('./lib/social-protocol');
+const roomWs = require('./lib/social-ws');
 
 const H = proto.HEADERS;
 
@@ -199,7 +206,7 @@ function createSocial(deps) {
     const method = String((input && input.method) || '').toUpperCase();
     const pathname = String((input && input.path) || '');
     const body = input && input.body;
-    if (!proto.isEndpoint(method, pathname) || (method === 'POST' && pathname === '/v1/account')) {
+    if (!proto.isEndpoint(method, pathname) || (method === 'POST' && pathname === '/v1/account') || pathname === proto.ROOM_LIVE) {
       return { error: 'adresse', message: 'Diese Social-Anfrage ist nicht erlaubt.' };
     }
     if (body != null && (typeof body !== 'object' || Array.isArray(body) || JSON.stringify(body).length > proto.BODY_MAX)) {
@@ -251,6 +258,136 @@ function createSocial(deps) {
     return info();
   }
 
+  /* --- S3: the live room connection ------------------------------------ */
+  const FINAL_CLOSE = [4000, 4403, 4404, 4409, 4503];
+  const room = { conn: null, want: false, retry: 0, timer: null, ping: null, sync: null, seen: 0, samples: [], skew: 0, status: 'off' };
+
+  function emitRoom(event) {
+    const win = getWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('social-room', event);
+  }
+
+  function roomStatus(status, extra) {
+    room.status = status;
+    emitRoom(Object.assign({ type: 'status', status, skew: room.skew }, extra || {}));
+  }
+
+  function stopRoomTimers() {
+    clearInterval(room.ping);
+    clearInterval(room.sync);
+    clearTimeout(room.timer);
+    room.ping = null;
+    room.sync = null;
+    room.timer = null;
+  }
+
+  function timePing(conn) {
+    if (conn && conn.open) conn.send(JSON.stringify({ t: 'time', c: Date.now() }));
+  }
+
+  function roomConnect() {
+    room.want = true;
+    clearTimeout(room.timer);
+    if (room.conn) return { ok: true, status: room.status };
+    const origin = server();
+    const key = loadKey();
+    const url = origin ? proto.roomSocketUrl(origin) : '';
+    if (!url || !key) return { error: 'kein-schluessel', message: 'Social ist auf diesem Gerät noch nicht eingerichtet.' };
+    roomStatus('connecting');
+    const conn = roomWs.connect(url, { headers: signHeaders(key, 'GET', proto.ROOM_LIVE, '') }, {
+      open() {
+        if (room.conn !== conn) return;
+        room.retry = 0;
+        room.seen = Date.now();
+        roomStatus('open');
+        room.ping = setInterval(() => {
+          if (Date.now() - room.seen > 70000) conn.close(1001, 'still');
+          else conn.send('ping');
+        }, 25000);
+        // Clock offset: three quick pings, then one every 5 minutes.
+        [0, 400, 800].forEach((delay) => setTimeout(() => timePing(conn), delay));
+        room.sync = setInterval(() => timePing(conn), 5 * 60 * 1000);
+      },
+      message(text) {
+        if (room.conn !== conn) return;
+        room.seen = Date.now();
+        if (text === 'pong') return;
+        let data = null;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          return;
+        }
+        if (!data || typeof data !== 'object') return;
+        if (data.t === 'time') {
+          room.samples = room.samples.concat({ c: Number(data.c), s: Number(data.s), r: Date.now() }).slice(-8);
+          const best = proto.skewFromSamples(room.samples);
+          if (best) {
+            room.skew = best.skew;
+            emitRoom({ type: 'skew', skew: best.skew, rtt: best.rtt });
+          }
+          return;
+        }
+        emitRoom({ type: 'message', data });
+      },
+      close(info) {
+        if (room.conn !== conn) return;
+        room.conn = null;
+        stopRoomTimers();
+        const body = info.body && typeof info.body === 'object' ? info.body : {};
+        const final = FINAL_CLOSE.includes(info.code) || [401, 403, 404, 426].includes(info.status);
+        emitRoom({ type: 'closed', code: info.code, status: info.status || 0, error: String(body.error || ''), message: String(body.message || '').slice(0, 200), final });
+        if (room.want && !final) {
+          room.retry += 1;
+          const wait = Math.min(30000, 2000 * 2 ** Math.min(4, room.retry - 1));
+          roomStatus('retry', { retryIn: wait });
+          room.timer = setTimeout(() => {
+            room.timer = null;
+            if (room.want) roomConnect();
+          }, wait);
+        } else {
+          room.want = false;
+          roomStatus('off');
+        }
+      },
+    });
+    room.conn = conn;
+    return { ok: true, status: room.status };
+  }
+
+  function roomDisconnect() {
+    room.want = false;
+    stopRoomTimers();
+    const conn = room.conn;
+    room.conn = null;
+    if (conn) conn.close(1000, 'tschüss');
+    roomStatus('off');
+    return { ok: true };
+  }
+
+  // Only the two messages a member may send; the server checks them again.
+  function roomSend(message) {
+    const value = message && typeof message === 'object' ? message : {};
+    let out = null;
+    if (value.t === 'react' && proto.EMOJIS.includes(value.emoji)) out = { t: 'react', emoji: value.emoji };
+    if (value.t === 'state') {
+      const state = proto.cleanRoomState(value, Number(value.at) || Date.now());
+      if (state) out = Object.assign({ t: 'state' }, state);
+    }
+    if (!out) return { error: 'daten', message: 'Ungültige Raum-Nachricht.' };
+    const text = JSON.stringify(out);
+    if (text.length > proto.LIMITS.roomMessageMax || !room.conn || !room.conn.open) return { error: 'offline', message: 'Keine Verbindung zum Raum.' };
+    return room.conn.send(text) ? { ok: true } : { error: 'offline', message: 'Keine Verbindung zum Raum.' };
+  }
+
+  function roomAction(action, payload) {
+    if (action === 'connect') return roomConnect();
+    if (action === 'disconnect') return roomDisconnect();
+    if (action === 'send') return roomSend(payload);
+    if (action === 'status') return { ok: true, status: room.status, skew: room.skew };
+    return { error: 'adresse', message: 'Diese Raum-Aktion gibt es nicht.' };
+  }
+
   function register() {
     const own = (event) => {
       const win = getWindow();
@@ -262,9 +399,10 @@ function createSocial(deps) {
     ipcMain.handle('social-name-check', guard((name) => names.checkName(name)));
     ipcMain.handle('social-setup', guard(() => setup()));
     ipcMain.handle('social-request', guard((input) => request(input)));
+    ipcMain.handle('social-room', guard((action, payload) => roomAction(String(action || ''), payload)));
   }
 
-  return { register, info, setup, request, setServer, keyFile, loadKey };
+  return { register, info, setup, request, setServer, keyFile, loadKey, roomAction };
 }
 
 /* --- Smoke: in-memory stand-in for the Worker ---------------------------- */
@@ -285,6 +423,8 @@ function createFakeServer() {
   const weeks = new Map(); // account -> week card
   let trackSeq = 0;
   let enabled = true;
+  const rooms = new Map(); // id -> { id, code, host, created, members: [{ id, joined }], bans: Set, state }
+  const roomSockets = new Set(); // { conn, a, r }
   const POW = 8;
 
   const set = (id) => (friends.has(id) ? friends.get(id) : friends.set(id, new Set()).get(id));
@@ -323,6 +463,72 @@ function createFakeServer() {
     if (!ok) return null;
     nonces.add(`${key}:${nonce}`);
     return { id: idOf(key), pub: key };
+  }
+
+  /* S3 rooms (simplified: no limits, no 30-minute timers) */
+  const roomOf = (id) => Array.from(rooms.values()).find((room) => room.members.some((m) => m.id === id)) || null;
+  const roomOnline = (room) => new Set(Array.from(roomSockets).filter((s) => s.r === room.id).map((s) => s.a));
+  const roomMembers = (room) => {
+    const live = roomOnline(room);
+    return room.members.map((m) => Object.assign(person(m.id), { host: m.id === room.host, online: live.has(m.id) }));
+  };
+  const roomSnap = (room) => ({ id: room.id, host: room.host, created: room.created, members: roomMembers(room), state: room.state });
+  const roomSend = (s, message) => s.conn.send(JSON.stringify(message));
+  const roomCast = (room, message, except) => roomSockets.forEach((s) => {
+    if (s.r === room.id && s !== except) roomSend(s, message);
+  });
+  const roomAnnounce = (room) => roomCast(room, { t: 'members', host: room.host, members: roomMembers(room) });
+  function roomDrop(room, id, code, reason) {
+    roomSockets.forEach((s) => {
+      if (s.r === room.id && s.a === id) {
+        roomSend(s, { t: 'closed', reason });
+        s.conn.close(code, reason);
+        roomSockets.delete(s);
+      }
+    });
+    room.members = room.members.filter((m) => m.id !== id);
+    if (room.host === id) {
+      if (!room.members.length) return roomClose(room, 'leer');
+      room.host = room.members[0].id;
+    }
+    return roomAnnounce(room);
+  }
+  function roomClose(room, reason) {
+    roomSockets.forEach((s) => {
+      if (s.r !== room.id) return;
+      roomSend(s, { t: 'closed', reason });
+      s.conn.close(4404, reason);
+      roomSockets.delete(s);
+    });
+    rooms.delete(room.id);
+  }
+  function roomLeaveCurrent(id) {
+    const room = roomOf(id);
+    if (room) roomDrop(room, id, 4000, 'verlassen');
+  }
+  function roomMessage(s, text) {
+    const room = rooms.get(s.r);
+    if (!room || !room.members.some((m) => m.id === s.a)) return s.conn.close(4404, 'weg');
+    if (text === 'ping') return s.conn.send('pong');
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+    if (!data || !proto.ROOM_MESSAGES.includes(data.t)) return roomSend(s, { t: 'error', error: 'nachricht' });
+    const now = Date.now();
+    if (data.t === 'time') return roomSend(s, { t: 'time', c: Number(data.c) || 0, s: now });
+    if (data.t === 'react') {
+      if (!proto.EMOJIS.includes(data.emoji)) return roomSend(s, { t: 'error', error: 'emoji' });
+      return roomCast(room, { t: 'react', from: person(s.a), emoji: data.emoji, at: now }, s);
+    }
+    if (room.host !== s.a) return roomSend(s, { t: 'error', error: 'nur-host' });
+    const state = proto.cleanRoomState(data, now);
+    if (!state) return roomSend(s, { t: 'error', error: 'ref' });
+    room.state = state;
+    log.push({ method: 'WS', path: 'state', signed: true, status: 200 });
+    return roomCast(room, { t: 'state', state, now }, s);
   }
 
   function handle(method, pathname, auth, data) {
@@ -520,6 +726,49 @@ function createFakeServer() {
         group.tracks = group.tracks.filter((track) => track.rid !== Number(data.rid));
         return [200, { ok: true }];
       }
+      case 'POST /v1/room': {
+        roomLeaveCurrent(auth.id);
+        const id = names.accountIdFromDigest(crypto.randomBytes(15));
+        const code = proto.roomCodeFrom(crypto.randomBytes(12));
+        const room = { id, code, host: auth.id, created: Date.now(), members: [{ id: auth.id, joined: Date.now() }], bans: new Set(), state: null };
+        rooms.set(id, room);
+        return [201, { room: roomSnap(room), code, now: Date.now() }];
+      }
+      case 'GET /v1/room': {
+        const room = roomOf(auth.id);
+        return [200, { room: room ? roomSnap(room) : null, now: Date.now() }];
+      }
+      case 'POST /v1/room/join': {
+        const code = proto.parseRoomCode(data.code);
+        const room = Array.from(rooms.values()).find((row) => code && row.code === code);
+        if (!room) return [404, { error: 'code', message: 'Diesen Raum gibt es nicht (mehr).' }];
+        if (room.bans.has(auth.id)) return [403, { error: 'raus', message: 'Der Host hat dich aus diesem Raum entfernt.' }];
+        if (room.members.some((m) => m.id === auth.id)) return [200, { room: roomSnap(room), already: true, now: Date.now() }];
+        if (room.members.length >= proto.LIMITS.roomMembers) return [409, { error: 'voll', message: 'Der Raum ist voll.' }];
+        roomLeaveCurrent(auth.id);
+        room.members.push({ id: auth.id, joined: Date.now() });
+        roomAnnounce(room);
+        return [201, { room: roomSnap(room), now: Date.now() }];
+      }
+      case 'POST /v1/room/leave': {
+        const room = roomOf(auth.id);
+        if (!room) return [404, { error: 'kein-raum', message: 'Du bist in keinem Raum.' }];
+        if (data.close && room.host === auth.id) {
+          roomClose(room, 'host');
+          return [200, { ok: true, closed: true }];
+        }
+        roomDrop(room, auth.id, 4000, 'verlassen');
+        return [200, { ok: true }];
+      }
+      case 'POST /v1/room/kick': {
+        const room = roomOf(auth.id);
+        if (!room || room.host !== auth.id) return [403, { error: 'nur-host', message: 'Nur der Host.' }];
+        room.bans.add(other);
+        roomDrop(room, other, 4403, 'raus');
+        return [200, { ok: true }];
+      }
+      case 'GET /v1/room/live':
+        return [426, { error: 'websocket', message: 'Nur per WebSocket.' }];
       default:
         return [404, { error: 'unbekannt', message: 'Unbekannt.' }];
     }
@@ -556,6 +805,37 @@ function createFakeServer() {
     });
   });
 
+  // S3: the live room socket (signed upgrade like every request).
+  server.on('upgrade', (req, socket, head) => {
+    const pathname = new URL(req.url, 'http://127.0.0.1').pathname;
+    const auth = pathname === proto.ROOM_LIVE ? verify(req, 'GET', pathname, '') : null;
+    log.push({ method: 'GET', path: pathname, signed: Boolean(auth), status: auth ? 101 : 401 });
+    if (!auth) return roomWs.refuse(socket, 401, { error: 'signatur', message: 'Signatur fehlt oder stimmt nicht.' });
+    if (!enabled) return roomWs.refuse(socket, 503, { error: 'aus', message: 'Social ist gerade abgeschaltet.' });
+    const room = roomOf(auth.id);
+    if (!room) return roomWs.refuse(socket, 404, { error: 'kein-raum', message: 'Du bist in keinem Raum.' });
+    roomSockets.forEach((old) => {
+      if (old.a === auth.id) {
+        old.conn.close(4409, 'ersetzt');
+        roomSockets.delete(old);
+      }
+    });
+    const entry = { a: auth.id, r: room.id, conn: null };
+    entry.conn = roomWs.accept(req, socket, head, {
+      message: (text) => roomMessage(entry, text),
+      close: () => {
+        if (!roomSockets.delete(entry)) return;
+        const still = rooms.get(entry.r);
+        if (still) roomAnnounce(still);
+      },
+    });
+    if (!entry.conn) return undefined;
+    roomSockets.add(entry);
+    roomSend(entry, { t: 'hello', now: Date.now(), me: auth.id, room: roomSnap(room) });
+    roomCast(room, { t: 'members', host: room.host, members: roomMembers(room) }, entry);
+    return undefined;
+  });
+
   // A second, simulated device: it has its own key and talks to this server
   // over the same signed protocol (used to play "the friend").
   async function remoteClient() {
@@ -581,12 +861,43 @@ function createFakeServer() {
       });
     const pow = await solvePow(key.id, POW);
     await call('POST', '/v1/account', { pow });
-    return { id: key.id, call };
+    // S3: this device's live room socket – inbox, next(type), send(), close().
+    const live = () =>
+      new Promise((resolve) => {
+        const inbox = [];
+        const socket = { inbox, closed: null };
+        const url = proto.roomSocketUrl(`http://127.0.0.1:${server.address().port}`);
+        const conn = roomWs.connect(url, { headers: signHeaders(key, 'GET', proto.ROOM_LIVE, '') }, {
+          open: () => resolve(socket),
+          message: (text) => inbox.push(text.startsWith('{') ? JSON.parse(text) : { t: text }),
+          close: (info) => {
+            socket.closed = info;
+            resolve(socket);
+          },
+        });
+        socket.send = (data) => conn.send(typeof data === 'string' ? data : JSON.stringify(data));
+        socket.close = () => conn.close(1000, 'ende');
+        socket.next = async (type, ms = 5000) => {
+          for (let waited = 0; waited < ms; waited += 25) {
+            const index = inbox.findIndex((message) => message.t === type);
+            if (index >= 0) return inbox.splice(index, 1)[0];
+            await new Promise((done) => setTimeout(done, 25));
+          }
+          return null;
+        };
+      });
+    return { id: key.id, call, live };
   }
 
   return {
     listen: () => new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`))),
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise((resolve) => {
+        roomSockets.forEach((s) => s.conn.close(1001, 'ende'));
+        roomSockets.clear();
+        server.close(() => resolve());
+        if (server.closeAllConnections) server.closeAllConnections();
+      }),
     remoteClient,
     setEnabled: (value) => {
       enabled = Boolean(value);
@@ -602,6 +913,7 @@ function createFakeServer() {
       presence: Array.from(presence.keys()),
       groups: Array.from(groups.values()).map((group) => ({ id: group.id, owner: group.owner, members: group.members.length, tracks: group.tracks.length })),
       weeks: Array.from(weeks.keys()),
+      rooms: Array.from(rooms.values()).map((room) => ({ id: room.id, host: room.host, members: room.members.length, online: roomOnline(room).size, state: room.state })),
     }),
   };
 }

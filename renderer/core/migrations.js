@@ -63,6 +63,7 @@
     kofiHint: 'object',
     silentRefs: 'array',
     social: 'object',
+    room: 'object',
   };
 
   // Human-readable names for messages in the UI.

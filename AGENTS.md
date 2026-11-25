@@ -104,6 +104,34 @@ Social 2.1.0 – Freundschaftsanfragen + Online-Status (noch nicht veröffentlic
 
 Social 2.0.0 – weniger Anfragen + PoW 22: `renderer/core/social.js` `pollPlan` (rein, Test in `test/social.test.js`) entscheidet für den 30-s-Poll, ob `/v1/friends` abgefragt wird – nur bei sichtbarem Fenster, im Freunde-Fenster höchstens alle 30 s, sonst alle 3 min; `GET /v1/groups` nur, wenn der Nutzer in einer Gruppe ist oder die letzte Gruppen-Abfrage ≥ 10 min her ist (direktes Erstellen/Beitreten lädt über `refreshFriends` ohnehin). `refreshFriends` holt Gruppen jetzt getrennt über `refreshGroups` (`socialRt.groupsLoaded`), `startSocialTimers` ruft `socialPoll` alle 30 s. `server/social/wrangler.toml`: `POW_BITS = "22"` (Deploy nur mit dem CleanMusic-Konto, siehe `docs/PLAN-2.0-RELEASE.md`). Smoke `SMOKE_SOCIAL_SERVER` unverändert grün.
 
+Social Weg B S3 „Gemeinsam hören“ (für 2.1.0, `WHATS_NEW['2.1.0']`; Worker-Deploy steht aus – ein Server
+ohne Räume antwortet 404 `unbekannt`, die App blendet das Panel dann aus): Server `server/social/src/rooms.js`
+(Andockpunkte in `hub.js`: `ROOM_SCHEMA`, `ROOM_RATE`, `route`, `webSocketMessage`/`webSocketClose`/
+`webSocketError`, `deleteAccountRooms`, `cleanupRooms`, `closeAll` beim Not-Aus). Raumcode `R1-…` (nur Hash),
+max. 20 Leute (`proto.LIMITS.roomMembers`), ein Raum je Konto; REST `POST/GET /v1/room`, `/v1/room/join`,
+`/v1/room/leave` (`close`), `/v1/room/kick`; live ein signierter WebSocket `GET /v1/room/live` mit
+Hibernation-API (Tags Raum-ID und `a:<Konto>`, Auto-Antwort `ping`→`pong`, Close-Codes 4000 verlassen,
+4403 entfernt, 4404 Raum weg, 4409 ersetzt, 4503 aus). Nachrichten: `state` nur vom Host
+(`proto.cleanRoomState`: `{ ref, pos, at, playing, full }`, `at` ±10 s sonst Serverzeit, `ref` null bei
+lokal/Radio), `react` (feste Emojis, nur weitergereicht), `time` (Zeitabgleich, `proto.skewFromSamples`).
+Host-Übergabe an das älteste Mitglied, ohne Host 30 min, Gäste ohne Verbindung 30 min, max. 24 h.
+`lib/social-ws.js`: minimaler RFC-6455-Client/-Server ohne Abhängigkeiten (Electron 33 hat im Hauptprozess
+keinen `WebSocket`), genutzt von `social-main.js` (Verbindung mit Ping 25 s, Zeit-Pings, Neuaufbau 2–30 s,
+IPC `social-room` nur `connect`/`send`/`disconnect`/`status`, Ereignisse `social-room` an den Renderer;
+`social-request` lehnt `/v1/room/live` ab) und vom Fake-Server. Renderer: reine Regeln in
+`renderer/core/social.js` (`parseRoomCode`, `normalizeRoom`, `roomState`, `roomSyncPlan` – volle Titel
+sekundengenau mit Toleranz 1 s, Vorschauen nur Titel/Pause, `roomHostPlan` – Titel/Pause/Spulen > 2 s/
+Herzschlag 30 s, höchstens alle 0,4 s, `roomDeviation`), UI und Ablauf in `renderer/app.js` Abschnitt
+„Social S3“ (`roomRt`, `roomFollow`, `roomHostTick`, `roomPanelHtml`, `data-social="room-*"`); ein folgender
+Gast hält am Titelende an und bekommt kein Autoplay (`roomHolds` im `ended`-Handler und in
+`autoplayEligible`, mit try/catch wegen der TDZ-Regel). Eigenes Pausieren/Spulen/Titelwählen = „du hörst
+selbst“ bis „Wieder synchron“. Nach einem Neustart verbindet sich nichts von selbst („Wieder verbinden“).
+Lokal nur `cleanmusic.room.v1` (`{ code, room, at }`, um den Code wieder zu teilen). Deep Link
+`cleanmusic://friend?c=R1-…` → `joinRoomCode` (Rückfrage), `site/f/` kennt Raumcodes. Smoke
+`SMOKE_SOCIAL_SERVER.rooms` (Freund hostet, App folgt bei Titelwechsel/Pause/Spulen, übernimmt selbst,
+folgt wieder, Host-Übergabe an die App, Freund bekommt ihren Stand, für alle beenden), Worker-Test
+„S3 rooms“, Unit-Tests in `test/social.test.js`/`test/social-protocol.test.js`.
+
 ## Aufbau
 
 - `main.js` – Hauptprozess: Fenster, IPC, Widevine, Katalog/Charts/Radio, Vorschläge, Cutter-Quellen (Deezer-Playlisten, Openverse), Plugin-Lader, Discord-Steuerung, Smoke-Test.
@@ -156,7 +184,7 @@ Social 2.0.0 – weniger Anfragen + PoW 22: `renderer/core/social.js` `pollPlan`
 
 - `node --check` für geänderte JS-Dateien.
 - `npm.cmd run test:core` – reine Helfer aus `renderer/core/text.js` und `renderer/core/storage.js` ohne Electron (Formatierung, `matchKey` inkl. nicht-lateinischer Titel, `primaryArtist`, `seededShuffle`, Storage-Fehlerfälle).
-- `npm.cmd run test:unit` – zusätzlich `renderer/core/persist.js`, `renderer/audio/queue.js` (Schlüssel, Shuffle, Restore, Gruppen, nächster Index, Upcoming, eingereihte Titel, Einfügen/Entfernen/Verschieben, Autoplay-Samen) und `renderer/audio/queue-slice.js` (Queue als Store-Slice) und `renderer/core/migrations.js` (Schema, Sicherung, Quarantäne, Idempotenz); , `renderer/core/recipes.js` und `renderer/core/group.js`; sowie `lib/plugin-manifest.js` und `renderer/core/share.js` und das OBS-Visualizer-Plugin (`test/obs-visualizer.test.js`: Felder, Server, alle Stile × Farbmodi im Canvas-Stub, 60-fps-Grenze); außerdem `lib/social-names.js`, `lib/social-protocol.js` und `renderer/core/social.js`; derzeit 209 Prüfungen. Social-Server separat: `cd server/social && npm test` (Miniflare, 12 Tests).
+- `npm.cmd run test:unit` – zusätzlich `renderer/core/persist.js`, `renderer/audio/queue.js` (Schlüssel, Shuffle, Restore, Gruppen, nächster Index, Upcoming, eingereihte Titel, Einfügen/Entfernen/Verschieben, Autoplay-Samen) und `renderer/audio/queue-slice.js` (Queue als Store-Slice) und `renderer/core/migrations.js` (Schema, Sicherung, Quarantäne, Idempotenz); , `renderer/core/recipes.js` und `renderer/core/group.js`; sowie `lib/plugin-manifest.js` und `renderer/core/share.js` und das OBS-Visualizer-Plugin (`test/obs-visualizer.test.js`: Felder, Server, alle Stile × Farbmodi im Canvas-Stub, 60-fps-Grenze); außerdem `lib/social-names.js`, `lib/social-protocol.js` und `renderer/core/social.js`; derzeit 209 Prüfungen. Social-Server separat: `cd server/social && npm test` (Miniflare, 13 Tests).
 - `npm.cmd run smoke` – unsichtbares Fenster, Wegwerf-Profil. Prüft Vorschauen, Radio, Bibliothek, Cutter-Modus, Vollbild, Visualizer, die Vorlagen-Playlists (`SMOKE_PRESETS`), Shuffle, Playlist-Erweitern, die Smart Mixes (`SMOKE_TASTE`), die Smart-Playlists (`SMOKE_SMART`), die Seitenleiste (`SMOKE_SIDEBAR`), „Warum läuft das?“ (`SMOKE_WHY`) und die Update-Karte (`SMOKE_WHATS_NEW`). Ausgabezeilen beginnen mit `SMOKE_`, Fehler mit `..._FAIL`.
 - `npm.cmd run smoke:obs` – wie `smoke`, plus OBS-Overlay-Plugin aus `extras/plugins/` (Server, Ereignisse, Steuerung, Einstellungen, Textdateien).
 - `npm.cmd run smoke:visualizer` – wie `smoke`, plus OBS-Audio-Visualizer (Seite, `/visualizer.json`, SSE, 32 Bänder, Stilwechsel, Fremd-Host gesperrt, Port nach dem Ausschalten frei).

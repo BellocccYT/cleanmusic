@@ -135,4 +135,9 @@ contextBridge.exposeInMainWorld('cm', {
   socialNameCheck: (name) => ipcRenderer.invoke('social-name-check', String(name || '')),
   socialSetup: () => ipcRenderer.invoke('social-setup'),
   socialRequest: (method, path, body) => ipcRenderer.invoke('social-request', { method, path, body: body || null }),
+  // S3 rooms: connect | send | disconnect | status – the socket lives in the main process.
+  socialRoom: (action, payload) => ipcRenderer.invoke('social-room', String(action || ''), payload || null),
+  onSocialRoom: (listener) => {
+    ipcRenderer.on('social-room', (_event, data) => listener(data));
+  },
 });

@@ -195,7 +195,7 @@
       /* keep raw */
     }
     const fix = (part) => part.toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
-    for (const match of value.matchAll(/([FG])1[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})(?![0-9A-Za-z])/gi)) {
+    for (const match of value.matchAll(/([FGR])1[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})(?![0-9A-Za-z])/gi)) {
       if (match[1].toUpperCase() !== 'G') continue;
       const code = `G1-${fix(match[2])}-${fix(match[3])}-${fix(match[4])}`;
       return GROUP_CODE_RE.test(code) ? code : '';
@@ -370,6 +370,164 @@
     return `noch ${Math.round(hours / 24)} Tage`;
   }
 
+  /* --- S3: listening rooms ("Gemeinsam hören") ---------------------------- */
+  const ROOM_CODE_RE = /^R1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
+  const ROOM_MAX = 20;
+  const SEEK_COOLDOWN = 3000; // after a correction, give the player time to settle
+  const SEEK_LEAD = 0.25; // a seek costs a moment – land slightly ahead
+  const HOST_GAP = 400; // the host sends at most every 0.4 s …
+  const HOST_HEARTBEAT = 30 * 1000; // … and while playing at least every 30 s
+  const HOST_SEEK = 2; // a jump of more than 2 s is a seek
+
+  function parseRoomCode(text) {
+    let value = String(text || '');
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      /* keep raw */
+    }
+    const fix = (part) => part.toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
+    for (const match of value.matchAll(/([FGR])1[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})[\s-]*([0-9A-Za-z]{4})(?![0-9A-Za-z])/gi)) {
+      if (match[1].toUpperCase() !== 'R') continue;
+      const code = `R1-${fix(match[2])}-${fix(match[3])}-${fix(match[4])}`;
+      return ROOM_CODE_RE.test(code) ? code : '';
+    }
+    return '';
+  }
+
+  /** The shared room state { ref, pos, at, playing, full } – or null. */
+  function roomState(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const ref = raw.ref == null ? null : validRef(raw.ref);
+    if (raw.ref != null && !ref) return null;
+    const pos = Number(raw.pos);
+    return {
+      ref,
+      pos: Number.isFinite(pos) ? Math.max(0, Math.min(86400, pos)) : 0,
+      at: Number(raw.at) || 0,
+      playing: Boolean(ref) && raw.playing === true,
+      full: raw.full === true,
+    };
+  }
+
+  /** Clean a room snapshot (GET /v1/room, hello) for the UI. */
+  function normalizeRoom(raw, myId) {
+    if (!raw || typeof raw !== 'object' || !ID_RE.test(String(raw.id || ''))) return null;
+    const host = String(raw.host || '');
+    const members = (Array.isArray(raw.members) ? raw.members : [])
+      .slice(0, ROOM_MAX)
+      .map((member) => {
+        const base = person(member);
+        if (!base) return null;
+        base.host = base.id === host;
+        base.online = member.online === true;
+        base.self = base.id === myId;
+        return base;
+      })
+      .filter(Boolean);
+    return { id: String(raw.id), host, isHost: Boolean(myId) && host === myId, members, state: roomState(raw.state) };
+  }
+
+  function roomMembers(raw, host, myId) {
+    return normalizeRoom({ id: 'RRRRRRRRRRRRRRRRRRRRRRRR', host, members: raw }, myId).members;
+  }
+
+  /** Where the host is now (seconds), on the server clock `now`. */
+  function expectedPosition(state, now) {
+    if (!state) return 0;
+    return state.playing ? state.pos + Math.max(0, now - state.at) / 1000 : state.pos;
+  }
+
+  /** Positions only match between two full titles or two previews. */
+  function comparable(state, local) {
+    return Boolean(state && local) && Boolean(state.full) === Boolean(local.full);
+  }
+
+  function tolerance(local) {
+    return local && local.full ? 1 : 2;
+  }
+
+  /**
+   * Guest: what to do so the own player follows the host. input: { state,
+   * now (server clock, ms), clock (local ms), lastSeekAt (local ms), local:
+   * { key, position, playing, full, duration, ended, loading } } →
+   * { action: 'none'|'load'|'play'|'pause'|'seek', position|null, reason }.
+   * Full titles follow to the second; with a preview (or preview vs. full)
+   * only the title and play/pause follow.
+   */
+  function roomSyncPlan(input) {
+    const state = input && input.state;
+    const local = (input && input.local) || {};
+    const none = (reason) => ({ action: 'none', position: null, reason });
+    if (!state) return none('kein-zustand');
+    if (!state.ref) return local.playing ? { action: 'pause', position: null, reason: 'nicht-teilbar' } : none('nicht-teilbar');
+    if (local.loading) return none('laedt');
+    const now = Number(input.now) || 0;
+    const expected = expectedPosition(state, now);
+    if (local.key !== refKey(state.ref)) return { action: 'load', position: expected, reason: 'titel' };
+    const same = comparable(state, local);
+    const diff = same ? Number(local.position || 0) - expected : 0;
+    const off = same && Math.abs(diff) > tolerance(local);
+    const settled = (Number(input.clock) || 0) - (Number(input.lastSeekAt) || 0) >= SEEK_COOLDOWN;
+    const duration = Number(local.duration) || 0;
+    if (!state.playing) {
+      if (local.playing) return { action: 'pause', position: off ? expected : null, reason: 'pause' };
+      return off && settled ? { action: 'seek', position: expected, reason: 'spulen' } : none('pausiert');
+    }
+    if (same && duration && expected >= duration - 0.5) return none('ende');
+    if (!local.playing) {
+      if (local.ended && !same) return none('warten');
+      return { action: 'play', position: off ? expected + SEEK_LEAD : null, reason: 'play' };
+    }
+    if (off && settled) return { action: 'seek', position: expected + SEEK_LEAD, reason: 'spulen' };
+    return none('synchron');
+  }
+
+  /**
+   * Host: send the state now? input: { key, position, playing, full, clock,
+   * last: { key, pos, playing, full, at } | null } → { send, reason }.
+   * Track change, play/pause, a seek (> 2 s off the prediction) and a heartbeat
+   * every 30 s while playing; never more often than every 0.4 s.
+   */
+  function roomHostPlan(input) {
+    const last = input && input.last;
+    const clock = Number(input && input.clock) || 0;
+    if (!last) return { send: true, reason: 'start' };
+    if (clock - (Number(last.at) || 0) < HOST_GAP) return { send: false, reason: 'abstand' };
+    if (String(input.key || '') !== String(last.key || '')) return { send: true, reason: 'titel' };
+    if (Boolean(input.playing) !== Boolean(last.playing)) return { send: true, reason: input.playing ? 'play' : 'pause' };
+    if (Boolean(input.full) !== Boolean(last.full)) return { send: true, reason: 'quelle' };
+    const predicted = last.playing ? last.pos + (clock - last.at) / 1000 : last.pos;
+    if (Math.abs((Number(input.position) || 0) - predicted) > HOST_SEEK) return { send: true, reason: 'spulen' };
+    if (input.playing && clock - last.at >= HOST_HEARTBEAT) return { send: true, reason: 'herzschlag' };
+    return { send: false, reason: 'gleich' };
+  }
+
+  /**
+   * Guest: did the user take over (own pause/play/seek) instead of the sync?
+   * event: 'play' | 'pause' | 'seeked'; same input shape as roomSyncPlan.
+   */
+  function roomDeviation(event, input) {
+    const state = input && input.state;
+    const local = (input && input.local) || {};
+    if (!state || local.loading) return false;
+    if (event === 'pause') return state.playing && !local.ended;
+    if (event === 'play') return !state.playing;
+    if (event === 'seeked') {
+      if (!comparable(state, local) || local.key !== refKey(state.ref)) return false;
+      return Math.abs(Number(local.position || 0) - expectedPosition(state, Number(input.now) || 0)) > tolerance(local) + 1;
+    }
+    return false;
+  }
+
+  /** Local memory in cleanmusic.room.v1: the code of the room you are in (to share it again). */
+  function normalizeRoomLocal(raw) {
+    const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const code = ROOM_CODE_RE.test(String(value.code || '')) ? String(value.code) : '';
+    const room = ID_RE.test(String(value.room || '')) ? String(value.room) : '';
+    return { code: code && room ? code : '', room: code && room ? room : '', at: Number.isFinite(value.at) ? value.at : 0 };
+  }
+
   window.CMSocial = {
     EMOJIS,
     REPORT_REASONS,
@@ -403,5 +561,16 @@
     newRequests,
     navBadge,
     expiresIn,
+    ROOM_CODE_RE,
+    ROOM_MAX,
+    parseRoomCode,
+    roomState,
+    normalizeRoom,
+    roomMembers,
+    expectedPosition,
+    roomSyncPlan,
+    roomHostPlan,
+    roomDeviation,
+    normalizeRoomLocal,
   };
 })();
