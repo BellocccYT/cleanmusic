@@ -2863,6 +2863,7 @@
     renderHomeCharts();
     renderHomeRediscover();
     renderHomeLocal();
+    renderHomePanels();
     if (!state.charts.loaded) loadCharts();
   }
 
@@ -13742,6 +13743,47 @@
     if (callId && bridge.playerCommandResult) bridge.playerCommandResult(callId, result);
   }
 
+  // Plugin-API v3, library:read – a read-only, sanitised snapshot for plugins.
+  function libraryReadSnapshot(kind) {
+    const mapEntry = (entry) => {
+      const e = entry || {};
+      return {
+        id: String(e.id || '').slice(0, 200),
+        title: String(e.title || '').slice(0, 200),
+        artist: String(e.artist || '').slice(0, 200),
+        album: String(e.album || '').slice(0, 200),
+        kind: String(e.kind || '').slice(0, 20),
+        source: String(e.sourceLabel || e.source || '').slice(0, 80),
+        license: String(e.license || '').slice(0, 80),
+        duration: Math.max(0, Number(e.duration) || 0),
+        artwork: /^https:\/\//i.test(e.artwork || '') ? e.artwork : '',
+      };
+    };
+    switch (kind) {
+      case 'favorites':
+        return { ok: true, items: state.collection.favorites.slice(0, 200).map(mapEntry) };
+      case 'playlists':
+        return {
+          ok: true,
+          items: state.collection.playlists.slice(0, 100).map((playlist) => ({
+            name: String(playlist.name || '').slice(0, 80),
+            count: playlist.items.length,
+            smart: Boolean(playlist.smart),
+          })),
+        };
+      case 'history':
+        return { ok: true, items: history.slice(0, 200).map((row) => mapEntry(row.entry)) };
+      case 'queue':
+        return { ok: true, items: state.queue.items.slice(0, 200).map(mapEntry) };
+      case 'local':
+        return { ok: true, items: (state.library.entries || []).slice(0, 500).map(mapEntry) };
+      case 'current':
+        return { ok: true, item: currentItem() ? mapEntry(currentItem()) : null };
+      default:
+        return { ok: false, reason: 'unknown' };
+    }
+  }
+
   function onPlayerCommand(message) {
     const { command, value, callId } = message || {};
     switch (command) {
@@ -13753,6 +13795,9 @@
         break;
       case 'removeRequest':
         answerPlayerCall(callId, () => removeSongRequest(value));
+        break;
+      case 'libraryRead':
+        answerPlayerCall(callId, () => libraryReadSnapshot(value && value.kind));
         break;
       case 'remoteQueue':
         answerPlayerCall(callId, () => {
@@ -14137,6 +14182,45 @@
    * Settings
    * ---------------------------------------------------------------- */
 
+  // Plugin-API v3, ui:panel – small read-only panels a plugin registers.
+  function pluginPanelsHtml(plugin, slot) {
+    const panels = ((plugin && plugin.panels) || []).filter((panel) => panel && panel.slot === slot && panel.html);
+    if (!panels.length) return '';
+    return panels
+      .map((panel) => `<div class="plugin-panel"><div class="plugin-panel-title">${esc(panel.title)}</div>${panel.html}</div>`)
+      .join('');
+  }
+
+  function renderHomePanels() {
+    const page = $('#view-home .home-page');
+    if (!page) return;
+    const panels = [];
+    (state.plugins.list || []).forEach((plugin) => {
+      if (!plugin || !plugin.enabled || !plugin.loaded) return;
+      (plugin.panels || [])
+        .filter((panel) => panel && panel.slot === 'home' && panel.html)
+        .forEach((panel) => panels.push({ title: panel.title, html: panel.html, plugin: plugin.name }));
+    });
+    let host = page.querySelector('.home-plugin-panels');
+    if (!panels.length) {
+      if (host) host.remove();
+      return;
+    }
+    if (!host) {
+      host = document.createElement('section');
+      host.className = 'home-section home-plugin-panels';
+      page.append(host);
+    }
+    host.innerHTML = panels
+      .map(
+        (panel) =>
+          `<div class="panel plugin-panel"><div class="plugin-panel-title">${esc(panel.title)} <span class="tag">${esc(
+            panel.plugin
+          )}</span></div>${panel.html}</div>`
+      )
+      .join('');
+  }
+
   function pluginSettingsForm(plugin) {
     const settings = plugin.settings;
     if (!plugin.enabled || !plugin.loaded || !settings || !Array.isArray(settings.fields) || !settings.fields.length) {
@@ -14302,6 +14386,7 @@
         ${line ? `<div class="plugin-status">${line}</div>` : ''}
         ${actions ? `<div class="row">${actions}</div>` : ''}
         ${pluginSettingsForm(plugin)}
+        ${pluginPanelsHtml(plugin, 'settings')}
         ${plugin.enabled && plugin.help ? `<p class="muted small plugin-help">${esc(plugin.help)}</p>` : ''}
         ${plugin.enabled && plugin.notice ? `<p class="muted small plugin-notice">${esc(plugin.notice)}</p>` : ''}
       </div>`;

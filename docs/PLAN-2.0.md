@@ -145,12 +145,15 @@ App-Code) und BPM/Key-Batch (Key fehlt).
 **Fertig, wenn:** OBS- und Streamer.bot-Plugins unverändert laufen und ein v3-Beispiel
 seine Fähigkeiten anzeigt.
 
-**Stand:** Kern umgesetzt (`lib/plugin-manifest.js`, 5 Unit-Tests, `SMOKE_PLUGIN_V3`):
-Manifest-Kopf ohne Ausführen gelesen, Berechtigungen im Aktivierungs-Dialog und auf der
-Karte, durchgesetzt an der CleanMusic-Schnittstelle, dynamische Auswahllisten
-(`optionsFrom`). OBS-Overlay und Streamer.bot (v2) laufen unverändert, der
-OBS-Audio-Visualizer trägt ein Manifest. **Offen:** `library:read` (es gibt noch keine
-Bibliotheks-Schnittstelle) und UI-Slots (`ui:panel`).
+**Stand (2.0.0):** vollständig. Kern umgesetzt (`lib/plugin-manifest.js`, Unit-Tests,
+`SMOKE_PLUGIN_V3`): Manifest-Kopf ohne Ausführen gelesen, Berechtigungen im
+Aktivierungs-Dialog und auf der Karte, durchgesetzt an der CleanMusic-Schnittstelle,
+dynamische Auswahllisten (`optionsFrom`). **`library:read`** über `ctx.library`
+(`favorites`/`playlists`/`history`/`queue`/`local`/`current` – nur lesend, bereinigt,
+über `callRenderer('libraryRead')`). **UI-Slots** über `ctx.ui.panel({ slot, title, html })`
+(`slot: 'settings'` in der Plugin-Karte, `slot: 'home'` als Startseiten-Abschnitt).
+OBS-Overlay und Streamer.bot (v2) laufen unverändert, der OBS-Audio-Visualizer trägt ein
+Manifest.
 
 ### Phase 6 – Mobile Parität (Muss 6)
 

@@ -2292,7 +2292,7 @@ function createMainWindow() {
             const v3File = path.join(pluginFolder, 'smoke-v3.js');
             fs.writeFileSync(v3File, [
               '/* cleanmusic-plugin',
-              '{ "apiVersion": 3, "name": "Smoke v3", "version": "0.0.1", "permissions": ["ui:settings", "network:example.com"] }',
+              '{ "apiVersion": 3, "name": "Smoke v3", "version": "0.0.1", "permissions": ["ui:settings", "ui:panel", "library:read", "network:example.com"] }',
               '*/',
               "'use strict';",
               'const probe = {};',
@@ -2307,6 +2307,9 @@ function createMainWindow() {
               "    probe.clipboard = attempt(() => ctx.copyText('x'));",
               "    probe.fetchOther = await ctx.fetch('https://evil.invalid/').then(() => 'erlaubt', () => 'gesperrt');",
               "    probe.settings = Object.keys(ctx.settings.get()).join(',');",
+              '    const favs = await ctx.library.favorites();',
+              "    probe.library = favs && favs.ok === true && Array.isArray(favs.items) ? favs.items.length : 'fail';",
+              "    probe.panel = ctx.ui.panel({ slot: 'settings', title: 'Smoke-Panel', html: '<p>Hallo</p>' });",
               '  },',
               '  probe: () => probe,',
               '};',
@@ -2327,13 +2330,17 @@ function createMainWindow() {
               error: v3.error,
               probe,
               dynamic: deviceField ? deviceField.options.map((option) => option.value) : [],
+              panels: (after.panels || []).map((panel) => ({ slot: panel.slot, title: panel.title })),
             };
             unloadPlugin(v3);
             plugins.delete('smoke-v3');
             fs.rmSync(v3File, { force: true });
             const v3Ok = v3Result.nameBefore === 'Smoke v3' && v3Result.api === 3 && v3Result.perms.includes('ui:settings') &&
+              v3Result.perms.includes('ui:panel') && v3Result.perms.includes('library:read') &&
               v3Result.loaded && probe.player === 'gesperrt' && probe.clipboard === 'gesperrt' &&
               probe.fetchOther === 'gesperrt' && probe.settings === 'device' &&
+              typeof probe.library === 'number' && probe.panel === true &&
+              v3Result.panels.some((panel) => panel.title === 'Smoke-Panel' && panel.slot === 'settings') &&
               v3Result.dynamic.includes('a') && v3Result.dynamic.includes('b');
             if (!v3Ok) throw new Error(JSON.stringify(v3Result));
             console.log('SMOKE_PLUGIN_V3:', JSON.stringify(v3Result));
@@ -5556,6 +5563,23 @@ function permissionError(permission) {
   return new Error(`Plugin-Berechtigung „${permission}“ fehlt im Manifest.`);
 }
 
+// Plugin-API v3: a plugin can register small read-only panels (ui:panel).
+// They appear in the settings card or on the home view.
+const PANEL_SLOTS = ['settings', 'home'];
+function registerPluginPanel(id, def) {
+  const plugin = plugins.get(id);
+  if (!plugin || !def || typeof def !== 'object') return false;
+  const panel = {
+    slot: PANEL_SLOTS.includes(def.slot) ? def.slot : 'settings',
+    title: cleanText(def.title, 80) || 'Panel',
+    html: String(def.html == null ? '' : def.html).slice(0, 20000),
+  };
+  const rest = (plugin.panels || []).filter((entry) => entry.title !== panel.title && entry.slot !== panel.slot);
+  plugin.panels = rest.concat(panel).slice(-4);
+  sendToRenderer('plugins-changed', { id });
+  return true;
+}
+
 function pluginContext(id) {
   const owner = plugins.get(id);
   const manifest = owner ? owner.manifest : null;
@@ -5605,6 +5629,19 @@ function pluginContext(id) {
     settings: {
       get: () => pluginSettingValues(id),
     },
+    library: may('library:read')
+      ? {
+          favorites: () => callRenderer('libraryRead', { kind: 'favorites' }),
+          playlists: () => callRenderer('libraryRead', { kind: 'playlists' }),
+          history: () => callRenderer('libraryRead', { kind: 'history' }),
+          queue: () => callRenderer('libraryRead', { kind: 'queue' }),
+          local: () => callRenderer('libraryRead', { kind: 'local' }),
+          current: () => callRenderer('libraryRead', { kind: 'current' }),
+        }
+      : new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : () => { throw permissionError('library:read'); }) }),
+    ui: may('ui:panel')
+      ? { panel: (def) => registerPluginPanel(id, def) }
+      : new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : () => { throw permissionError('ui:panel'); }) }),
     player: !may('player')
       ? new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : () => { throw permissionError('player'); }) })
       : {
@@ -6772,6 +6809,7 @@ function unloadPlugin(plugin) {
     /* ignore */
   }
   plugin.module = null;
+  plugin.panels = [];
   updateVisualizerWatch();
 }
 
@@ -7028,6 +7066,11 @@ async function pluginInfo(plugin, enabled, refresh) {
           values: pluginSettingValues(plugin.id),
         }
       : { fields: [], values: {} },
+    panels: (plugin.panels || []).map((panel) => ({
+      slot: PANEL_SLOTS.includes(panel.slot) ? panel.slot : 'settings',
+      title: cleanText(panel.title, 80),
+      html: String(panel.html || '').slice(0, 20000),
+    })),
     chartsLabel: cleanText((mod && mod.chartsLabel) || '', 40),
     capabilities: {
       charts: Boolean(mod && typeof mod.charts === 'function'),

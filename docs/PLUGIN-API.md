@@ -263,12 +263,47 @@ module.exports = { apiVersion: 3, name: 'Mein Plugin', /* … */ };
 | `clipboard` | `ctx.copyText` |
 | `external-links` | `ctx.openExternal` |
 | `ui:settings` | Einstellungsfelder (`settings`) |
+| `ui:panel` | `ctx.ui.panel({ slot, title, html })` – eigene Panels |
+| `library:read` | `ctx.library.*` – Favoriten, Playlists, Verlauf, Warteschlange, lokale Titel lesen |
 
 Ohne passende Berechtigung wirft die Schnittstelle einen Fehler
 („Plugin-Berechtigung … fehlt im Manifest“), Ereignisse und Fähigkeiten bleiben aus.
 **Wichtig:** Plugins sind weiterhin Node-Code mit den Rechten des Benutzers – die
 Berechtigungen regeln, was ein Plugin *über CleanMusic* darf, und machen sichtbar, was es
 vorhat. Sie ersetzen nicht das Vertrauen in die Quelle.
+
+### Bibliothek lesen (`library:read`)
+
+`ctx.library` liefert **nur lesende**, bereinigte Auszüge (Titel, Artist, Album, Art,
+Quelle, Lizenz, Dauer, Cover-URL – keine Dateipfade):
+
+```js
+const favorites = await ctx.library.favorites(); // { ok, items: [...] }
+const playlists = await ctx.library.playlists(); // { ok, items: [{ name, count, smart }] }
+const history = await ctx.library.history();     // { ok, items: [...] } (zuletzt gehört)
+const queue = await ctx.library.queue();         // { ok, items: [...] } (Warteschlange)
+const local = await ctx.library.local();         // { ok, items: [...] } (lokale Dateien)
+const current = await ctx.library.current();     // { ok, item } | { ok, item: null }
+```
+
+### Eigene Panels (`ui:panel`)
+
+Ein Plugin kann kleine, schreibgeschützte Panels anmelden. Sie erscheinen in der
+Plugin-Karte unter „Plugins“ (`slot: 'settings'`) oder als Abschnitt auf der Startseite
+(`slot: 'home'`):
+
+```js
+async setup(ctx) {
+  ctx.ui.panel({
+    slot: 'settings',
+    title: 'Mein Status',
+    html: '<p>Verbunden mit …</p>', // wird als HTML eingesetzt – Plugin ist vertrauenswürdig
+  });
+}
+```
+
+Pro Plugin und Slot bleibt das zuletzt angemeldete Panel stehen (höchstens vier Insgesamt);
+HTML wird auf 20 000 Zeichen begrenzt. Panels verschwinden beim Deaktivieren des Plugins.
 
 ### Dynamische Auswahllisten
 

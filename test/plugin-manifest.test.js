@@ -63,6 +63,19 @@ check('permissions are enforced for v3 plugins', () => {
   assert.equal(M.allowsUrl({ permissions: ['network'] }, 'https://anything.org'), true);
 });
 
+check('v3 permissions include library:read and ui:panel', () => {
+  const { manifest } = M.parseManifest(
+    head(JSON.stringify({ apiVersion: 3, permissions: ['library:read', 'ui:panel', 'library:write'] }))
+  );
+  assert.deepEqual(manifest.permissions, ['library:read', 'ui:panel']);
+  assert.equal(M.allows(manifest, 'library:read'), true);
+  assert.equal(M.allows(manifest, 'ui:panel'), true);
+  assert.equal(M.allows(manifest, 'player'), false);
+  const described = M.describe(['library:read', 'ui:panel']);
+  assert.equal(described.length, 2);
+  assert.ok(described.every((item) => item.label && item.detail));
+});
+
 check('describe: readable German labels, most risky first', () => {
   const list = M.describe(['clipboard', 'network:api.example.com', 'downloads:cc-only', 'player']);
   assert.deepEqual(list.map((item) => item.id), ['downloads:cc-only', 'network:api.example.com', 'player', 'clipboard']);
