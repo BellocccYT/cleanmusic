@@ -48,6 +48,8 @@
     .theme-toggle { background: var(--panel); color: var(--text); }
     .button.primary { background: linear-gradient(105deg, var(--accent), var(--accent2)); color: var(--on-accent); border: 0; box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 22%, transparent); }
     .button.secondary { background: var(--panel); color: var(--text); }
+    .button.kofi { background: color-mix(in srgb, #ff5e5b 14%, var(--panel)); color: var(--text); border-color: color-mix(in srgb, #ff5e5b 50%, var(--border)); }
+    .button.kofi .heart { color: #ff5e5b; }
     .button:hover, .theme-toggle:hover { transform: translateY(-1px); }
     .hero { position: relative; padding: 88px 0 76px; overflow: hidden; }
     .hero::before, .hero::after { content: ""; position: absolute; z-index: -1; border-radius: 50%; filter: blur(2px); pointer-events: none; }
@@ -171,6 +173,7 @@
       </div>
       <div class="nav-actions">
         <button class="theme-toggle" type="button" aria-label="Farbschema wechseln" title="Hell/Dunkel umschalten">☼ / ☾</button>
+        <a class="button kofi" href="https://ko-fi.com/belloccc" rel="noopener" title="CleanMusic freiwillig auf Ko-fi unterstützen"><span class="heart" aria-hidden="true">♥</span> Ko-fi</a>
         <a class="button primary" href="https://github.com/BellocccYT/cleanmusic/releases/latest" rel="noopener">Download</a>
       </div>
     </nav>
@@ -188,7 +191,7 @@
             <a class="button secondary" href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome-Erweiterung <span aria-hidden="true">↗</span></a>
             <a class="button secondary" href="#features">Funktionen entdecken</a>
           </div>
-          <p class="small-note">Kostenlos · kein CleanMusic-Konto · offizielle Dienste bleiben ihre eigenen Player</p>
+          <p class="small-note">Kostenlos · kein CleanMusic-Konto · offizielle Dienste bleiben ihre eigenen Player · <a href="https://ko-fi.com/belloccc" rel="noopener">freiwillig auf Ko-fi unterstützen ♥</a></p>
         </div>
         <div class="hero-art">
           <img src="screenshots/startseite.png" width="1920" height="1080" fetchpriority="high" alt="CleanMusic-Startansicht mit Wiedergabesteuerung und Vorschlägen" />
@@ -329,7 +332,7 @@
           <details><summary>Welche Daten sammelt CleanMusic?</summary><p>CleanMusic hat kein eigenes Konto und keine Cloud-Synchronisierung. Favoriten, Playlists, Einstellungen, Hör-Verlauf und Rückblick liegen lokal im App-Profil. Die App-Seite setzt keine Cookies, bindet keine externen Tracker ein und sendet keine Analysedaten. Bei eingebetteten offiziellen Web-Playern gelten zusätzlich die Datenschutz- und Cookie-Regeln des jeweiligen Anbieters.</p></details>
           <details><summary>Gibt es eine Browser-Erweiterung?</summary><p>Ja: „CleanMusic für YouTube“ legt das laufende YouTube-Video mit einem Klick in die Warteschlange oder startet es direkt in der App. Sie ist im <a href="https://chromewebstore.google.com/detail/hghplimkfmogkheakonapklcfgioc" rel="noopener">Chrome Web Store</a> kostenlos erhältlich und braucht CleanMusic auf dem Rechner – ohne die App erklärt sie den Weg zur Installation.</p></details>
           <details><summary>Gibt es einen Discord?</summary><p>Ja: <a href="https://discord.gg/XqYMZJXJjA" rel="noopener">discord.gg/XqYMZJXJjA</a> – für Fragen, Ideen und Austausch untereinander. Bugs und Funktionswünsche bitte weiterhin über die GitHub-Issues, damit nichts verloren geht.</p></details>
-          <details><summary>Kostet CleanMusic etwas? Kann ich das Projekt unterstützen?</summary><p>CleanMusic ist kostenlos und Open Source, und das bleibt so. Wer die Weiterentwicklung unterstützen möchte, kann das freiwillig über <a href="https://ko-fi.com/belloccc" rel="noopener">Ko-fi</a> tun. Ein paar optische Supporter-Extras (mit ♥ markiert) fragen einmal nach einem Code – den bekommt jeder, auch ohne Spende: <strong>DANKE-CLEANMUSIC</strong>.</p></details>
+          <details><summary>Kostet CleanMusic etwas? Kann ich das Projekt unterstützen?</summary><p>CleanMusic ist kostenlos und Open Source, und das bleibt so. Wer die Weiterentwicklung unterstützen möchte, kann das freiwillig über <a href="https://ko-fi.com/belloccc" rel="noopener">Ko-fi</a> tun. Ein paar optische Supporter-Extras (mit ♥ markiert) sind nach der Installation 7 Tage frei und fragen danach einmal nach einem Code. Den Code bekommt jeder kostenlos – er steht offen auf der <a href="https://ko-fi.com/belloccc" rel="noopener">Ko-fi-Seite</a> und im <a href="https://discord.gg/XqYMZJXJjA" rel="noopener">Discord</a>. Eine Spende ist freiwillig und schaltet nichts Exklusives frei.</p></details>
           <details><summary>Ersetzt CleanMusic die Musikdienste?</summary><p>Nein. Die jeweiligen Anbieter laufen in ihren offiziellen Web-Playern. CleanMusic spielt lokale Dateien, Radio und verfügbare 30-Sekunden-Katalog-Vorschauen selbst ab. Ein Abo, Login oder eine Funktion eines Anbieters wird dadurch nicht ersetzt.</p></details>
           <details><summary>Sind Titel im Cutter-Modus automatisch für mein Video freigegeben?</summary><p>Nein. CleanMusic zeigt die Lizenzangabe und den erforderlichen Credit, soweit die Quelle sie bereitstellt. Prüfe die konkreten Bedingungen beim Urheber, bevor du einen Titel verwendest. Es gibt keine pauschale Copyright-Garantie.</p></details>
           <details><summary>Ist Streamer.bot oder das OBS-Overlay enthalten?</summary><p>Nein. Die Plugins sind optionale Dateien im Repository, werden nicht mit der App ausgeliefert und erst nach manuellem Hinzufügen und Aktivieren geladen. Songwünsche sind standardmäßig ausgeschaltet. Der KI-Filter kann nur bekannte Kennzeichnungen erkennen.</p></details>

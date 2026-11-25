@@ -2540,42 +2540,106 @@ function createMainWindow() {
             console.error('SMOKE_SOCIAL_SERVER_FAIL:', error.message);
           }
 
-          // Supporter extras: fresh profile locked, public code, "Ohne Spende freischalten".
+          // Supporter extras: 7-day trial, reset after it, public code (no free button), ♥ + Ko-fi hint.
           try {
             const sup = await mainWindow.webContents.executeJavaScript(`
               (async () => {
                 const cm = window.CleanMusic;
                 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const DAY = 24 * 60 * 60 * 1000;
+                const q = (selector) => document.querySelector(selector);
+                const trial = (until) => ({ unlocked: false, how: '', at: 0, trialUntil: until, trialReset: false, trialNotice: false });
                 const before = cm.supporterState();
-                cm.supporterSet(false);
+                const extrasBefore = cm.supporterExtras();
+                const fresh = !before.unlocked && before.trialUntil > Date.now() + 6 * DAY;
+                const card = () => q('#view-settings [data-theme-id="synthwave"]');
+
+                // Trial running: extras open, softer heart, no dialog.
+                cm.supporterSet(trial(Date.now() + 3 * DAY));
                 cm.openSettings('look');
                 await wait(150);
-                const card = () => document.querySelector('#view-settings [data-theme-id="synthwave"]');
+                const trialMarked = Boolean(card() && card().classList.contains('extra-trial') && !card().classList.contains('extra-locked'));
+                card().click();
+                await wait(150);
+                const trialOpen = q('#dialog').hidden && cm.supporterExtras().theme === 'synthwave';
+
+                // Trial over: active extras go back to the free defaults, card once.
+                cm.supporterExtras({ lyricsEffect: 'neon', vizStyle: 'mirror' });
+                cm.supporterSet(trial(Date.now() - 1000));
+                const first = cm.supporterCheckTrial();
+                const extrasAfter = cm.supporterExtras();
+                const reset = extrasAfter.theme === 'nacht' && extrasAfter.lyricsEffect === 'pop' && extrasAfter.vizStyle === 'radial' &&
+                  (first.reset || []).join(',') === 'theme,lyricsEffect,vizStyle';
+                const trialCard = cm.supportCard();
+                const second = cm.supporterCheckTrial();
+                const once = first.notice === true && second.reset === null && second.notice === false &&
+                  trialCard.kind === 'trial' && !trialCard.hidden && /7 Tage/.test(trialCard.text) && /kostenlos auf Ko-fi/.test(trialCard.text);
+                cm.supportCardClose();
+
+                // Locked now: heart marks it, the ♥ button and the dialog have no free button.
+                cm.openSettings('look');
+                await wait(150);
                 const marked = Boolean(card() && card().classList.contains('extra-locked'));
-                const freeOpen = Boolean(document.querySelector('#view-settings [data-theme-id="nacht"]:not(.extra-locked)'));
-                // Wrong code: stays locked.
+                const freeOpen = Boolean(q('#view-settings [data-theme-id="nacht"]:not(.extra-locked):not(.extra-trial)'));
+                const nav = q('#nav-support');
+                const navOk = Boolean(nav && nav.offsetParent && /Unterstützen/.test(nav.textContent));
+                nav.click();
+                await wait(120);
+                const navDialog = !q('#dialog').hidden && q('#dialog-title').textContent === 'CleanMusic unterstützen';
+                q('#dialog-cancel').click();
+                await wait(80);
                 card().click();
                 await wait(120);
-                const dialog = !document.querySelector('#dialog').hidden && document.querySelector('#dialog-title').textContent === 'Supporter-Extra';
-                document.querySelector('#dialog-input').value = 'falsch';
-                document.querySelector('#dialog-form').requestSubmit();
+                const dialog = !q('#dialog').hidden && q('#dialog-title').textContent === 'Supporter-Extra';
+                const below = q('#dialog-form .unlock-below');
+                const dialogOk = dialog && !q('#dialog [data-unlock="free"]') &&
+                  /Auf Ko-fi unterstützen/.test((q('#dialog-text .unlock-kofi[data-unlock="kofi"]') || {}).textContent || '') &&
+                  Boolean(below && q('#dialog-input').nextElementSibling === below) &&
+                  /Den Code findest du kostenlos auf meiner Ko-fi-Seite und im Discord/.test(below ? below.textContent : '') &&
+                  /Code kostenlos auf Ko-fi ansehen/.test((q('#dialog-form [data-unlock="code"]') || {}).textContent || '');
+                q('#dialog-input').value = 'falsch';
+                q('#dialog-form').requestSubmit();
                 await wait(120);
-                const wrongLocked = !cm.supporterState().unlocked && cm.extraLocked('theme', 'synthwave');
-                // "Ohne Spende freischalten" unlocks everything and applies the theme.
+                const wrongLocked = !cm.supporterState().unlocked && cm.extraLocked('theme', 'synthwave') && !q('#dialog-form .unlock-below');
+                // The public code unlocks everything and applies the theme.
                 card().click();
                 await wait(120);
-                document.querySelector('#dialog-text [data-unlock="free"]').click();
+                q('#dialog-input').value = 'danke-cleanmusic';
+                q('#dialog-form').requestSubmit();
                 await wait(200);
                 const after = cm.supporterState();
                 const applied = Boolean(card() && card().classList.contains('active') && !card().classList.contains('extra-locked'));
                 const allOpen = !cm.extraLocked('lyricsEffect', 'neon') && !cm.extraLocked('background', 'lava');
-                cm.setTheme('nacht');
-                cm.supporterSet(before.unlocked);
-                return { before: before.how || (before.unlocked ? 'open' : 'locked'), marked, freeOpen, dialog, wrongLocked, how: after.how, applied, allOpen };
+
+                // Ko-fi hint: never in the smoke run, needs 10 h, once in 30 days, "Nicht mehr zeigen" sticks.
+                cm.kofiHintReset();
+                const hint = {
+                  smoke: cm.kofiHint({ force: false, secs: 50 * 3600 }),
+                  under: cm.kofiHint({ secs: 9 * 3600 }),
+                  shown: cm.kofiHint({ secs: 12 * 3600 }),
+                };
+                const hintCard = cm.supportCard();
+                hint.card = hintCard.kind === 'hint' && /12 Stunden/.test(hintCard.text) && Boolean(q('#support-card [data-support-card="never"]'));
+                q('#support-card [data-support-card="close"]').click();
+                hint.closed = cm.supportCard().hidden;
+                hint.again = cm.kofiHint({ secs: 12 * 3600 });
+                hint.month = cm.kofiHint({ secs: 12 * 3600, now: Date.now() + 31 * DAY });
+                q('#support-card [data-support-card="never"]').click();
+                hint.off = Boolean((cm.kofiHintState() || {}).off) && cm.kofiHint({ secs: 99 * 3600, now: Date.now() + 90 * DAY }) === false;
+                cm.kofiHintReset();
+
+                const extrasNow = cm.supporterExtras();
+                const restore = {};
+                ['theme', 'lyricsEffect', 'vizStyle'].forEach((key) => { if (extrasNow[key] !== extrasBefore[key]) restore[key] = extrasBefore[key]; });
+                cm.supporterExtras(restore);
+                cm.supporterSet(before);
+                return { fresh, trialMarked, trialOpen, reset, once, marked, freeOpen, navOk, navDialog, dialogOk, wrongLocked, how: after.how, applied, allOpen, hint };
               })()
             `);
-            const supOk = sup.before === 'locked' && sup.marked && sup.freeOpen && sup.dialog && sup.wrongLocked &&
-              sup.how === 'free' && sup.applied && sup.allOpen;
+            const h = sup.hint || {};
+            const supOk = sup.fresh && sup.trialMarked && sup.trialOpen && sup.reset && sup.once && sup.marked && sup.freeOpen &&
+              sup.navOk && sup.navDialog && sup.dialogOk && sup.wrongLocked && sup.how === 'code' && sup.applied && sup.allOpen &&
+              h.smoke === false && h.under === false && h.shown === true && h.card && h.closed && h.again === false && h.month === true && h.off;
             if (!supOk) throw new Error(JSON.stringify(sup));
             console.log('SMOKE_SUPPORTER:', JSON.stringify(sup));
           } catch (error) {
@@ -2806,6 +2870,18 @@ function createMainWindow() {
             console.log('SMOKE_LYRICS_MODE:', JSON.stringify(lyricMode));
           } catch (error) {
             console.error('SMOKE_LYRICS_MODE_FAIL:', error.message);
+          }
+
+          // Lyric-Video-Effekt: Wörter, ein Akzent-Schlüsselwort, stabiler Seed.
+          try {
+            const first = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsEffectTest("lyricvideo", 0)');
+            const second = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsEffectTest("lyricvideo", 0)');
+            if (!(first && first.effect === 'lyricvideo' && first.words > 0 && first.accent === 1 && first.html === second.html)) {
+              throw new Error(JSON.stringify({ first, seedStable: first && first.html === second.html }));
+            }
+            console.log('SMOKE_LYRIC_VIDEO:', JSON.stringify({ words: first.words, accent: first.accent, seedStable: first.html === second.html }));
+          } catch (error) {
+            console.error('SMOKE_LYRIC_VIDEO_FAIL:', error.message);
           }
 
           // 1.6: artist page, share link, deep link (cleanmusic://).
@@ -7268,10 +7344,25 @@ function parseLrc(text) {
     .forEach((row) => {
       const stamps = Array.from(row.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g));
       if (!stamps.length) return;
-      const words = cleanText(row.replace(/\[[^\]]*\]/g, '').trim(), 300);
+      const raw = row.replace(/\[[^\]]*\]/g, '').trim();
+      // Enhanced LRC (LRCLIB "syncedLyrics") may carry per-word marks <mm:ss.xx>.
+      const marks = Array.from(raw.matchAll(/<(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?>/g));
+      const words = marks
+        .map((mark, i) => {
+          const start = mark.index + mark[0].length;
+          const end = i + 1 < marks.length ? marks[i + 1].index : raw.length;
+          const text = cleanText(raw.slice(start, end).trim(), 60);
+          if (!text) return null;
+          const fraction = mark[3] ? Number(`0.${mark[3]}`) : 0;
+          return { time: Number(mark[1]) * 60 + Number(mark[2]) + fraction, text };
+        })
+        .filter(Boolean);
+      const lineText = cleanText(marks.length ? raw.replace(/<[^>]*>/g, '').trim() : raw, 300);
       stamps.forEach((stamp) => {
         const fraction = stamp[3] ? Number(`0.${stamp[3]}`) : 0;
-        lines.push({ time: Number(stamp[1]) * 60 + Number(stamp[2]) + fraction, text: words });
+        const line = { time: Number(stamp[1]) * 60 + Number(stamp[2]) + fraction, text: lineText };
+        if (words.length) line.words = words;
+        lines.push(line);
       });
     });
   return lines.sort((a, b) => a.time - b.time).slice(0, 1500);

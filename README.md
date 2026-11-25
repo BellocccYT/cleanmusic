@@ -1,3 +1,5 @@
+<p align="center"><a href="https://ko-fi.com/belloccc"><img src="https://img.shields.io/badge/Ko--fi-CleanMusic%20unterst%C3%BCtzen-FF5E5B?logo=ko-fi&logoColor=white" alt="CleanMusic auf Ko-fi unterstützen" /></a></p>
+
 > **Musik. Dein Setup. Ein Startpunkt.** CleanMusic bringt offizielle Web-Player, lokale Wiedergabe und Tools für Stream und Schnitt zusammen – ehrlich über Grenzen, lokal bei deinen Daten.
 
 <!-- Drei GIF-Platzhalter: bis zu animierten Demos zeigen sie repräsentative Screenshots. -->
@@ -14,7 +16,7 @@
 > Inoffizielles Projekt. Nicht verbunden mit Spotify, Apple, Google/YouTube,
 > Amazon, TIDAL, Deezer oder SoundCloud.
 
-**Version 1.27.0**
+**Version 2.0.0**
 
 Ein Startpunkt für alle großen Musik-Streaming-Dienste. Jeder Dienst läuft in
 seinem **eigenen offiziellen Web-Player** in einem eingebetteten Browser-Fenster
@@ -391,7 +393,7 @@ In der Seitenleiste **Downloads**: alles aus deinem Cutting-Ordner (auch YouTube
 
 Im Vollbild-Player blendet der Knopf mit den drei Linien den **mitlaufenden Songtext**
 ein (aus der freien Datenbank [LRCLIB](https://lrclib.net); dabei werden nur Titel,
-Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. Einstellbar (in den Einstellungen und direkt im Vollbild-Player): Schriftgröße, Ausrichtung, Zeitversatz, Mitscrollen, gesungene Zeilen abdunkeln, Großansicht ohne Cover, „Neu suchen“ und **Effekte**: Pop, Karaoke (füllt sich im Takt), Motion (große Zeile, Wörter poppen einzeln rein wie in Lyric-Videos), Neon, Welle, Schreibmaschine und Zoom. Visualizer-Stile: Kreis, Balken, Welle, Spiegel und Partikel.
+Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. Einstellbar (in den Einstellungen und direkt im Vollbild-Player): Schriftgröße, Ausrichtung, Zeitversatz, Mitscrollen, gesungene Zeilen abdunkeln, Großansicht ohne Cover, „Neu suchen“ und **Effekte**: Pop, Karaoke (füllt sich im Takt), Motion (große Zeile, Wörter poppen einzeln rein wie in Lyric-Videos), Neon, Welle, Schreibmaschine, Zoom und Lyric Video (Kinetic Typography im TikTok-/Shorts-Stil: gestapelte Wörter in Bebas Neue, ein Schlüsselwort in der Coverfarbe, Hell/Dunkel-Wechsel auf den Beat). Visualizer-Stile: Kreis, Balken, Welle, Spiegel und Partikel.
 
 ### Lautstärke
 
@@ -940,9 +942,12 @@ unterstützen möchte, kann das freiwillig über
 *Einstellungen → System*).
 
 **Supporter-Extras:** Ein paar optische Extras – 6 Themes, die Live-Hintergründe,
-4 Songtext-Effekte und 2 Visualizer-Stile – sind mit ♥ markiert und fragen einmal nach
-einem Code. Den Code bekommt **jeder, auch ohne Spende**: `DANKE-CLEANMUSIC` (oder im Dialog
-„Ohne Spende freischalten“). Wer CleanMusic schon vorher genutzt hat, hat alles bereits frei.
+5 Songtext-Effekte und 2 Visualizer-Stile – sind mit ♥ markiert. Nach der Installation sind
+sie **7 Tage frei**; danach springen sie auf den Standard zurück und fragen einmal nach einem
+Code. Den Code bekommt **jeder kostenlos, auch ohne Spende** – er steht offen auf der
+[Ko-fi-Seite](https://ko-fi.com/belloccc) und im [Discord](https://discord.gg/XqYMZJXJjA).
+Eine Spende ist freiwillig und kauft nichts Exklusives. Wer CleanMusic schon vor 1.27.0
+genutzt hat, hat alles bereits frei.
 
 ## Rechtliches
 

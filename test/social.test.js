@@ -147,4 +147,22 @@ check('S2 groups: payload cleaned, rights, ranking with shared places, week card
   assert.equal(plan({ last: { week: '2026-W48', secs: 0, at: now - 60000 } }), false, 'höchstens alle 10 Minuten');
 });
 
+check('poll plan: fewer requests (visible only, friends every 30 s/3 min, groups only in a group or every 10 min)', () => {
+  const now = 1795500000000;
+  const plan = (input) => plain(S.pollPlan(Object.assign({ now, hidden: false, friendsOpen: false, lastFriends: 0, lastGroups: 0, groupCount: 0 }, input)));
+  // Never while hidden.
+  assert.deepEqual(plan({ hidden: true }), { friends: false, groups: false });
+  // Friends view open: at most every 30 s.
+  assert.deepEqual(plan({ friendsOpen: true, lastFriends: now - 10000, lastGroups: now, groupCount: 0 }), { friends: false, groups: false });
+  assert.deepEqual(plan({ friendsOpen: true, lastFriends: now - S.FRIENDS_OPEN_GAP, lastGroups: now - S.GROUPS_GAP, groupCount: 0 }), { friends: true, groups: true });
+  // Otherwise: at most every 3 min.
+  assert.deepEqual(plan({ lastFriends: now - 60000, lastGroups: now, groupCount: 0 }), { friends: false, groups: false }, 'unter 3 Minuten');
+  assert.deepEqual(plan({ lastFriends: now - S.FRIENDS_IDLE_GAP, lastGroups: now, groupCount: 0 }), { friends: true, groups: false });
+  // Groups: while in a group (short poll too), or every 10 min even without one.
+  assert.deepEqual(plan({ friendsOpen: true, lastFriends: now - S.FRIENDS_OPEN_GAP, lastGroups: now - 1000, groupCount: 1 }), { friends: true, groups: true }, 'in einer Gruppe immer');
+  assert.deepEqual(plan({ lastFriends: now - S.FRIENDS_IDLE_GAP, lastGroups: now - S.GROUPS_GAP, groupCount: 0 }), { friends: true, groups: true }, 'ohne Gruppe alle 10 Minuten');
+  // First run: everything was never fetched.
+  assert.deepEqual(plan({ lastFriends: 0, lastGroups: 0, groupCount: 0 }), { friends: true, groups: true });
+});
+
 console.log(`\n${checks} passed, 0 failed`);

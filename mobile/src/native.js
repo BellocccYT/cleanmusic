@@ -34,8 +34,9 @@
         'cleanmusic.settings.v1',
         JSON.stringify({ layout: 'simple', onboarded: true, background: 'none', lyrics: true })
       );
-      // Frische Installation: Supporter-Extras starten gesperrt (öffentlicher Code).
-      // Wer die App schon hatte, behält alles (core/supporter.js, Bestandsschutz).
+      // Frische Installation: Supporter-Extras nicht als „legacy“ frei – core/supporter.js
+      // macht daraus beim Start 7 Tage Probezeit, danach fragt es nach dem öffentlichen Code.
+      // Wer die App schon hatte, behält alles (Bestandsschutz).
       if (localStorage.getItem('cleanmusic.supporter.v1') === null) {
         localStorage.setItem('cleanmusic.supporter.v1', JSON.stringify({ unlocked: false, how: '', at: 0 }));
       }
@@ -286,12 +287,31 @@
       .forEach((line) => {
         const stamps = line.match(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g);
         if (!stamps) return;
-        const content = cleanText(line.replace(/\[[^\]]*\]/g, ''), 300);
+        const raw = line.replace(/\[[^\]]*\]/g, '').trim();
+        // Enhanced LRC (LRCLIB "syncedLyrics") may carry per-word marks <mm:ss.xx>.
+        const marks = raw.match(/<\d{1,2}:\d{2}(?:[.:]\d{1,3})?>/g) || [];
+        const words = marks
+          .map((mark, i) => {
+            const start = raw.indexOf(mark) + mark.length;
+            const end = i + 1 < marks.length ? raw.indexOf(marks[i + 1]) : raw.length;
+            const text = cleanText(raw.slice(start, end).trim(), 60);
+            if (!text) return null;
+            const match = mark.match(/<(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?>/);
+            if (!match) return null;
+            return {
+              time: Number(match[1]) * 60 + Number(match[2]) + Number(`0.${match[3] || 0}`),
+              text,
+            };
+          })
+          .filter(Boolean);
+        const content = cleanText(marks.length ? raw.replace(/<[^>]*>/g, '').trim() : raw, 300);
         stamps.forEach((stamp) => {
           const match = stamp.match(/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/);
           if (!match) return;
           const time = Number(match[1]) * 60 + Number(match[2]) + Number(`0.${match[3] || 0}`);
-          lines.push({ time, text: content });
+          const entry = { time, text: content };
+          if (words.length) entry.words = words;
+          lines.push(entry);
         });
       });
     return lines.sort((a, b) => a.time - b.time);

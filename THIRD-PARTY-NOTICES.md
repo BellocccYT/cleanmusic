@@ -28,6 +28,16 @@ Der Ausschnitt ist für den Assistenten gekürzt und mit Ein-/Ausblendung verseh
 Der vollständige Credit steht zusätzlich in
 `renderer/assets/onboarding/CREDITS.txt`.
 
+## Schriftart „Bebas Neue“ (Songtext-Effekt „Lyric Video“)
+
+`renderer/assets/fonts/bebas-neue-latin.woff2` und
+`renderer/assets/fonts/bebas-neue-latin-ext.woff2` sind Untergruppen (Subsets)
+von **Bebas Neue** von Ryoichi Tsunekawa (dhgtype), lizenziert unter der
+[SIL Open Font License 1.1](https://openfontlicense.org). Die Schrift wird lokal
+eingebettet (kein Nachladen aus dem Netz, kein Tracking) und nur für den
+Songtext-Effekt „Lyric Video“ verwendet. Der vollständige Lizenztext steht in
+`renderer/assets/fonts/LICENSE-BebasNeue.txt`.
+
 ## MIT-Lizenz (gilt für jede der oben genannten Paletten)
 
 Copyright (c) die jeweiligen oben genannten Rechteinhaber

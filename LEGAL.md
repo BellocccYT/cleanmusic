@@ -305,7 +305,24 @@ offiziellen Seiten von Deezer, Apple Music, YouTube Music und Spotify.
   offizielle Player und offizielle Vorschau-APIs.
 - **Öffentlich auf GitHub:** neutraler Name, keine Logos, klarer Disclaimer,
   keine Monetarisierung (freiwillige Spenden über Ko-fi; der Code für die Supporter-Extras
-  ist öffentlich und gilt für jeden – keine Paywall, keine exklusiven Lizenz-Keys), keine gebündelten Assets – und den Ordner `plugins/`
+  ist öffentlich und gilt für jeden – keine Paywall, keine exklusiven Lizenz-Keys, siehe
+  „Supporter-Extras“ unten), keine gebündelten Assets – und den Ordner `plugins/`
   nicht mit veröffentlichen. Dann ist es ein nachvollziehbares
   Open-Source-Projekt mit Restrisiko – kein garantierter Bestand.
 - **Kommerziell:** ohne Lizenzvereinbarung mit den Anbietern nicht.
+
+## Supporter-Extras und Ko-fi
+
+- Spenden über [Ko-fi](https://ko-fi.com/belloccc) sind **freiwillig** und ohne
+  Gegenleistung. Es gibt keinen Verkauf, keine Paywall, keine Lizenz-Keys, keine
+  Zahlungsprüfung und keine Ko-fi-Webhooks; die App weiß nicht, ob jemand gespendet hat.
+- Ein paar optische Extras (mit ♥ markiert) sind nach der Installation **7 Tage frei**
+  und fragen danach einmal nach einem Freischalt-Code. Der Code ist **öffentlich und für
+  jeden kostenlos**: Er steht frei sichtbar im „About“-Text der Ko-fi-Seite (nicht hinter
+  einer Mitgliedschaft oder einem Kauf), im Discord und im Quelltext
+  (`renderer/core/supporter.js`). Eine Spende ist nie Bedingung und schaltet nichts
+  Exklusives frei.
+- Damit bleibt eine Spende eine Spende (Schenkung ohne Gegenleistung) und wird nicht zum
+  Kauf einer digitalen Leistung. Würde der Code exklusiv gegen Geld vergeben, wäre das ein
+  Verkauf – mit Impressumspflicht (voller Name) und Verbraucherrecht. Deshalb: den Code
+  **nie** nur Spendern geben.

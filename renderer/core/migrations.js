@@ -60,6 +60,7 @@
     schemaSnapshot: 'object',
     group: 'object',
     supporter: 'object',
+    kofiHint: 'object',
     silentRefs: 'array',
     social: 'object',
   };

@@ -799,20 +799,23 @@ html[data-mobile] #fullscreen .fs-hint {
 }
 
 /* Update-Karte: untereinander, damit „Updaten“ / „Später“ gut tippbar sind */
-html[data-mobile] #update-card {
+html[data-mobile] #update-card,
+html[data-mobile] #support-card {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
   margin: 12px 0;
 }
 
-html[data-mobile] #update-card .update-actions {
+html[data-mobile] #update-card .update-actions,
+html[data-mobile] #support-card .update-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-html[data-mobile] #update-card .update-actions .btn {
+html[data-mobile] #update-card .update-actions .btn,
+html[data-mobile] #support-card .update-actions .btn {
   flex: 1 1 46%;
   min-height: 44px;
 }

@@ -247,6 +247,32 @@
     return input.now - last.at >= WEEK_GAP && card.secs - last.secs >= WEEK_STEP;
   }
 
+  /* --- polling (release 2.0: fewer Cloudflare requests) ------------------ */
+  const FRIENDS_OPEN_GAP = 30 * 1000; // friends view open: at most every 30 s
+  const FRIENDS_IDLE_GAP = 3 * 60 * 1000; // otherwise: at most every 3 min
+  const GROUPS_GAP = 10 * 60 * 1000; // groups: only while in a group or every 10 min
+
+  /**
+   * Pure decision for the 30 s poll timer: when to GET /v1/friends and whether
+   * to also GET /v1/groups (never with a hidden window). `friendsOpen` is the
+   * "Freunde" view; `lastFriends`/`lastGroups` are the last successful fetch
+   * timestamps; `groupCount` is the number of groups the user is in.
+   */
+  function pollPlan(input) {
+    const now = Number(input && input.now) || 0;
+    if (input && input.hidden) return { friends: false, groups: false };
+    const lastFriends = Number(input && input.lastFriends) || 0;
+    const friendsOpen = Boolean(input && input.friendsOpen);
+    const friends = friendsOpen
+      ? now - lastFriends >= FRIENDS_OPEN_GAP
+      : now - lastFriends >= FRIENDS_IDLE_GAP;
+    if (!friends) return { friends: false, groups: false };
+    const lastGroups = Number(input && input.lastGroups) || 0;
+    const groupCount = Number(input && input.groupCount) || 0;
+    const groups = groupCount > 0 || now - lastGroups >= GROUPS_GAP;
+    return { friends: true, groups };
+  }
+
   window.CMSocial = {
     EMOJIS,
     REPORT_REASONS,
@@ -268,5 +294,9 @@
     normalizeGroups,
     groupRanking,
     weekPlan,
+    FRIENDS_OPEN_GAP,
+    FRIENDS_IDLE_GAP,
+    GROUPS_GAP,
+    pollPlan,
   };
 })();

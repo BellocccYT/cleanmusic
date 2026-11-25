@@ -38,7 +38,8 @@
     schema: 'cleanmusic.schema.v1', // { version, history } – see core/migrations.js
     quarantine: 'cleanmusic.quarantine.v1', // { items: [{ key, reason, at, raw }] } unreadable values
     group: 'cleanmusic.group.v1', // { name, members: { key: weekCard } } – see core/group.js
-    supporter: 'cleanmusic.supporter.v1', // { unlocked, how: code|free|legacy, at } – see core/supporter.js
+    supporter: 'cleanmusic.supporter.v1', // { unlocked, how: code|free|legacy, at, trialUntil, trialReset, trialNotice } – see core/supporter.js
+    kofiHint: 'cleanmusic.kofihint.v1', // { at, off } Ko-fi hint after 10 h of listening – see core/supporter.js
     social: 'cleanmusic.social.v1', // { enabled, showActivity, seenReactions } – see core/social.js (Weg B)
     schemaSnapshot: 'cleanmusic.schema.snapshot.v1', // local pre-migration snapshot (no file access)
   };

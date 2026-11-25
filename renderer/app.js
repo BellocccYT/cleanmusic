@@ -5832,9 +5832,20 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.0.0': [
+      'Freunde: Du siehst jetzt, was deine Freunde gerade hören, und reagierst mit einem Emoji. Kontakt nur per Freundescode – kein Chat, keine Suche nach Personen.',
+      'Gruppen: Eine gemeinsame Wochenkarte (wer hört am meisten?) und eine geteilte Gruppen-Playlist – beitreten nur per Gruppencode.',
+      'Ganz ohne Konto mit E-Mail oder Passwort: Dein Gerät erzeugt einen Schlüssel, der private Teil bleibt verschlüsselt auf diesem PC. Mehr dazu unter „Datenschutz für Social“ – abschaltbar.',
+    ],
+    '1.28.0': [
+      'Neuer Songtext-Effekt „Lyric Video“: Kinetic Typography im TikTok-/Shorts-Stil – gestapelte Wörter in Condensed-Großbuchstaben, ein Schlüsselwort in der Coverfarbe, Hell/Dunkel-Wechsel auf den Beat.',
+      'Supporter-Extras zum Ausprobieren: Neue Installationen haben alle mit ♥ markierten Extras 7 Tage frei. Wer in 1.27.0 noch nicht freigeschaltet hatte, bekommt die 7 Tage ab jetzt.',
+      'Nach der Probezeit springen Theme, Hintergrund, Songtext-Effekt und Visualizer-Stil auf den Standard zurück. Den Freischalt-Code gibt es kostenlos auf Ko-fi und im Discord – eine Spende ist freiwillig und kauft nichts Exklusives.',
+      'Neu in der Seitenleiste: „Unterstützen“ mit ♥ – führt zu Ko-fi bzw. zum Freischalt-Dialog.',
+    ],
     '1.27.0': [
       'Stumme Titel: Hat ein automatisch gefundener voller Titel keinen Ton (zum Beispiel ein stummgeschalteter Upload), sucht CleanMusic nach wenigen Sekunden selbst einen anderen – jetzt auch bei ausgeschaltetem Visualizer.',
-      'Supporter-Extras: Ein paar optische Extras sind mit ♥ markiert und fragen einmal nach einem Code. Den bekommt jeder – auf Ko-fi, im Discord oder mit „Ohne Spende freischalten“. Wer CleanMusic schon genutzt hat, hat alles frei.',
+      'Supporter-Extras: Ein paar optische Extras sind mit ♥ markiert und fragen einmal nach einem Code. Den bekommt jeder kostenlos – er steht auf Ko-fi und im Discord. Wer CleanMusic schon genutzt hat, hat alles frei.',
       'CleanMusic unterstützen: Unter Einstellungen → System gibt es jetzt einen Ko-fi-Link. Freiwillig – eine Spende kauft nichts Exklusives.',
       'OBS-Audio-Visualizer 1.3.0 (optionales Plugin): sechs neue Stile, Farbverläufe, Glättung, Frequenzbereich und Pegelanzeige.',
     ],
@@ -6046,7 +6057,7 @@
   function onboardingThemes() {
     const active = currentTheme();
     // Supporter themes are offered later in the settings, not in the first steps.
-    return THEMES.filter((theme) => !extraLocked('theme', theme.id)).map((theme) => {
+    return THEMES.filter((theme) => !extraLocked('theme', theme.id) && !extraInTrial('theme', theme.id)).map((theme) => {
       const c = theme.colors;
       const style = `--t-bg:${c.bg};--t-panel:${c.panel3};--t-text:${c.text};--t-accent:${c.accent};--t-accent-2:${c.accent2};--t-border:${c.border}`;
       return `
@@ -6299,6 +6310,7 @@
       <div class="update-text">
         <strong>${since ? `Neu seit CleanMusic ${esc(since)}` : `Neu in CleanMusic ${esc(target)}`}</strong>
         ${groups}
+        <p class="whatsnew-kofi">${ICONS.heart} CleanMusic bleibt kostenlos. Wenn du magst: <button type="button" class="link-btn" data-whatsnew="kofi">auf Ko-fi unterstützen</button> – freiwillig.</p>
       </div>
       <div class="update-actions">
         <button class="btn primary small" data-whatsnew="ok">Alles klar</button>
@@ -6341,8 +6353,13 @@
     $('#whatsnew-card').addEventListener('click', (event) => {
       const button = event.target.closest('[data-whatsnew]');
       if (!button) return;
+      if (button.dataset.whatsnew === 'kofi') {
+        bridge.openExternal(SUPPORT_URL);
+        return;
+      }
       $('#whatsnew-card').hidden = true;
       if (button.dataset.whatsnew === 'tour') openOnboarding();
+      else setTimeout(supportTick, 1500);
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !$('#onboarding').hidden) closeOnboarding();
@@ -6662,7 +6679,8 @@
   function showLyricLine(index, force) {
     const host = $('#fs-lyrics');
     if (host && !host.hidden && BIG_EFFECTS.includes(lyricsEffect()) && host.querySelector('.ly-kinetic')) {
-      renderKinetic(host, index);
+      if (lyricsEffect() === 'lyricvideo') renderLyricVideo(host, index);
+      else renderKinetic(host, index);
       return;
     }
     const current = host && host.querySelector(`[data-ly="${index}"]`);
@@ -6694,9 +6712,10 @@
     ['wave', 'Welle'],
     ['typer', 'Schreibmaschine'],
     ['zoom', 'Zoom'],
+    ['lyricvideo', 'Lyric Video'],
   ];
   // Effects that show one big line instead of the scrolling list.
-  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom'];
+  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo'];
 
   function lyricsEffect() {
     return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';
@@ -6732,6 +6751,117 @@
         })
         .join(typer ? '' : ' ')}</p>
       <p class="ly-k-next">${esc((next && next.text) || '')}</p>`;
+  }
+
+  // Lyric Video: kinetic typography in TikTok/Shorts style (core/lyricvideo.js).
+  let lyricVideoRaf = 0;
+
+  function stopLyricVideoRaf() {
+    if (lyricVideoRaf) {
+      cancelAnimationFrame(lyricVideoRaf);
+      lyricVideoRaf = 0;
+    }
+  }
+
+  function lyricVideoReduced() {
+    return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function renderLyricVideo(host, index) {
+    const stage = host.querySelector('.ly-kinetic');
+    if (!stage) return;
+    stopLyricVideoRaf();
+    const LV = window.CMLyricVideo;
+    const line = lyricsState.lines[index];
+    const next = lyricsState.lines[index + 1];
+    const text = String((line && line.text) || '♪');
+    const layout = LV
+      ? LV.layoutLine(text, stringSeed(text))
+      : { dark: false, single: false, accent: '', vertical: '', blocks: [] };
+    const reduced = lyricVideoReduced();
+    const saver = document.documentElement.dataset.perf === 'saver';
+    const dur = lineDuration(index);
+
+    stage.className = `ly-kinetic ly-k-lyricvideo lv-stage ${layout.dark ? 'lv-dark' : 'lv-light'}${
+      layout.single ? ' lv-single' : ''
+    }${reduced ? ' lv-reduced' : ''}`;
+
+    // Flatten the layout once so word timings line up with the token order.
+    const flat = [];
+    layout.blocks.forEach((block) => block.forEach((word) => flat.push(word)));
+    const times = LV && line ? LV.wordTimes(line, next ? next.time : undefined) : [];
+    const start = line ? Number(line.time) || 0 : 0;
+
+    const wordHtml = (word, at) => {
+      const delay = times[at]
+        ? Math.max(0, Math.min(dur * 0.65, times[at].time - start))
+        : (at / Math.max(1, flat.length)) * Math.min(2.4, dur * 0.65);
+      const style = word.style;
+      const cls = `lv-word lv-${style} lv-s${word.size}`;
+      const dir = stringSeed(`${word.text}:${at}`) % 4;
+      const vars = reduced
+        ? `--lv-delay:${delay.toFixed(2)}s`
+        : `--lv-delay:${delay.toFixed(2)}s;--lv-dx:${dir === 0 ? '-46vw' : dir === 1 ? '46vw' : '0'};--lv-dy:${
+            dir === 2 ? '-30vh' : dir === 3 ? '30vh' : '0'
+          };--lv-skew:${((stringSeed(word.text) % 21) - 10)}deg;--lv-blur:${saver ? '0px' : '12px'}`;
+      const inner = style === 'vertical' ? Array.from(word.text).map((ch) => `<i>${esc(ch)}</i>`).join('') : esc(word.text);
+      return `<span class="${cls}" style="${vars}">${inner}</span>`;
+    };
+
+    let body;
+    if (layout.single) {
+      const word = flat[0] ? Object.assign({}, flat[0], { style: 'accent', size: 3 }) : { text, style: 'accent', size: 3 };
+      body = `<div class="lv-frame lv-frame-single">${wordHtml(word, 0)}</div>`;
+    } else {
+      let at = 0;
+      body = layout.blocks
+        .map((block) => `<div class="lv-block">${block.map((word) => wordHtml(word, at++)).join('')}</div>`)
+        .join('');
+    }
+
+    const cover = currentItem();
+    const silhouette =
+      !saver && cover && cover.artwork ? `<img class="lv-silhouette" src="${esc(cover.artwork)}" alt="" aria-hidden="true" />` : '';
+    const deco = saver
+      ? ''
+      : `<svg class="lv-deco" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <g class="lv-lines">
+          <line x1="0" y1="11" x2="100" y2="4" />
+          <line x1="0" y1="30" x2="100" y2="23" />
+          <line x1="6" y1="99" x2="100" y2="91" />
+          <line x1="0" y1="72" x2="100" y2="65" />
+        </g>
+        <path class="lv-flame lv-flame-a" d="M12 6 C 19 14 22 20 22 27 A 10 10 0 1 1 2 27 C 2 20 5 14 12 6 Z" />
+        <path class="lv-flame lv-flame-b" d="M92 74 C 97 80 99 85 99 91 A 7 7 0 1 1 85 91 C 85 85 87 80 92 74 Z" />
+        <circle class="lv-circle" cx="80" cy="18" r="6" />
+      </svg>`;
+
+    stage.innerHTML = `<div class="lv-body">${body}</div>${silhouette}${deco}<p class="ly-k-next">${esc((next && next.text) || '')}</p>`;
+
+    if (!reduced) startLyricVideoPulse(stage);
+  }
+
+  function startLyricVideoPulse(stage) {
+    const viz = window.CMVisualizer;
+    let dark = stage.classList.contains('lv-dark');
+    let lastFlip = 0;
+    const tick = () => {
+      if (!stage.isConnected) return;
+      const level = viz && viz.level ? viz.level() : 0;
+      const energy = viz && viz.energy ? viz.energy() : 0;
+      stage.style.setProperty('--lv-pulse', (1 + Math.min(1, level * 1.5) * 0.035).toFixed(4));
+      stage.style.setProperty('--lv-shake', `${(energy * 2).toFixed(2)}px`);
+      const now = performance.now();
+      // Strong beat flips light/dark with a minimum gap – no strobing.
+      if (energy > 0.82 && now - lastFlip > 900) {
+        lastFlip = now;
+        dark = !dark;
+        stage.classList.toggle('lv-dark', dark);
+        stage.classList.toggle('lv-light', !dark);
+      }
+      lyricVideoRaf = requestAnimationFrame(tick);
+    };
+    lyricVideoRaf = requestAnimationFrame(tick);
   }
 
   function applyLyricsStyle(host) {
@@ -7389,8 +7519,9 @@
   const PLAYLIST_PAGE = 'https://bellocccyt.github.io/cleanmusic/p/';
   // Voluntary support. A donation unlocks nothing – no paywall (see LEGAL.md).
   const SUPPORT_URL = 'https://ko-fi.com/belloccc';
+  const DISCORD_URL = 'https://discord.gg/XqYMZJXJjA';
 
-  /* --- Supporter extras: honest code, see core/supporter.js ------------ */
+  /* --- Supporter extras: honest code + 7-day trial, see core/supporter.js */
   let supporter = null;
 
   function supporterState() {
@@ -7405,11 +7536,18 @@
   }
 
   function extraLocked(kind, id) {
-    return Boolean(window.CMSupporter && window.CMSupporter.isLocked(kind, id, supporterState()));
+    return Boolean(window.CMSupporter && window.CMSupporter.isLocked(kind, id, supporterState(), Date.now()));
+  }
+
+  // An extra that is open only for the trial (the heart stays visible).
+  function extraInTrial(kind, id) {
+    const S = window.CMSupporter;
+    return Boolean(S && S.isExtra(kind, id) && S.inTrial(supporterState(), Date.now()));
   }
 
   function lockedClass(kind, id) {
-    return extraLocked(kind, id) ? ' extra-locked' : '';
+    if (extraLocked(kind, id)) return ' extra-locked';
+    return extraInTrial(kind, id) ? ' extra-trial' : '';
   }
 
   function setSupporter(next) {
@@ -7419,56 +7557,60 @@
     if (state.fullscreen) syncFullscreen();
   }
 
-  // The code is public: on Ko-fi, in the Discord – and behind "Ohne Spende
-  // freischalten". A donation never buys anything exclusive.
+  // The code is public and free for everybody: on the Ko-fi page (About text)
+  // and in the Discord. A donation never buys anything exclusive.
   async function askUnlockExtras(label) {
     const S = window.CMSupporter;
     if (!S) return true;
-    const text = $('#dialog-text');
+    const form = $('#dialog-form');
     const field = $('#dialog-input');
     const placeholder = field.placeholder;
-    let free = false;
+    const below = document.createElement('div');
+    below.className = 'unlock-below';
+    below.innerHTML = `
+      <p>Den Code findest du kostenlos auf meiner Ko-fi-Seite und im Discord – eine Spende ist freiwillig.</p>
+      <p class="unlock-links">
+        <button type="button" class="link-btn" data-unlock="code">Code kostenlos auf Ko-fi ansehen</button>
+        <span aria-hidden="true">·</span>
+        <button type="button" class="link-btn" data-unlock="discord">Zum Discord</button>
+      </p>`;
     const onClick = (event) => {
       const button = event.target.closest('[data-unlock]');
       if (!button) return;
       event.preventDefault();
-      if (button.dataset.unlock === 'kofi') {
-        bridge.openExternal(SUPPORT_URL);
-        return;
-      }
-      free = true;
-      field.value = S.CODE;
-      $('#dialog-form').requestSubmit();
+      bridge.openExternal(button.dataset.unlock === 'discord' ? DISCORD_URL : SUPPORT_URL);
     };
-    text.addEventListener('click', onClick);
+    form.addEventListener('click', onClick);
+    field.insertAdjacentElement('afterend', below);
     field.placeholder = 'Freischalt-Code';
+    const intro = label
+      ? `<p><strong>${esc(label)}</strong> gehört zu den Supporter-Extras (mit ♥ markiert).</p>`
+      : '<p>Die mit ♥ markierten Supporter-Extras schaltest du einmal mit einem Code frei.</p>';
     let answer = null;
     try {
       answer = await openDialog({
-        title: 'Supporter-Extra',
+        title: label ? 'Supporter-Extra' : 'CleanMusic unterstützen',
+        className: 'dialog-unlock',
         html: `
-          <p><strong>${esc(label)}</strong> gehört zu den Supporter-Extras (mit ♥ markiert).</p>
-          <p>CleanMusic ist kostenlos und bleibt es. Wenn dir die App gefällt, kannst du sie freiwillig
-          auf Ko-fi unterstützen. Den Code bekommt <strong>jeder</strong> – er steht offen auf der
-          Ko-fi-Seite und im Discord. Eine Spende ist keine Bedingung.</p>
-          <div class="row">
-            <button type="button" class="btn primary small" data-unlock="kofi">${ICONS.heart} Ko-fi öffnen</button>
-            <button type="button" class="btn ghost small" data-unlock="free">Ohne Spende freischalten</button>
-          </div>
-          <p class="muted small">Gilt danach für alle Extras auf diesem Gerät.</p>`,
+          ${intro}
+          <p>CleanMusic ist kostenlos und bleibt es – ohne Werbung und ohne Konto. Wenn dir die App
+          gefällt, freue ich mich über eine Unterstützung auf Ko-fi.</p>
+          <button type="button" class="btn primary unlock-kofi" data-unlock="kofi">${ICONS.heart} Auf Ko-fi unterstützen</button>`,
         value: '',
         confirm: 'Freischalten',
       });
     } finally {
-      text.removeEventListener('click', onClick);
+      form.removeEventListener('click', onClick);
+      below.remove();
       field.placeholder = placeholder;
     }
     if (answer === null) return false;
     if (!S.checkCode(answer)) {
-      toast('Der Code passt nicht. Er steht offen auf ko-fi.com/belloccc – oder „Ohne Spende freischalten“.');
+      toast('Der Code passt nicht. Du findest ihn kostenlos auf ko-fi.com/belloccc und im Discord.');
       return false;
     }
-    setSupporter(S.unlock(free ? 'free' : 'code', Date.now()));
+    setSupporter(S.unlock('code', Date.now()));
+    if ($('#support-card').dataset.kind === 'trial') hideSupportCard();
     toast('Alle Supporter-Extras sind freigeschaltet – danke, dass du CleanMusic nutzt ♥');
     return true;
   }
@@ -7476,6 +7618,146 @@
   async function guardExtra(kind, id, label) {
     if (!extraLocked(kind, id)) return true;
     return askUnlockExtras(label);
+  }
+
+  function supportStatusText() {
+    const S = window.CMSupporter;
+    const current = supporterState();
+    if (current.unlocked) return `♥ Supporter-Extras sind freigeschaltet${current.how === 'legacy' ? ' – du warst schon vorher dabei' : ''}.`;
+    const days = S ? S.trialDaysLeft(current, Date.now()) : 0;
+    if (days) return `Probezeit: Alle Supporter-Extras sind noch ${days === 1 ? 'einen Tag' : `${days} Tage`} frei. Danach fragen sie einmal nach dem kostenlosen Code.`;
+    return `${S ? S.lockedCount() : 0} Supporter-Extras (Themes, Live-Hintergründe, Songtext-Effekte, Visualizer-Stile) warten auf den kostenlosen Code.`;
+  }
+
+  // ♥ in the sidebar: unlocked → straight to Ko-fi, otherwise the dialog.
+  function openSupport() {
+    if (supporterState().unlocked) bridge.openExternal(SUPPORT_URL);
+    else askUnlockExtras('');
+  }
+
+  // Trial over: active extras go back to the free standards (once). At boot
+  // the lyrics and the fullscreen visualizer are not built yet – they read
+  // state.settings later anyway.
+  function resetLockedExtras(boot = false) {
+    const S = window.CMSupporter;
+    const patch = S ? S.resetPlan(state.settings) : {};
+    if (!Object.keys(patch).length) return patch;
+    Object.assign(state.settings, patch);
+    saveSettings();
+    if ('theme' in patch) applyTheme();
+    if ('background' in patch) applyBackground();
+    if (boot) return patch;
+    if ('lyricsEffect' in patch) renderLyrics();
+    if ('vizStyle' in patch) {
+      window.CMVisualizer.setStyle($('#fs-viz'), patch.vizStyle);
+      syncVisualizerEngine();
+    }
+    return patch;
+  }
+
+  function checkTrialReset(now = Date.now(), boot = false) {
+    const S = window.CMSupporter;
+    if (!S || !S.trialExpired(supporterState(), now)) return null;
+    const patch = resetLockedExtras(boot);
+    setSupporter(S.markTrialReset(supporterState()));
+    return Object.keys(patch);
+  }
+
+  /* --- Ko-fi cards: trial over, 10 hours of listening ----------------- */
+  let supportCardSeen = false; // at most one support card per app start
+
+  function totalListenSecs() {
+    return Object.values(stats.months || {}).reduce((sum, month) => sum + (Number(month && month.secs) || 0), 0);
+  }
+
+  function supportCardBlocked() {
+    return !$('#whatsnew-card').hidden || !$('#onboarding').hidden || !$('#support-card').hidden;
+  }
+
+  function hideSupportCard() {
+    const card = $('#support-card');
+    card.hidden = true;
+    card.dataset.kind = '';
+  }
+
+  function showSupportCard(kind, { secs = 0 } = {}) {
+    const card = $('#support-card');
+    if (supportCardBlocked()) return false;
+    const hours = Math.floor(secs / 3600);
+    const content =
+      kind === 'trial'
+        ? {
+            title: 'Deine 7 Tage Supporter-Extras sind vorbei',
+            text: 'Danke fürs Ausprobieren! Themes, Hintergründe und Effekte mit ♥ sind wieder auf dem Standard. Den Code gibt’s kostenlos auf Ko-fi – eine Spende ist freiwillig.',
+            actions: `
+              <button class="btn primary small" data-support-card="kofi">${ICONS.heart} Code auf Ko-fi holen</button>
+              <button class="btn ghost small" data-support-card="code">Code eingeben</button>
+              <button class="btn ghost small" data-support-card="close">Schließen</button>`,
+          }
+        : {
+            title: `Schon ${hours} Stunden mit CleanMusic ♥`,
+            text: 'CleanMusic ist kostenlos, ohne Werbung und ohne Konto – und das bleibt so. Wenn du magst, kannst du die Weiterentwicklung auf Ko-fi unterstützen. Ganz freiwillig.',
+            actions: `
+              <button class="btn primary small" data-support-card="kofi">${ICONS.heart} Auf Ko-fi unterstützen</button>
+              <button class="btn ghost small" data-support-card="close">Später</button>
+              <button class="btn ghost small" data-support-card="never">Nicht mehr zeigen</button>`,
+          };
+    card.innerHTML = `
+      <span class="update-icon">${ICONS.heart}</span>
+      <div class="update-text">
+        <strong>${esc(content.title)}</strong>
+        <small>${esc(content.text)}</small>
+      </div>
+      <div class="update-actions">${content.actions}</div>`;
+    card.dataset.kind = kind;
+    card.hidden = false;
+    supportCardSeen = true;
+    return true;
+  }
+
+  function checkTrialNotice() {
+    const S = window.CMSupporter;
+    if (!S || !S.trialNoticeDue(supporterState())) return false;
+    if (!showSupportCard('trial')) return false;
+    setSupporter(S.markTrialNotice(supporterState()));
+    return true;
+  }
+
+  // Never in the smoke test, never on the very first start; `force` (smoke
+  // hook) skips only those guards, not the 10 hours or the 30 days.
+  function maybeKofiHint({ force = false, secs, now = Date.now() } = {}) {
+    const S = window.CMSupporter;
+    if (!S) return false;
+    if (!force && ((state.info && state.info.smoke) || FIRST_RUN || supportCardSeen)) return false;
+    const listened = Number.isFinite(secs) ? secs : totalListenSecs();
+    const hint = readJSON(STORAGE.kofiHint, null);
+    if (!S.hintDue(hint, listened, now)) return false;
+    if (!showSupportCard('hint', { secs: listened })) return false;
+    writeJSON(STORAGE.kofiHint, S.hintShown(hint, now));
+    return true;
+  }
+
+  function supportTick() {
+    if (state.info && state.info.smoke) return;
+    checkTrialReset();
+    if (!supportCardSeen) checkTrialNotice();
+    maybeKofiHint();
+  }
+
+  function wireSupport() {
+    $('#nav-support').addEventListener('click', openSupport);
+    $('#support-card').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-support-card]');
+      if (!button) return;
+      const action = button.dataset.supportCard;
+      if (action === 'kofi') bridge.openExternal(SUPPORT_URL);
+      if (action === 'never') writeJSON(STORAGE.kofiHint, window.CMSupporter.hintOff(readJSON(STORAGE.kofiHint, null)));
+      hideSupportCard();
+      if (action === 'code') askUnlockExtras('');
+    });
+    // The trial may end while CleanMusic runs; once an hour is plenty.
+    setTimeout(supportTick, 8000);
+    setInterval(supportTick, 60 * 60 * 1000);
   }
 
   async function sharePlaylist(id) {
@@ -7559,6 +7841,7 @@
     busy: '',
     error: '',
     loaded: 0,
+    groupsLoaded: 0,
     last: null,
     nameMsg: '',
     groups: [],
@@ -7695,12 +7978,7 @@
     const clean = SOC.normalizeFriends(data, Date.now());
     Object.assign(socialRt, clean, { loaded: Date.now() });
     // S2: groups (an older server without groups simply answers 404 – nothing breaks).
-    const groupData = await socialCall('GET', '/v1/groups', null, { quiet: true });
-    if (groupData) {
-      const parsed = SOC.normalizeGroups(groupData, clean.me ? clean.me.id : '');
-      socialRt.groups = parsed.groups;
-      socialRt.groupWeek = parsed.week;
-    }
+    if (options.groups !== false) await refreshGroups(clean.me ? clean.me.id : '');
     const fresh = SOC.newReactions(clean.reactions, socialLocal.seenReactions);
     if (fresh.length && socialLocal.seenReactions) {
       toast(
@@ -7717,6 +7995,33 @@
     if (state.view === 'friends') renderFriends();
     renderHomeFriends();
     return clean;
+  }
+
+  // S2: GET /v1/groups – called from refreshFriends (and, rarely, on its own).
+  async function refreshGroups(myId) {
+    const groupData = await socialCall('GET', '/v1/groups', null, { quiet: true });
+    if (groupData) {
+      const parsed = SOC.normalizeGroups(groupData, myId || '');
+      socialRt.groups = parsed.groups;
+      socialRt.groupWeek = parsed.week;
+      socialRt.groupsLoaded = Date.now();
+    }
+    return socialRt.groups;
+  }
+
+  // The 30 s poll: only fetch what pollPlan allows (never while hidden).
+  async function socialPoll() {
+    if (!socialLocal.enabled || !socialAvailable()) return null;
+    const plan = SOC.pollPlan({
+      now: Date.now(),
+      hidden: document.hidden,
+      friendsOpen: state.view === 'friends',
+      lastFriends: socialRt.loaded,
+      lastGroups: socialRt.groupsLoaded,
+      groupCount: socialRt.groups.length,
+    });
+    if (!plan.friends) return null;
+    return refreshFriends({ quiet: true, groups: plan.groups });
   }
 
   // Every 15 s: send the own song when it changed (or as a heartbeat), if allowed.
@@ -7750,9 +8055,7 @@
   function startSocialTimers() {
     stopSocialTimers();
     socialRt.tick = setInterval(socialTick, 15000);
-    socialRt.poll = setInterval(() => {
-      if (!document.hidden) refreshFriends({ quiet: true });
-    }, 60000);
+    socialRt.poll = setInterval(socialPoll, 30000);
     setTimeout(socialTick, 3000);
   }
 
@@ -8140,7 +8443,7 @@
     stopSocialTimers();
     socialLocal = SOC.normalizeState({});
     persistSocial();
-    Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], code: null, last: null, nameMsg: '', loaded: 0, groups: [], groupWeek: '', groupCodes: {}, lastWeek: null });
+    Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], code: null, last: null, nameMsg: '', loaded: 0, groupsLoaded: 0, groups: [], groupWeek: '', groupCodes: {}, lastWeek: null });
     await refreshSocialInfo();
     renderFriends();
     renderHomeFriends();
@@ -8473,6 +8776,7 @@
     if (!socialAvailable()) return;
     wireSocial();
     await refreshSocialInfo();
+    updateFriendsCount();
     if (socialLocal.enabled && socialRt.info && socialRt.info.registered) {
       startSocialTimers();
       refreshFriends({ quiet: true });
@@ -11871,6 +12175,7 @@
           : state.settings.visualizer && fsVisualizerOn() && state.settings.vizStyle === style
       );
       button.classList.toggle('extra-locked', extraLocked('vizStyle', style));
+      button.classList.toggle('extra-trial', extraInTrial('vizStyle', style));
     });
 
     updateFsProgress();
@@ -14033,16 +14338,13 @@
           <p>
             CleanMusic ist kostenlos und Open Source – und bleibt es. Wenn du die Weiterentwicklung
             unterstützen möchtest, geht das freiwillig über Ko-fi. Die mit ♥ markierten
-            Supporter-Extras schaltest du mit einem Code frei, den jeder bekommt – mit oder ohne Spende.
+            Supporter-Extras schaltest du mit einem Code frei, den jeder kostenlos bekommt – er steht
+            auf meiner Ko-fi-Seite und im Discord. Eine Spende ist nie Bedingung.
           </p>
-          <p class="muted small">${
-            supporterState().unlocked
-              ? `♥ Supporter-Extras sind freigeschaltet${supporterState().how === 'legacy' ? ' – du warst schon vorher dabei' : ''}.`
-              : `${window.CMSupporter ? window.CMSupporter.lockedCount() : 0} Supporter-Extras (Themes, Live-Hintergründe, Songtext-Effekte, Visualizer-Stile) warten noch.`
-          }</p>
+          <p class="muted small" id="support-status">${supportStatusText()}</p>
           <div class="row">
             <button class="btn primary small" data-support="open">${ICONS.heart} Auf Ko-fi unterstützen</button>
-            ${supporterState().unlocked ? '' : '<button class="btn ghost small" data-support="unlock">Extras freischalten</button>'}
+            ${supporterState().unlocked ? '' : '<button class="btn ghost small" data-support="unlock">Code eingeben</button>'}
           </div>
         </div>
 
@@ -14917,7 +15219,7 @@ ${updatePanel()}
       }
       const supportButton = event.target.closest('[data-support]');
       if (supportButton) {
-        if (supportButton.dataset.support === 'unlock') askUnlockExtras('Alle Supporter-Extras');
+        if (supportButton.dataset.support === 'unlock') askUnlockExtras('');
         else bridge.openExternal(SUPPORT_URL);
         return;
       }
@@ -15691,11 +15993,13 @@ ${updatePanel()}
     renderLocal();
     renderFavorites();
     supporterState();
+    checkTrialReset(Date.now(), true);
     renderSettings();
     initSocial();
     wirePlayer();
     wireQueuePanel();
     wireOnboarding();
+    wireSupport();
     wireLocalExtras();
     wireArtistPage();
     wireCutterExtras();
@@ -15882,8 +16186,26 @@ ${updatePanel()}
     playlistShare: (id) => sharePlaylist(id),
     supporterState: () => Object.assign({}, supporterState()),
     supporterSet: (unlocked) => {
-      setSupporter(unlocked ? window.CMSupporter.unlock('code', Date.now()) : { unlocked: false, how: '', at: 0 });
+      if (unlocked && typeof unlocked === 'object') setSupporter(Object.assign({}, unlocked));
+      else setSupporter(unlocked ? window.CMSupporter.unlock('code', Date.now()) : { unlocked: false, how: '', at: 0 });
       return Object.assign({}, supporter);
+    },
+    supporterCheckTrial: (now) => ({ reset: checkTrialReset(now), notice: checkTrialNotice() }),
+    supportCard: () => ({ hidden: $('#support-card').hidden, kind: $('#support-card').dataset.kind || '', text: $('#support-card').textContent.replace(/\s+/g, ' ').trim() }),
+    supportCardClose: () => hideSupportCard(),
+    kofiHint: (options) => maybeKofiHint(Object.assign({ force: true }, options)),
+    kofiHintState: () => readJSON(STORAGE.kofiHint, null),
+    kofiHintReset: () => { try { localStorage.removeItem(STORAGE.kofiHint); } catch { /* egal */ } },
+    supporterExtras: (patch) => {
+      if (patch && patch.theme) setTheme(patch.theme);
+      if (patch && patch.background) setBackground(patch.background);
+      if (patch && patch.lyricsEffect) setLyricsOption({ lyricsEffect: patch.lyricsEffect });
+      if (patch && patch.vizStyle) {
+        state.settings.vizStyle = patch.vizStyle;
+        saveSettings();
+      }
+      const s = state.settings;
+      return { theme: s.theme, background: s.background, lyricsEffect: s.lyricsEffect, vizStyle: s.vizStyle };
     },
     extraLocked: (kind, id) => extraLocked(kind, id),
     playlistImportLink: (code, options) => importPlaylistLink(code, options),
@@ -16208,16 +16530,51 @@ ${updatePanel()}
     setLayout: (mode) => setLayout(mode),
     setVinyl: (on) => setVinyl(on),
     lyricsEffectTest: (effect, index) => {
-      state.settings.lyricsEffect = effect;
-      state.nowMode = 'plugin';
-      renderLyrics();
-      showLyricLine(index, true);
-      const host = $('#fs-lyrics');
-      return {
-        effect: host ? host.dataset.effect : '',
-        words: host ? host.querySelectorAll('.ly-k-line span').length : 0,
-        dur: ((host && host.querySelector(`[data-ly="${index}"]`)) || { style: { getPropertyValue: () => '' } }).style.getPropertyValue('--dur'),
+      // Self-contained for the smoke test: turn lyrics on and inject two lines.
+      const saved = {
+        lyrics: state.settings.lyrics,
+        effect: state.settings.lyricsEffect,
+        mode: state.nowMode,
+        data: Object.assign({}, lyricsState),
+        hold: lyricsHold,
       };
+      lyricsHold = true;
+      state.settings.lyrics = true;
+      try {
+        if (!lyricsState.lines.length) {
+          Object.assign(lyricsState, {
+            key: 'smoke|lyricvideo',
+            lines: [
+              { time: 0, text: 'Preaching to the choir' },
+              { time: 3, text: 'Get up and go' },
+            ],
+            plain: '',
+            loading: false,
+            error: null,
+            index: -1,
+          });
+        }
+        state.settings.lyricsEffect = effect;
+        state.nowMode = 'plugin';
+        renderLyrics();
+        showLyricLine(index, true);
+        const host = $('#fs-lyrics');
+        const stage = host && host.querySelector('.ly-kinetic');
+        return {
+          effect: host ? host.dataset.fx : '',
+          words: host ? host.querySelectorAll('.ly-k-line span, .lv-word').length : 0,
+          accent: stage ? stage.querySelectorAll('.lv-accent').length : 0,
+          html: stage ? stage.innerHTML : '',
+          dur: ((host && host.querySelector(`[data-ly="${index}"]`)) || { style: { getPropertyValue: () => '' } }).style.getPropertyValue('--dur'),
+        };
+      } finally {
+        lyricsHold = saved.hold;
+        state.settings.lyrics = saved.lyrics;
+        state.settings.lyricsEffect = saved.effect;
+        state.nowMode = saved.mode;
+        Object.assign(lyricsState, saved.data);
+        renderLyrics();
+      }
     },
     lyricsModeTest: () => {
       const saved = {
