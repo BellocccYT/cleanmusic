@@ -2950,6 +2950,23 @@ function createMainWindow() {
             console.error('SMOKE_QUEUE_SLICE_FAIL:', error.message);
           }
 
+          // Collection helpers (2.0 Phase 1): favourites, playlists, history.
+          try {
+            const collectionSmoke = await mainWindow.webContents.executeJavaScript('window.CleanMusic.collectionSliceTest()');
+            const collectionOk =
+              collectionSmoke &&
+              collectionSmoke.prepended &&
+              collectionSmoke.removed &&
+              collectionSmoke.restored &&
+              collectionSmoke.untouched &&
+              collectionSmoke.fresh &&
+              collectionSmoke.history;
+            if (!collectionOk) throw new Error(JSON.stringify(collectionSmoke));
+            console.log('SMOKE_COLLECTION:', JSON.stringify(collectionSmoke));
+          } catch (error) {
+            console.error('SMOKE_COLLECTION_FAIL:', error.message);
+          }
+
           // 1.6: artist page, share link, deep link (cleanmusic://).
           const deepOk = parseDeepLink('cleanmusic://play?src=deezer&id=3135553&t=One%20More%20Time&a=Daft%20Punk');
           const deepAdd = parseDeepLink('cleanmusic://add?src=youtube&id=dQw4w9WgXcQ&t=Never%20Gonna%20Give%20You%20Up&a=Rick%20Astley');

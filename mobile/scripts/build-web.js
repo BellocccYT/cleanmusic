@@ -141,6 +141,7 @@ const mustExist = [
   'core/persist.js',
   'core/migrations.js',
   'core/state.js',
+  'core/collection.js',
   'core/recipes.js',
   'core/group.js',
   'core/share.js',

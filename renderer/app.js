@@ -47,6 +47,9 @@
   const CMState = window.CMState;
   if (!CMState) throw new Error('renderer/core/state.js fehlt');
 
+  const CMCollection = window.CMCollection;
+  if (!CMCollection) throw new Error('renderer/core/collection.js fehlt');
+
   const CMStudio = window.CMStudio || null;
 
   const ICONS = {
@@ -684,13 +687,16 @@
   function toggleFavorite(entry) {
     if (!entry) return;
 
-    const index = state.collection.favorites.findIndex((item) => item.id === entry.id);
-    if (index === -1) {
-      state.collection.favorites.unshift(storable(Object.assign({}, entry, { addedAt: 0 })));
-      toast(`♥ „${entry.title}“ in Favoriten`);
-    } else {
-      state.collection.favorites.splice(index, 1);
+    if (CMCollection.isFavorite(state.collection.favorites, entry.id)) {
+      const result = CMCollection.without(state.collection.favorites, entry.id);
+      state.collection.favorites = result.list;
       toast(`„${entry.title}“ aus Favoriten entfernt`);
+    } else {
+      state.collection.favorites = CMCollection.prepend(
+        state.collection.favorites,
+        storable(Object.assign({}, entry, { addedAt: 0 }))
+      );
+      toast(`♥ „${entry.title}“ in Favoriten`);
     }
 
     onCollectionChanged({ favorites: true });
@@ -723,13 +729,7 @@
       return;
     }
 
-    const known = new Set(playlist.items.map((entry) => entry.id));
-    const fresh = [];
-    entries.forEach((entry) => {
-      if (!entry || known.has(entry.id)) return;
-      known.add(entry.id);
-      fresh.push(entry);
-    });
+    const fresh = CMCollection.fresh(playlist.items, entries);
 
     fresh.forEach((entry) => playlist.items.push(storable(Object.assign({}, entry, { addedAt: 0 }))));
     playlist.updatedAt = Date.now();
@@ -743,11 +743,13 @@
 
   function removeFromPlaylist(id, index) {
     const playlist = playlistById(id);
-    if (!playlist || !playlist.items[index]) return;
-    const [removed] = playlist.items.splice(index, 1);
+    if (!playlist) return;
+    const result = CMCollection.withoutAt(playlist.items, index);
+    if (!result.removed) return;
+    playlist.items = result.list;
     playlist.updatedAt = Date.now();
     onCollectionChanged({ playlists: true });
-    toast(`„${removed.title}“ entfernt`);
+    toast(`„${result.removed.title}“ entfernt`);
   }
 
   function movePlaylistItem(id, from, to) {
@@ -757,10 +759,9 @@
       toast('Smart-Playlists werden aus Regeln sortiert – nutze „Aktualisieren“.');
       return;
     }
-    if (from === to || from < 0 || from >= playlist.items.length) return;
-    const target = Math.max(0, Math.min(playlist.items.length - 1, to));
-    const [item] = playlist.items.splice(from, 1);
-    playlist.items.splice(target, 0, item);
+    const result = CMCollection.moved(playlist.items, from, to);
+    if (!result.moved) return;
+    playlist.items = result.list;
     playlist.updatedAt = Date.now();
     onCollectionChanged({ playlists: true });
   }
@@ -2309,17 +2310,7 @@
 
   function recordPlay(entry) {
     if (!entry || entry.kind === 'radio' || !validEntry(entry)) return;
-    const now = Date.now();
-    const known = history.find((row) => row.entry.id === entry.id);
-    if (known) {
-      known.plays += 1;
-      known.last = now;
-      known.entry = storable(entry);
-    } else {
-      history.unshift({ entry: storable(entry), plays: 1, first: now, last: now });
-    }
-    history.sort((a, b) => b.last - a.last);
-    history = history.slice(0, HISTORY_MAX);
+    history = CMCollection.recordHistory(history, storable(entry), Date.now(), HISTORY_MAX);
     writeJSON(STORAGE.history, history);
     invalidateMixes();
     statsPlay(entry);
@@ -17146,6 +17137,21 @@ ${updatePanel()}
         backup.shuffleBase = saved.shuffleBase;
         state.queue = backup;
       }
+    },
+    collectionSliceTest: () => {
+      const favorites = state.collection.favorites;
+      const candidate = { id: 'smoke-collection', title: 'Smoke Collection' };
+      const next = CMCollection.prepend(favorites, candidate);
+      const without = CMCollection.without(next, candidate.id);
+      const historyRows = CMCollection.recordHistory([], { id: 'smoke-history' }, 1000, 5);
+      return {
+        prepended: next.length === favorites.length + 1 && next[0].id === candidate.id,
+        removed: Boolean(without.removed && without.removed.id === candidate.id),
+        restored: without.list.length === favorites.length,
+        untouched: state.collection.favorites.length === favorites.length,
+        fresh: CMCollection.fresh(favorites, [{ id: 'smoke-new' }, { id: 'smoke-new' }]).length === 1,
+        history: historyRows.length === 1 && historyRows[0].entry.id === 'smoke-history',
+      };
     },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),

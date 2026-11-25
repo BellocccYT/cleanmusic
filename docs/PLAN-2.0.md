@@ -107,6 +107,15 @@ Listenänderungen laufen über `replace`/`insert`/`append`/`remove`/`move`/
 Shuffle/Restore, Autoplay-Samen und Listenstarts in app.js nutzen nur noch diese
 Aktionen (Playback bleibt in app.js). Test `test/queue.test.js` (13) und
 `test/queue-slice.test.js` (8), Smoke `SMOKE_QUEUE_SLICE`.
+
+**Sammlung (2.0.0):** `renderer/core/collection.js` (`window.CMCollection`) sammelt die
+reinen Regeln für Favoriten (`prepend`/`without`/`isFavorite`), Playlists
+(`fresh` gegen Duplikate, `withoutAt`, `moved`) und den Hör-Verlauf
+(`recordHistory`: hochzählen, nach `last` sortieren, begrenzen; `lastPlayed` als
+Map). `toggleFavorite`, `addToPlaylist`, `removeFromPlaylist`, `movePlaylistItem`
+und `recordPlay` in app.js rufen nur noch diese Funktionen. Test
+`test/collection.test.js` (9), Smoke `SMOKE_COLLECTION`.
+
 **Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.
 
