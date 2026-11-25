@@ -56,6 +56,9 @@
   const CMCollection = window.CMCollection;
   if (!CMCollection) throw new Error('renderer/core/collection.js fehlt');
 
+  const CMStats = window.CMStats;
+  if (!CMStats) throw new Error('renderer/core/stats.js fehlt');
+
   const CMStudio = window.CMStudio || null;
 
   const ICONS = {
@@ -8944,15 +8947,7 @@
   let group = GROUP.normalizeGroup(readJSON(STORAGE.group, {}));
 
   function statsWeek() {
-    const key = GROUP.weekKey();
-    if (!stats.weeks[key]) {
-      stats.weeks[key] = { secs: 0, plays: 0, artists: {} };
-      Object.keys(stats.weeks)
-        .sort()
-        .slice(0, -8)
-        .forEach((old) => delete stats.weeks[old]);
-    }
-    return stats.weeks[key];
+    return CMStats.week(stats, GROUP.weekKey());
   }
 
   function persistGroup() {
@@ -8983,13 +8978,11 @@
   let reviewPeriod = 'year';
 
   function monthKey(date = new Date()) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    return CMStats.monthKey(date);
   }
 
   function statsMonth() {
-    const key = monthKey();
-    if (!stats.months[key]) stats.months[key] = { secs: 0, plays: 0, hours: new Array(24).fill(0), tracks: {}, artists: {}, sources: {} };
-    return stats.months[key];
+    return CMStats.month(stats, new Date());
   }
 
   function saveStatsSoon() {
@@ -9002,88 +8995,33 @@
 
   function statsListen(item, secs) {
     if (!item || !(secs > 0)) return;
-    const month = statsMonth();
-    month.secs += secs;
-    month.hours[new Date().getHours()] += secs;
-    const week = statsWeek();
-    week.secs += secs;
-    const source = item.sourceLabel || (item.kind === 'local' ? 'Lokal' : item.kind) || 'Sonstige';
-    month.sources[source] = (month.sources[source] || 0) + secs;
-    if (item.kind !== 'radio') {
-      const track = month.tracks[item.id] || (month.tracks[item.id] = { s: 0, p: 0, e: storable(item) });
-      track.s += secs;
-      const artist = primaryArtist(item.artist || '');
-      if (artist) {
-        const row = month.artists[artist] || (month.artists[artist] = { s: 0, p: 0 });
-        row.s += secs;
-        week.artists[artist] = (week.artists[artist] || 0) + secs;
-        const names = Object.keys(week.artists);
-        if (names.length > 60) {
-          names.sort((a, b) => week.artists[a] - week.artists[b]).slice(0, names.length - 50).forEach((name) => delete week.artists[name]);
-        }
-      }
-      const ids = Object.keys(month.tracks);
-      if (ids.length > 700) {
-        ids.sort((a, b) => month.tracks[a].s - month.tracks[b].s).slice(0, ids.length - 600).forEach((id) => delete month.tracks[id]);
-      }
-    }
+    CMStats.listen(stats, {
+      secs,
+      id: item.id,
+      kind: item.kind,
+      artist: primaryArtist(item.artist || ''),
+      source: item.sourceLabel || (item.kind === 'local' ? 'Lokal' : item.kind) || 'Sonstige',
+      entry: storable(item),
+      at: new Date(),
+      weekKey: GROUP.weekKey(),
+    });
     saveStatsSoon();
   }
 
   function statsPlay(entry) {
     if (!entry || entry.kind === 'radio') return;
-    const month = statsMonth();
-    month.plays += 1;
-    statsWeek().plays += 1;
-    const track = month.tracks[entry.id] || (month.tracks[entry.id] = { s: 0, p: 0, e: storable(entry) });
-    track.p += 1;
-    const artist = primaryArtist(entry.artist || '');
-    if (artist) {
-      const row = month.artists[artist] || (month.artists[artist] = { s: 0, p: 0 });
-      row.p += 1;
-    }
+    CMStats.play(stats, {
+      id: entry.id,
+      artist: primaryArtist(entry.artist || ''),
+      entry: storable(entry),
+      at: new Date(),
+      weekKey: GROUP.weekKey(),
+    });
     saveStatsSoon();
   }
 
   function reviewData(period) {
-    const now = new Date();
-    const year = String(now.getFullYear());
-    const current = monthKey(now);
-    const keys = Object.keys(stats.months).filter((key) =>
-      period === 'month' ? key === current : period === 'year' ? key.startsWith(`${year}-`) : true
-    );
-    const out = { secs: 0, plays: 0, hours: new Array(24).fill(0), months: new Array(12).fill(0), tracks: {}, artists: {}, sources: {} };
-    keys.forEach((key) => {
-      const month = stats.months[key];
-      out.secs += month.secs || 0;
-      out.plays += month.plays || 0;
-      (month.hours || []).forEach((value, hour) => {
-        out.hours[hour] += value || 0;
-      });
-      if (key.startsWith(`${year}-`)) out.months[Number(key.slice(5)) - 1] += month.secs || 0;
-      Object.entries(month.tracks || {}).forEach(([id, row]) => {
-        const target = out.tracks[id] || (out.tracks[id] = { s: 0, p: 0, e: row.e });
-        target.s += row.s || 0;
-        target.p += row.p || 0;
-      });
-      Object.entries(month.artists || {}).forEach(([name, row]) => {
-        const target = out.artists[name] || (out.artists[name] = { s: 0, p: 0 });
-        target.s += row.s || 0;
-        target.p += row.p || 0;
-      });
-      Object.entries(month.sources || {}).forEach(([name, value]) => {
-        out.sources[name] = (out.sources[name] || 0) + value;
-      });
-    });
-    out.topTracks = Object.values(out.tracks)
-      .filter((row) => row.e)
-      .sort((a, b) => b.p - a.p || b.s - a.s)
-      .slice(0, 10);
-    out.topArtists = Object.entries(out.artists)
-      .sort((a, b) => b[1].s - a[1].s || b[1].p - a[1].p)
-      .slice(0, 10);
-    out.topSource = Object.entries(out.sources).sort((a, b) => b[1] - a[1])[0] || null;
-    return out;
+    return CMStats.review(stats.months, { period, now: new Date() });
   }
 
   function reviewEntries() {
@@ -17186,6 +17124,39 @@ ${updatePanel()}
         state.playback.repeat = before.repeat;
         syncPlaybackButtons();
       }
+    },
+    statsSliceTest: () => {
+      const fixture = {};
+      const at = new Date(2026, 10, 25, 21, 30, 0);
+      CMStats.listen(fixture, {
+        secs: 30,
+        id: 'smoke-stats',
+        artist: 'Smoke Artist',
+        kind: 'preview',
+        source: 'Deezer',
+        entry: { id: 'smoke-stats', title: 'Smoke', artist: 'Smoke Artist' },
+        at,
+        weekKey: '2026-W48',
+      });
+      CMStats.play(fixture, {
+        id: 'smoke-stats',
+        artist: 'Smoke Artist',
+        entry: { id: 'smoke-stats', title: 'Smoke', artist: 'Smoke Artist' },
+        at,
+        weekKey: '2026-W48',
+      });
+      const month = fixture.months['2026-11'] || {};
+      const review = CMStats.review(fixture.months, { period: 'month', now: at });
+      const real = reviewData('year');
+      return {
+        listened: month.secs === 30 && month.hours[21] === 30,
+        played: month.plays === 1 && month.tracks['smoke-stats'].p === 1,
+        artist: month.artists['Smoke Artist'].s === 30,
+        week: fixture.weeks['2026-W48'].secs === 30,
+        review: review.secs === 30 && review.topSource[0] === 'Deezer',
+        real: Array.isArray(real.months) && real.months.length === 12 && Array.isArray(real.hours),
+        total: CMStats.totalSeconds(fixture.months) === 30,
+      };
     },
     shareUrl: (entry) => shareUrl(entry || {}),
     openArtist: (query) => openArtist(query || {}),

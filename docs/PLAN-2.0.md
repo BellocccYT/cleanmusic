@@ -129,6 +129,15 @@ off), `repeatActive`/`repeatOne`/`repeatOff`, `repeatLabel`, `blocksAutoplay`,
 `autoplayEligible`, die Warteschlangen-Hinweise und `playList` nutzen sie. Test
 `test/playback.test.js` (5), Smoke `SMOKE_PLAYBACK`.
 
+**Statistik (2.0.0):** `renderer/core/stats.js` (`window.CMStats`) bündelt die
+Hör-Statistik: Monats-/Wochen-Eimer (`month`, `week` – nur die letzten 8 Wochen),
+`listen` (Sekunden je Monat, Stunde, Quelle, Titel und Artist; Monats-Titel werden
+ab 700 auf die 600 längsten gekürzt, Wochen-Artists ab 60 auf 50), `play` und
+`review` (Monat/Jahr/alles mit Stunden- und Monatsreihe, Top-Titeln, Top-Artists
+und Top-Quelle) sowie `totalSeconds`. `statsListen`, `statsPlay` und `reviewData`
+in app.js rufen nur noch diese Funktionen; der Rückblick bleibt unverändert. Test
+`test/stats.test.js` (9), Smoke `SMOKE_STATS`.
+
 **Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.
 
