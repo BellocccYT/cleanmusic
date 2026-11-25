@@ -117,8 +117,11 @@ function createSocial(deps) {
     writeConfig({ social: Object.assign({}, config(), patch) });
   }
 
+  // The smoke profile never talks to the real server – only to a server it sets itself.
+  const defaultServer = () => (isSmoke ? '' : proto.normalizeServer(proto.DEFAULT_SERVER));
+
   function server() {
-    return proto.normalizeServer(config().server) || proto.normalizeServer(proto.DEFAULT_SERVER);
+    return proto.normalizeServer(config().server) || defaultServer();
   }
 
   function info() {
@@ -128,7 +131,7 @@ function createSocial(deps) {
       available: secureStorage(),
       server: origin,
       custom: Boolean(proto.normalizeServer(config().server)),
-      defaultServer: proto.normalizeServer(proto.DEFAULT_SERVER),
+      defaultServer: defaultServer(),
       id: key ? key.id : '',
       tag: key ? names.tagOf(key.id) : '',
       registered: Boolean(key && origin && config().registered === origin),

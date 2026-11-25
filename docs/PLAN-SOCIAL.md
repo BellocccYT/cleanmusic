@@ -1,7 +1,8 @@
 # Plan: Echte Social-Funktionen (Weg B)
 
-Stand: 25.11.2026 – **S1 ist gebaut** (Server, App-Anbindung, Tests; noch nicht veröffentlicht – Deploy und
-Datenschutz-Angaben macht der Betreiber, siehe `server/social/README.md`). S2 und S3 sind offen. Weg A (ohne Server: Discord-Knopf, Playlist-Links,
+Stand: 25.11.2026 – **S1 ist gebaut** (Server, App-Anbindung, Tests). Der Server läuft seit 25.11.2026 unter
+`https://cleanmusic-social.cleanmusic.workers.dev` (Standard-Adresse ab dem nächsten Release);
+die Datenschutz-Angaben fehlen noch (siehe `server/social/README.md`). S2 und S3 sind offen. Weg A (ohne Server: Discord-Knopf, Playlist-Links,
 Wochenkarte per Code) ist fertig und bleibt als Offline-Weg erhalten.
 
 ## Grundidee

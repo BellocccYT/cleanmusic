@@ -4,6 +4,10 @@ Cloudflare Worker + ein Durable Object (`SocialHub`, SQLite) für Konten, Freund
 „Hört gerade“ und Reaktionen. Plan: [`docs/PLAN-SOCIAL.md`](../../docs/PLAN-SOCIAL.md).
 **Nicht Teil des Electron-Builds** – eigener Ordner, eigene `package.json`.
 
+Live seit 25.11.2026: `https://cleanmusic-social.cleanmusic.workers.dev` (steht als `DEFAULT_SERVER`
+in `lib/social-protocol.js`). Neu veröffentlichen: `npx wrangler deploy` in diesem Ordner, angemeldet
+mit dem CleanMusic-Cloudflare-Konto – vorher mit `npx wrangler whoami` prüfen.
+
 - `src/index.js` – Worker: leitet `/v1/*` an das Durable Object in der EU-Jurisdiktion,
   reicht nur das IP-Präfix (/24 bzw. /48) weiter.
 - `src/hub.js` – Endpunkte, Signaturprüfung, Proof-of-Work, Rate-Limits, Aufräumen (Alarm
