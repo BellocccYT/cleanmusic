@@ -19,6 +19,7 @@ const {
   Tray,
   screen,
   globalShortcut,
+  safeStorage,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -31,6 +32,7 @@ const { pathToFileURL } = require('node:url');
 const { DiscordPresence } = require('./discord-rpc');
 const pluginManifest = require('./lib/plugin-manifest');
 const QRCode = require('qrcode');
+const { createSocial, createFakeServer } = require('./social-main');
 
 const ROOT = __dirname;
 const isDev = process.argv.includes('--dev');
@@ -2387,6 +2389,124 @@ function createMainWindow() {
             console.log('SMOKE_SOCIAL:', JSON.stringify(socialResult));
           } catch (error) {
             console.error('SMOKE_SOCIAL_FAIL:', error.message);
+          }
+
+          // Social Weg B: signed requests against a local fake server (social-main.js).
+          try {
+            const fake = createFakeServer();
+            const origin = await fake.listen();
+            const js = (code) => mainWindow.webContents.executeJavaScript(code);
+            const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const q = (value) => JSON.stringify(value);
+            const noServer = await social.request({ method: 'GET', path: '/v1/friends' });
+            const badServer = await social.setServer('http://evil.example');
+            await js(`window.CleanMusic.socialServer(${q(origin)})`);
+            const foreignPath = await social.request({ method: 'GET', path: '/v1/admin/reports' });
+            const otherHost = await social.request({ method: 'GET', path: '//evil.example/v1/friends' });
+            const enabled = await js('window.CleanMusic.socialEnable()');
+            const keyText = fs.readFileSync(social.keyFile(), 'utf8');
+            const bridgeKeys = await js('Object.keys(window.cm).filter((key) => /social/i.test(key)).sort().join(",")');
+            const badName = await js('window.CleanMusic.socialName("Admin")');
+            const goodName = await js('window.CleanMusic.socialName("Smoke Tester")');
+            const friend = await fake.remoteClient();
+            await friend.call('POST', '/v1/name', { name: 'Smoke Freund' });
+            const code = await js('window.CleanMusic.socialCode().then((made) => made && made.code)');
+            const redeemed = await friend.call('POST', '/v1/friend/redeem', { code });
+            await friend.call('POST', '/v1/activity', { ref: { src: 'search', id: '', title: 'Numb', artist: 'Linkin Park' } });
+            await js('window.CleanMusic.socialRefresh()');
+            const ui = await js(`(async () => {
+              const cm = window.CleanMusic;
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              cm.showView('home');
+              await wait(150);
+              const home = document.querySelectorAll('#home-friends .social-listen').length;
+              cm.showView('friends');
+              await wait(300);
+              return {
+                home,
+                rows: document.querySelectorAll('#view-friends .social-friend').length,
+                listen: document.querySelectorAll('#view-friends .social-listen').length,
+                emojis: document.querySelectorAll('#view-friends .social-emoji').length,
+                count: document.querySelector('#friends-count').textContent,
+                me: (document.querySelector('#view-friends .social-me') || {}).textContent || '',
+              };
+            })()`);
+            const appState = await js('window.CleanMusic.socialState()');
+            const appId = appState.me && appState.me.id;
+            const reacted = await js(`window.CleanMusic.socialReact(${q(friend.id)}, '🔥')`);
+            const played = await js(`window.CleanMusic.socialPlay(${q(friend.id)})`);
+            let playing = false;
+            for (let i = 0; i < 30 && played && !playing; i += 1) {
+              await pause(400);
+              playing = await js('!document.querySelector("#audio").paused');
+            }
+            const tickOff = await js('window.CleanMusic.socialTick()');
+            const sharedBefore = fake.state().activity.some((row) => row.id === appId);
+            await js('window.CleanMusic.socialShowActivity(true)');
+            const sharedAfter = fake.state().activity.find((row) => row.id === appId);
+            await friend.call('POST', '/v1/react', { to: appId, emoji: '🎧' });
+            await js('window.CleanMusic.socialRefresh()');
+            const inbox = (await js('window.CleanMusic.socialState()')).reactions;
+            await js('window.CleanMusic.socialShowActivity(false)');
+            const cleared = !fake.state().activity.some((row) => row.id === appId);
+            await js('document.querySelector("#audio").pause()');
+            const friend2 = await fake.remoteClient();
+            const code2 = (await friend2.call('POST', '/v1/friend-code', {})).data.code;
+            const deep = parseDeepLink(`cleanmusic://friend?c=${code2}`);
+            const deepOk = Boolean(deep && deep.action === 'friend' && deep.code === code2) &&
+              parseDeepLink('cleanmusic://friend?c=F1-<script>') === null;
+            const viaLink = await js(`window.CleanMusic.socialFriendLink(${q(code2)})`);
+            await js(`window.CleanMusic.socialReport(${q(friend2.id)}, 'name')`);
+            await js(`window.CleanMusic.socialBlock(${q(friend2.id)})`);
+            const blocked = (await js('window.CleanMusic.socialState()')).blocked.map((row) => row.id);
+            await js(`window.CleanMusic.socialUnblock(${q(friend2.id)})`);
+            fake.setEnabled(false);
+            const off = await js('window.CleanMusic.socialRefresh()');
+            fake.setEnabled(true);
+            const log = fake.state().log;
+            const deleted = await js('window.CleanMusic.socialDelete()');
+            const after = await js('window.CleanMusic.socialState()');
+            const result = {
+              noServer: noServer.error,
+              badServer: badServer.error || '',
+              allowlist: [foreignPath.error, otherHost.error].join(','),
+              enabled,
+              keyEncrypted: !keyText.includes('PRIVATE KEY') && JSON.parse(keyText).v === 1,
+              bridge: bridgeKeys,
+              names: [badName, goodName].join(','),
+              me: ui.me.trim(),
+              redeemed: redeemed.status,
+              ui,
+              qr: Boolean(appState.code && appState.code.qr),
+              reacted,
+              played: Boolean(played) && playing,
+              tickOff,
+              shared: [sharedBefore, Boolean(sharedAfter)].join(','),
+              sharedRef: sharedAfter ? sharedAfter.ref.src : '',
+              inbox: inbox.length,
+              cleared,
+              deepLink: deepOk,
+              viaLink: Boolean(viaLink && viaLink.id === friend2.id),
+              reports: fake.state().reports.length,
+              blocked: blocked.includes(friend2.id),
+              killSwitch: off === null,
+              signed: log.length > 0 && log.every((entry) => entry.signed),
+              requests: log.length,
+              deleted: Boolean(deleted) && !fs.existsSync(social.keyFile()) && !after.local.enabled && fake.state().accounts === 2,
+            };
+            await social.setServer('');
+            await fake.close();
+            const ok = result.noServer === 'kein-server' && result.badServer === 'adresse' && result.allowlist === 'adresse,adresse' &&
+              enabled === true && result.keyEncrypted && result.bridge === 'socialInfo,socialNameCheck,socialRequest,socialServerSet,socialSetup' &&
+              result.names === 'false,true' && result.me.startsWith('Smoke Tester') && result.redeemed === 201 &&
+              ui.home === 1 && ui.rows === 1 && ui.listen === 1 && ui.emojis === 5 && ui.count === '1' && result.qr &&
+              reacted === true && result.played && tickOff === 'none' && result.shared === 'false,true' && result.inbox === 1 &&
+              result.cleared && deepOk && result.viaLink && result.reports === 1 && result.blocked && result.killSwitch &&
+              result.signed && result.deleted;
+            if (!ok) throw new Error(JSON.stringify(result));
+            console.log('SMOKE_SOCIAL_SERVER:', JSON.stringify(result));
+          } catch (error) {
+            console.error('SMOKE_SOCIAL_SERVER_FAIL:', error.message);
           }
 
           // Supporter extras: fresh profile locked, public code, "Ohne Spende freischalten".
@@ -7256,6 +7376,23 @@ ipcMain.handle('album-tracks', async (_event, albumId) => {
   }
 });
 
+/* --- Social (Weg B, docs/PLAN-SOCIAL.md) ------------------------------- *
+ * Key, signing and the one allowed host live in social-main.js; the renderer
+ * only gets account id/tag and the server's JSON answers. */
+const social = createSocial({
+  app,
+  ipcMain,
+  net,
+  safeStorage,
+  dialog,
+  readConfig,
+  writeConfig,
+  isSmoke,
+  getWindow: () => mainWindow,
+  QRCode,
+});
+social.register();
+
 /* --- Share links (1.6) ------------------------------------------------ *
  * https://bellocccyt.github.io/cleanmusic/s/?src=…&id=…&t=…&a=… opens
  * cleanmusic://play?… – CleanMusic is registered for that scheme (installer:
@@ -7274,6 +7411,11 @@ function parseDeepLink(raw) {
     if (host === 'playlist') {
       const code = String(url.searchParams.get('d') || '');
       return /^P1\.[A-Za-z0-9_-]{8,12000}$/.test(code) ? { action: 'playlist', code } : null;
+    }
+    // Social friend code (site/f/#F1-…): only the code format, redeemed after a question.
+    if (host === 'friend') {
+      const code = String(url.searchParams.get('c') || '');
+      return /^F1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code) ? { action: 'friend', code } : null;
     }
     if (host === 'group') {
       const code = String(url.searchParams.get('c') || '');

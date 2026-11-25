@@ -98,6 +98,7 @@ eine kleine Karte, was neu ist.
 | **Cutter-Modus** | ✅ NCS, YouTube-Klassiker (CC BY), Soundeffekte & freie Musik mit Lizenz und Credit |
 | **Vollbild-Player & Visualizer** | ✅ Cover-Farben, Beat-Puls, Kreis/Balken/Welle, Kino-Modus |
 | **Discord Rich Presence** | ⚙️ optional – eigene Discord-Application-ID nötig; ab 1.26.0 mit Knopf „In CleanMusic anhören“ für Freunde |
+| **Freunde (Social, Beta)** | ⚙️ optional, standardmäßig **aus** – braucht einen eigenen kleinen Server (`server/social/`): Zufallsname, Freundescode statt Suche, „Freunde hören gerade“, Emoji-Reaktionen, Blockieren/Melden, Konto löschen |
 | **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren; ab 1.25.0 zeigen Plugins mit Manifest ihre Berechtigungen vor dem Aktivieren |
 | Apple Music | ✅ offizieller Web-Player; zusätzlich **MusicKit-Fenster** für volle Titel (Developer-Token nötig) |
 | Spotify, YouTube Music, TIDAL, Deezer, Amazon Music, SoundCloud | ✅ als offizieller Web-Player eingebettet |
@@ -436,6 +437,22 @@ Der **Vollbild-Visualizer** ist zusätzlich separat abschaltbar; der kleine Visu
 der Player-Leiste bleibt davon unabhängig. Live-Hintergründe und bewegte Cover pausieren
 weiterhin automatisch, wenn das Fenster verborgen ist. Ton, Audio-Kette und EQ bleiben
 von allen Leistungsstufen unberührt.
+
+### Freunde (Social, Beta, optional)
+
+Sieh, was deine Freunde gerade hören, und reagiere mit 🔥 ❤️ 😂 🎧 👀. Standardmäßig **aus**
+und erst nach einer Erklärung einschaltbar. Kein Konto mit E-Mail oder Passwort: Dein PC erzeugt
+einen Schlüssel (privat verschlüsselt über `safeStorage`, verlässt das Gerät nie), jede Anfrage
+wird signiert. Du bekommst einen Zufallsnamen wie „Leiser Komet 42 · K7Q2“; ein eigener Name
+wird gefiltert. Kontakt nur per Freundescode (24 h, einmal nutzbar, Link `…/cleanmusic/f/#F1-…`
+oder QR) – niemand kann dich suchen, es gibt keinen Chat. „Meine Aktivität zeigen“ ist extra
+und ebenfalls aus; geteilt werden nur Titel, Artist und Such-Referenz, nie lokale Dateien oder
+Radio, und nach 10 Minuten verfällt es. Antippen spielt den Song bei dir.
+
+Dafür braucht es einen kleinen Server (Cloudflare Worker, Daten in der EU) – Code und
+Anleitung in [`server/social/README.md`](server/social/README.md). Solange keiner eingetragen
+ist, bleibt die Ansicht **Freunde** leer. Was gespeichert wird:
+[Datenschutz für Social](https://bellocccyt.github.io/cleanmusic/privacy/social/) (Entwurf).
 
 ### Discord Rich Presence (optional)
 

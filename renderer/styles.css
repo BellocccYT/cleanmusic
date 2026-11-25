@@ -6849,3 +6849,30 @@ html.cover-vinyl .np-art::after {
 .fs-styles button.extra-locked::after {
   color: rgb(var(--fs-a));
 }
+
+/* --- Social (Weg B): Freunde, „hört gerade“, Reaktionen --------------------- */
+.social-page .social-facts { margin: 8px 0; padding-left: 18px; color: var(--muted); }
+.social-page .social-facts li { margin: 4px 0; }
+.social-facts strong { color: var(--text); }
+.social-me { font-size: 20px; margin: 4px 0 2px; overflow-wrap: anywhere; }
+.social-tag { color: var(--muted-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.social-listen-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.social-listen { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 14px; border: 1px solid var(--border-soft); background: var(--panel-2); min-width: 0; }
+.social-listen-play { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; min-width: 0; }
+.social-listen-play strong, .social-listen-play small, .social-who { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.social-listen-play small, .social-who { color: var(--muted); font-size: 12px; }
+.social-listen-play:hover strong { color: var(--accent); }
+.social-emojis { display: flex; gap: 4px; flex-wrap: wrap; }
+.social-emoji { border: 1px solid var(--border-soft); background: var(--panel-3); border-radius: 999px; padding: 2px 8px; font-size: 15px; line-height: 1.4; cursor: pointer; }
+.social-emoji:hover { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.14); }
+.social-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.social-friend { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 12px; background: var(--panel-2); }
+.social-friend-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.social-friend-name small { flex-basis: 100%; color: var(--muted); }
+.social-friend-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.social-big-emoji { font-size: 18px; }
+.social-code { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.social-code img { border-radius: 10px; background: #fff; padding: 4px; }
+.social-code-text { font: 700 18px/1.3 ui-monospace, Consolas, monospace; letter-spacing: 0.06em; }
+.social-report { display: flex; flex-direction: column; gap: 8px; }
+#home-friends[hidden] { display: none; }

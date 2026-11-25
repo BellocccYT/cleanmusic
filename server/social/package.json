@@ -1,0 +1,17 @@
+{
+  "name": "cleanmusic-social",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CleanMusic Social (Weg B): Cloudflare Worker + Durable Object. Nicht Teil des Electron-Builds.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/worker.test.js",
+    "dev": "wrangler dev --local --port 8787 --var LOCAL_DEV:true",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261104.0-beta",
+    "wrangler": "4.158.0"
+  }
+}

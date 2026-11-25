@@ -1,0 +1,23 @@
+# CleanMusic Social (Weg B) – siehe README.md in diesem Ordner.
+name = "cleanmusic-social"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+# Keine Request-Logs bei Cloudflare speichern (Datenschutz).
+[observability]
+enabled = false
+
+[vars]
+# Not-Aus: "false" schaltet alle Endpunkte außer Status und "Konto löschen" ab.
+SOCIAL_ENABLED = "true"
+# Schwierigkeit des Rechennachweises beim Anlegen (Bits, 8–28). 20 ≈ 1–3 s.
+POW_BITS = "20"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "SocialHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SocialHub"]

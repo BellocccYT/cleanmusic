@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Freund in CleanMusic hinzufügen</title>
+<meta name="description" content="Jemand möchte in CleanMusic mit dir befreundet sein. Öffne den Freundescode in CleanMusic." />
+<meta property="og:title" content="Lass uns in CleanMusic Freunde sein" />
+<meta property="og:description" content="Ein Freundescode für CleanMusic – gilt 24 Stunden für eine Person." />
+<meta property="og:image" content="https://bellocccyt.github.io/cleanmusic/icon.png" />
+<meta name="robots" content="noindex" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
+<link rel="icon" href="../icon.png" />
+<style>
+  :root { --bg: #080a0e; --panel: #11161f; --border: #232c3a; --text: #e8ecf3; --muted: #8d99ac; --accent: #5b8cff; --accent2: #35e0c0; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) { --bg: #f4f6fb; --panel: #ffffff; --border: #dfe4ee; --text: #182030; --muted: #5d6a80; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+    background: radial-gradient(120% 90% at 0% 0%, rgba(91, 140, 255, 0.18), transparent 60%),
+      radial-gradient(110% 90% at 100% 100%, rgba(53, 224, 192, 0.14), transparent 60%), var(--bg);
+    color: var(--text); font: 15px/1.5 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  main { width: 100%; max-width: 440px; padding: 28px 24px; border-radius: 22px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35); text-align: center; }
+  .logo { width: 56px; height: 56px; border-radius: 14px; }
+  .eyebrow { margin: 14px 0 2px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); }
+  h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+  .open { display: block; margin: 22px 0 10px; padding: 13px 16px; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #06121a; font-weight: 800; text-decoration: none; }
+  .open:hover { filter: brightness(1.08); }
+  .hint { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+  .code { display: block; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text); font: 700 16px/1.4 ui-monospace, Consolas, monospace; letter-spacing: 0.06em; cursor: pointer; }
+  .small { margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .small a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="../icon.png" alt="CleanMusic" />
+  <div class="eyebrow">Freundescode</div>
+  <h1>Lass uns in CleanMusic Freunde sein</h1>
+  <a class="open" id="open" href="#">In CleanMusic hinzufügen</a>
+  <p class="hint" id="hint">CleanMusic fragt dich vorher. Ein Code gilt 24 Stunden für eine Person.</p>
+  <button class="code" id="code" type="button" title="Code kopieren"></button>
+  <p class="small">Social ist in CleanMusic freiwillig und standardmäßig aus. Kein Chat, keine Suche nach Personen – Kontakt nur per Code. <a href="../privacy/social/">Datenschutz</a></p>
+  <p class="small">Noch kein CleanMusic? <a href="https://bellocccyt.github.io/cleanmusic/">Kostenlos herunterladen</a></p>
+</main>
+<script>
+(() => {
+  // The code travels in the #fragment – it is never sent to a server.
+  const code = decodeURIComponent((location.hash || '').slice(1)).trim().toUpperCase();
+  const valid = /^F1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code);
+  const open = document.getElementById('open');
+  const hint = document.getElementById('hint');
+  const box = document.getElementById('code');
+  if (!valid) {
+    open.hidden = true;
+    box.hidden = true;
+    hint.textContent = 'Dieser Link ist unvollständig. Bitte den ganzen Link oder Code schicken lassen.';
+    return;
+  }
+  open.href = 'cleanmusic://friend?c=' + encodeURIComponent(code);
+  box.textContent = code;
+  box.addEventListener('click', () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => { hint.textContent = 'Code kopiert – in CleanMusic unter Freunde → Freund hinzufügen einfügen.'; });
+  });
+  setTimeout(() => { location.href = open.href; }, 600);
+})();
+</script>
+</body>
+</html>

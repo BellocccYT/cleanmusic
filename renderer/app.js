@@ -2751,6 +2751,8 @@
 
         <div class="status-row" id="status-row"></div>
 
+        <section class="home-section" id="home-friends" hidden></section>
+
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
@@ -2839,6 +2841,7 @@
     updateStatusChips();
     renderHomeRecs();
     renderHomeMixes();
+    renderHomeFriends();
     renderHomeCharts();
     renderHomeRediscover();
     renderHomeLocal();
@@ -7324,6 +7327,10 @@
 
   // A shared link was opened (cleanmusic://play?…): find the song and play it.
   async function openDeepLink(link) {
+    if (link && link.action === 'friend') {
+      importFriendLink(link.code);
+      return;
+    }
     if (link && link.action === 'group') {
       importGroupLink(link.code);
       return;
@@ -7523,6 +7530,696 @@
     openPlaylist(playlist.id);
     toast(`„${playlist.name}“ übernommen: ${entries.length} von ${data.tracks.length} Titeln gefunden.`);
     return { id: playlist.id, count: entries.length, total: data.tracks.length };
+  }
+
+  /* --- Social (Weg B): friends, "hört gerade", reactions -------------------- *
+   * Off by default. The main process (social-main.js) holds the key and signs
+   * every request; this part only shows what the server answers. Contact only
+   * per friend code, fixed emoji reactions, no free text. Shared is a song
+   * reference (CMShare.refOf) – never local files or radio – and only with
+   * "Meine Aktivität zeigen" switched on. Logic in core/social.js. */
+  const SOC = window.CMSocial;
+  const SOCIAL_PRIVACY_URL = 'https://bellocccyt.github.io/cleanmusic/privacy/social/';
+  const SOCIAL_MIN_AGE = 16; // vom Betreiber zu bestätigen (docs/PLAN-SOCIAL.md, „Datenschutz“)
+  let socialLocal = SOC ? SOC.normalizeState(readJSON(STORAGE.social, {})) : { enabled: false, showActivity: false, seenReactions: 0 };
+  const socialRt = {
+    info: null,
+    me: null,
+    friends: [],
+    reactions: [],
+    blocked: [],
+    skew: 0,
+    code: null,
+    busy: '',
+    error: '',
+    loaded: 0,
+    last: null,
+    nameMsg: '',
+    tick: 0,
+    poll: 0,
+  };
+
+  function socialAvailable() {
+    return Boolean(SOC && bridge.socialRequest && bridge.socialInfo && bridge.socialSetup);
+  }
+
+  function persistSocial() {
+    writeJSON(STORAGE.social, socialLocal);
+  }
+
+  async function refreshSocialInfo() {
+    if (!socialAvailable()) return null;
+    try {
+      socialRt.info = await bridge.socialInfo();
+    } catch {
+      socialRt.info = null;
+    }
+    return socialRt.info;
+  }
+
+  async function socialCall(method, path, body, options = {}) {
+    if (!socialAvailable()) return null;
+    let result;
+    try {
+      result = await bridge.socialRequest(method, path, body || null);
+    } catch {
+      result = null;
+    }
+    if (!result || !result.ok) {
+      const message = (result && result.message) || 'Die Social-Anfrage hat nicht geklappt.';
+      socialRt.error = message;
+      if (result && result.error === 'kein-konto') {
+        // The server no longer knows this key (deleted after 12 months without use).
+        socialLocal.enabled = false;
+        persistSocial();
+        stopSocialTimers();
+      }
+      if (!options.quiet) toast(message);
+      return null;
+    }
+    socialRt.error = '';
+    return result.data || {};
+  }
+
+  function socialIntroHtml(host) {
+    return `
+      <p>Mit Social siehst du, was deine Freunde gerade hören, und kannst mit einem Emoji reagieren.</p>
+      <ul class="social-facts">
+        <li><strong>Kein Konto mit E-Mail oder Passwort.</strong> Dein Gerät erzeugt einen Schlüssel – der öffentliche Teil ist dein Konto, der private bleibt verschlüsselt auf diesem PC.</li>
+        <li><strong>Zufallsname</strong> wie „Leiser Komet 42“. Einen eigenen Namen kannst du später setzen.</li>
+        <li><strong>Kontakt nur per Freundescode.</strong> Niemand kann dich suchen oder anschreiben, es gibt keinen Chat.</li>
+        <li><strong>„Meine Aktivität zeigen“ bleibt aus</strong>, bis du es einschaltest. Geteilt werden dann nur Titel, Artist und eine Such-Referenz – nie lokale Dateien oder Radio.</li>
+        <li>Gespeichert wird auf <strong>${esc(host)}</strong>. „Konto löschen“ entfernt dort sofort alles.</li>
+      </ul>
+      <p class="muted small">Mindestalter: ${SOCIAL_MIN_AGE} Jahre. Mehr dazu: <a href="${SOCIAL_PRIVACY_URL}" target="_blank" rel="noreferrer">Datenschutz für Social</a>.</p>`;
+  }
+
+  async function enableSocial(options = {}) {
+    if (!socialAvailable()) {
+      toast('Freunde gibt es vorerst nur in der Desktop-App.');
+      return false;
+    }
+    const info = await refreshSocialInfo();
+    if (!info || !info.server) {
+      toast('Es ist noch kein Social-Server eingetragen.');
+      if (state.view !== 'friends') showView('friends');
+      return false;
+    }
+    if (!info.available) {
+      toast('Auf diesem System gibt es keinen sicheren Schlüsselspeicher – Social bleibt aus.');
+      return false;
+    }
+    if (!options.confirm) {
+      const ok = await openDialog({ title: 'Social einschalten?', input: false, confirm: 'Einschalten', html: socialIntroHtml(info.server.replace(/^https?:\/\//, '')) });
+      if (!ok) return false;
+    }
+    socialRt.busy = 'setup';
+    renderFriends();
+    toast('Social wird eingerichtet – das dauert ein paar Sekunden …');
+    let result = null;
+    try {
+      result = await bridge.socialSetup();
+    } catch {
+      result = null;
+    }
+    socialRt.busy = '';
+    if (!result || !result.ok) {
+      toast((result && result.message) || 'Social konnte nicht eingerichtet werden.');
+      renderFriends();
+      return false;
+    }
+    socialLocal.enabled = true;
+    persistSocial();
+    await refreshSocialInfo();
+    await refreshFriends({ quiet: true });
+    startSocialTimers();
+    toast(socialRt.me ? `Social ist an – du heißt „${SOC.display(socialRt.me)}“.` : 'Social ist an.');
+    renderFriends();
+    return true;
+  }
+
+  async function clearSocialActivity() {
+    if (!socialRt.last || socialRt.last.cleared) return;
+    const ok = await socialCall('POST', '/v1/activity', { clear: true }, { quiet: true });
+    if (ok) socialRt.last = { key: '', at: Date.now(), cleared: true };
+  }
+
+  async function disableSocial() {
+    await clearSocialActivity();
+    socialLocal.enabled = false;
+    persistSocial();
+    stopSocialTimers();
+    renderFriends();
+    renderHomeFriends();
+    updateFriendsCount();
+    toast('Social ist aus. Dein Konto bleibt bestehen, bis du es löschst.');
+  }
+
+  async function refreshFriends(options = {}) {
+    if (!socialLocal.enabled || !socialAvailable()) return null;
+    const data = await socialCall('GET', '/v1/friends', null, { quiet: options.quiet });
+    if (!data) {
+      if (state.view === 'friends') renderFriends();
+      return null;
+    }
+    const clean = SOC.normalizeFriends(data, Date.now());
+    Object.assign(socialRt, clean, { loaded: Date.now() });
+    const fresh = SOC.newReactions(clean.reactions, socialLocal.seenReactions);
+    if (fresh.length && socialLocal.seenReactions) {
+      toast(
+        fresh.length === 1
+          ? `${fresh[0].emoji} von ${SOC.display(fresh[0].from)}${fresh[0].title ? ` zu „${fresh[0].title}“` : ''}`
+          : `${fresh.length} neue Reaktionen von Freunden`
+      );
+    }
+    if (clean.reactions.length && clean.reactions[0].at > socialLocal.seenReactions) {
+      socialLocal.seenReactions = clean.reactions[0].at;
+      persistSocial();
+    }
+    updateFriendsCount();
+    if (state.view === 'friends') renderFriends();
+    renderHomeFriends();
+    return clean;
+  }
+
+  // Every 15 s: send the own song when it changed (or as a heartbeat), if allowed.
+  async function socialTick() {
+    if (!socialLocal.enabled || !socialAvailable()) return null;
+    const entry = currentItem();
+    const ref = entry && window.CMShare ? window.CMShare.refOf(entry) : null;
+    const plan = SOC.activityPlan({
+      enabled: socialLocal.enabled,
+      show: socialLocal.showActivity,
+      playing: Boolean(entry) && !audio.paused,
+      ref,
+      last: socialRt.last,
+      now: Date.now(),
+    });
+    if (plan.action === 'post') {
+      const ok = await socialCall('POST', '/v1/activity', { ref, playing: true }, { quiet: true });
+      if (ok) socialRt.last = { key: plan.key, at: Date.now(), cleared: false };
+    } else if (plan.action === 'clear') {
+      await clearSocialActivity();
+    }
+    return plan.action;
+  }
+
+  function startSocialTimers() {
+    stopSocialTimers();
+    socialRt.tick = setInterval(socialTick, 15000);
+    socialRt.poll = setInterval(() => {
+      if (!document.hidden) refreshFriends({ quiet: true });
+    }, 60000);
+    setTimeout(socialTick, 3000);
+  }
+
+  function stopSocialTimers() {
+    clearInterval(socialRt.tick);
+    clearInterval(socialRt.poll);
+    socialRt.tick = 0;
+    socialRt.poll = 0;
+  }
+
+  async function setShowActivity(on) {
+    socialLocal.showActivity = Boolean(on);
+    persistSocial();
+    if (!socialLocal.showActivity) await clearSocialActivity();
+    else await socialTick();
+    renderFriends();
+  }
+
+  async function saveSocialName(value) {
+    const field = $('#social-name');
+    const name = value != null ? value : field ? field.value : '';
+    const check = await bridge.socialNameCheck(name);
+    if (!check || !check.ok) {
+      socialRt.nameMsg = (check && check.reason) || 'Dieser Name geht nicht.';
+      renderFriends();
+      return false;
+    }
+    const data = await socialCall('POST', '/v1/name', { name: check.name });
+    if (!data || !data.account) return false;
+    socialRt.me = SOC.normalizeFriends({ me: data.account }, Date.now()).me;
+    socialRt.nameMsg = '';
+    toast(`Du heißt jetzt „${SOC.display(socialRt.me)}“.`);
+    renderFriends();
+    return true;
+  }
+
+  async function randomSocialName() {
+    const data = await socialCall('POST', '/v1/name', { random: true });
+    if (!data || !data.account) return false;
+    socialRt.me = SOC.normalizeFriends({ me: data.account }, Date.now()).me;
+    socialRt.nameMsg = '';
+    renderFriends();
+    return true;
+  }
+
+  async function createFriendCode() {
+    const data = await socialCall('POST', '/v1/friend-code', {});
+    if (!data || !SOC.CODE_RE.test(String(data.code || ''))) return null;
+    socialRt.code = { code: data.code, link: data.link || SOC.friendLink(data.code), qr: data.qr || '', expires: Number(data.expires) || 0 };
+    renderFriends();
+    const text = `🎧 Lass uns in CleanMusic Freunde sein! Link öffnen oder Code eingeben (gilt 24 Stunden für eine Person):\n${socialRt.code.link}\n${data.code}`;
+    const copied = await bridge.copyText(text);
+    toast(copied ? 'Freundescode kopiert – schick ihn an eine Person.' : 'Freundescode erstellt.');
+    return socialRt.code;
+  }
+
+  async function redeemFriendCode(text, options = {}) {
+    const code = SOC.parseFriendCode(text);
+    if (!code) {
+      toast('Das ist kein gültiger Freundescode (F1-XXXX-XXXX-XXXX).');
+      return null;
+    }
+    if (!socialLocal.enabled && !(await enableSocial({ confirm: options.confirm }))) return null;
+    const data = await socialCall('POST', '/v1/friend/redeem', { code });
+    if (!data || !data.friend) return null;
+    const friend = SOC.normalizeFriends({ me: data.friend }, Date.now()).me;
+    toast(data.already ? `${SOC.display(friend)} ist schon dein Freund.` : `${SOC.display(friend)} ist jetzt dein Freund.`);
+    const field = $('#social-redeem');
+    if (field) field.value = '';
+    await refreshFriends({ quiet: true });
+    return friend;
+  }
+
+  // cleanmusic://friend?c=… (from the page site/f/#F1-…): ask first, then redeem.
+  async function importFriendLink(code, options = {}) {
+    if (!socialAvailable()) {
+      toast('Freunde gibt es vorerst nur in der Desktop-App.');
+      return null;
+    }
+    if (!options.confirm) {
+      const ok = await askConfirm({
+        title: 'Freund hinzufügen?',
+        text: `Mit dem Code ${code} wirst du mit der Person befreundet, die ihn dir geschickt hat. Ihr seht dann eure Namen und – nur wenn eingeschaltet – was ihr gerade hört.`,
+        confirm: 'Hinzufügen',
+      });
+      if (!ok) return null;
+    }
+    showView('friends');
+    return redeemFriendCode(code, options);
+  }
+
+  function socialFriend(id) {
+    return socialRt.friends.find((friend) => friend.id === id) || socialRt.blocked.find((friend) => friend.id === id) || null;
+  }
+
+  async function playFriend(id) {
+    const friend = socialFriend(id);
+    if (!friend || !friend.activity) {
+      toast('Dein Freund hört gerade nichts.');
+      return false;
+    }
+    const ref = friend.activity.ref;
+    toast(`„${ref.title}“ wird geladen …`);
+    const entry = await findSharedEntry(ref);
+    if (!entry) {
+      toast('Der Song wurde nicht gefunden.');
+      return false;
+    }
+    state.sharedList = [entry];
+    playList('shared', 0);
+    return true;
+  }
+
+  async function reactToFriend(id, emoji) {
+    if (!SOC.EMOJIS.includes(emoji)) return false;
+    const ok = await socialCall('POST', '/v1/react', { to: id, emoji });
+    if (ok) toast(`${emoji} an ${SOC.display(socialFriend(id))} gesendet`);
+    return Boolean(ok);
+  }
+
+  async function removeFriend(id, options = {}) {
+    const friend = socialFriend(id);
+    if (!options.confirm && !(await askConfirm({ title: 'Freund entfernen?', text: `${SOC.display(friend)} verschwindet aus deiner Liste (und du aus der anderen). Ihr könnt euch später per Code wieder hinzufügen.`, confirm: 'Entfernen' }))) return false;
+    if (!(await socialCall('POST', '/v1/friend/remove', { id }))) return false;
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function blockFriend(id, options = {}) {
+    const friend = socialFriend(id);
+    if (!options.confirm && !(await askConfirm({ title: 'Blockieren?', text: `${SOC.display(friend)} wird sofort aus deiner Freundesliste entfernt und kann deine Codes nicht mehr nutzen. Die Person wird nicht benachrichtigt.`, confirm: 'Blockieren', danger: true }))) return false;
+    if (!(await socialCall('POST', '/v1/block', { id, block: true }))) return false;
+    toast(`${SOC.display(friend)} ist blockiert.`);
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function unblockFriend(id) {
+    if (!(await socialCall('POST', '/v1/block', { id, block: false }))) return false;
+    await refreshFriends({ quiet: true });
+    return true;
+  }
+
+  async function reportFriend(id, options = {}) {
+    const friend = socialFriend(id);
+    let reason = options.reason;
+    let alsoBlock = Boolean(options.block);
+    if (!reason) {
+      const ok = await openDialog({
+        title: `${SOC.display(friend)} melden`,
+        input: false,
+        confirm: 'Melden',
+        danger: true,
+        html: `<div class="social-report">${SOC.REPORT_REASONS.map((item, index) => `<label><input type="radio" name="social-reason" value="${item.id}" ${index ? '' : 'checked'} /> ${esc(item.label)}</label>`).join('')}
+          <label><input type="checkbox" id="social-report-block" checked /> Außerdem blockieren</label>
+          <p class="muted small">Nach drei Meldungen von verschiedenen Personen wird ein anstößiger Name automatisch durch einen Zufallsnamen ersetzt.</p></div>`,
+      });
+      if (!ok) return false;
+      const picked = document.querySelector('input[name="social-reason"]:checked');
+      const block = document.getElementById('social-report-block');
+      reason = picked ? picked.value : 'other';
+      alsoBlock = Boolean(block && block.checked);
+    }
+    if (!(await socialCall('POST', '/v1/report', { id, reason }))) return false;
+    toast('Danke – die Meldung ist eingegangen.');
+    if (alsoBlock) await blockFriend(id, { confirm: true });
+    return true;
+  }
+
+  async function deleteSocialAccount(options = {}) {
+    if (!options.confirm && !(await askConfirm({ title: 'Social-Konto löschen?', text: 'Dein Konto, dein Name, deine Freundesliste, Blockierungen, Codes, Aktivität und Reaktionen werden auf dem Server sofort gelöscht, der Schlüssel auf diesem PC ebenso. Das lässt sich nicht rückgängig machen.', confirm: 'Endgültig löschen', danger: true }))) return false;
+    if (!(await socialCall('DELETE', '/v1/account', null))) return false;
+    stopSocialTimers();
+    socialLocal = SOC.normalizeState({});
+    persistSocial();
+    Object.assign(socialRt, { me: null, friends: [], reactions: [], blocked: [], code: null, last: null, nameMsg: '', loaded: 0 });
+    await refreshSocialInfo();
+    renderFriends();
+    renderHomeFriends();
+    updateFriendsCount();
+    toast('Dein Social-Konto ist gelöscht – auf dem Server und auf diesem PC.');
+    return true;
+  }
+
+  async function saveSocialServer(value) {
+    const field = $('#social-server');
+    const info = await bridge.socialServerSet(value != null ? value : field ? field.value : '');
+    if (!info) return null;
+    if (info.error) toast(info.message);
+    else if (!info.cancelled) {
+      toast(info.server ? `Social-Server: ${info.server}` : 'Social-Server entfernt.');
+      if (!info.registered && socialLocal.enabled) {
+        socialLocal.enabled = false;
+        persistSocial();
+        stopSocialTimers();
+      }
+    }
+    socialRt.info = info;
+    renderFriends();
+    return info;
+  }
+
+  function updateFriendsCount() {
+    const nav = $('#nav-friends');
+    if (nav) nav.hidden = !socialAvailable();
+    const count = $('#friends-count');
+    if (!count) return;
+    const live = socialLocal.enabled ? SOC.listening(socialRt.friends, Date.now(), socialRt.skew).length : 0;
+    count.textContent = live ? String(live) : '';
+    count.title = live ? `${live} Freund${live === 1 ? '' : 'e'} hören gerade` : '';
+  }
+
+  function socialListenCard(friend, compact) {
+    const act = friend.activity;
+    const emojis = SOC.EMOJIS.map((emoji) => `<button class="social-emoji" data-social="react" data-id="${esc(friend.id)}" data-emoji="${esc(emoji)}" title="Reagieren mit ${esc(emoji)}" aria-label="Reagieren mit ${esc(emoji)}">${emoji}</button>`).join('');
+    return `<div class="social-listen${compact ? ' compact' : ''}">
+        <button class="social-listen-play" data-social="play" data-id="${esc(friend.id)}" title="Diesen Song abspielen">
+          <span class="social-who">${esc(friend.name)} <span class="social-tag">· ${esc(friend.tag)}</span></span>
+          <strong>${esc(act.ref.title)}</strong>
+          <small>${act.ref.artist ? `${esc(act.ref.artist)} · ` : ''}${esc(SOC.ago(act.at, Date.now() + socialRt.skew))}</small>
+        </button>
+        <div class="social-emojis">${emojis}</div>
+      </div>`;
+  }
+
+  function renderHomeFriends() {
+    const host = $('#home-friends');
+    if (!host) return;
+    const live = socialLocal.enabled && SOC ? SOC.listening(socialRt.friends, Date.now(), socialRt.skew) : [];
+    host.hidden = !live.length;
+    host.innerHTML = live.length
+      ? `<div class="home-section-head">
+          <div class="home-section-title"><h2>Freunde hören gerade</h2><span class="muted small">Antippen spielt den Song bei dir</span></div>
+          <button class="btn ghost small" data-social="open">Alle Freunde</button>
+        </div>
+        <div class="social-listen-row">${live.slice(0, 8).map((friend) => socialListenCard(friend, true)).join('')}</div>`
+      : '';
+  }
+
+  function renderFriends() {
+    const host = $('#view-friends');
+    if (!host) return;
+    const keep = {};
+    ['social-name', 'social-redeem', 'social-server'].forEach((id) => {
+      const field = document.getElementById(id);
+      if (field && field.dataset.touched) keep[id] = field.value;
+    });
+    const focused = document.activeElement && document.activeElement.id;
+    host.innerHTML = friendsHtml();
+    Object.entries(keep).forEach(([id, value]) => {
+      const field = document.getElementById(id);
+      if (field) {
+        field.value = value;
+        field.dataset.touched = '1';
+      }
+    });
+    if (focused && keep[focused] != null) {
+      const field = document.getElementById(focused);
+      if (field) field.focus();
+    }
+    updateFriendsCount();
+  }
+
+  function friendsHtml() {
+    const info = socialRt.info || {};
+    const head = `<div class="page-head"><div><div class="eyebrow">Social · Beta</div><h2>Freunde</h2>
+      <p>Sieh, was deine Freunde gerade hören, und reagiere mit einem Emoji. Kontakt nur per Code – niemand kann dich suchen oder anschreiben.</p></div></div>`;
+    if (!socialAvailable()) {
+      return `<div class="page narrow social-page">${head}<div class="panel"><p>Freunde gibt es vorerst nur in der Desktop-App.</p></div></div>`;
+    }
+    const serverPanel = `<div class="panel advanced-only social-server-panel">
+        <h3>Social-Server</h3>
+        <p class="muted small">Adresse des Servers, der Konten und Freundeslisten speichert (eigener Cloudflare Worker, siehe <code>server/social/README.md</code>). Für lokale Tests auch <code>http://127.0.0.1:8787</code>.</p>
+        <div class="rv-group-row">
+          <input id="social-server" type="url" placeholder="https://cleanmusic-social.…workers.dev" value="${esc(info.custom ? info.server : '')}" spellcheck="false" />
+          <button class="btn ghost small" data-social="server">Speichern</button>
+        </div>
+        ${info.defaultServer ? `<p class="muted small">Standard: ${esc(info.defaultServer)}</p>` : ''}
+      </div>`;
+    if (!info.server) {
+      return `<div class="page narrow social-page">${head}
+        <div class="panel"><h3>Noch kein Social-Server</h3><p>Für Freunde braucht CleanMusic einen kleinen Server. Solange keiner eingetragen ist, bleibt Social aus – Playlist-Links und die Wochenkarte im Rückblick funktionieren trotzdem ohne Server.</p></div>
+        ${serverPanel.replace('advanced-only ', '')}</div>`;
+    }
+    if (!socialLocal.enabled) {
+      return `<div class="page narrow social-page">${head}
+        <div class="panel social-intro">
+          <h3>Social einschalten</h3>
+          ${socialIntroHtml(info.server.replace(/^https?:\/\//, ''))}
+          <div class="row" style="margin-top:12px">
+            <button class="btn primary" data-social="enable" ${socialRt.busy ? 'disabled' : ''}>${socialRt.busy === 'setup' ? 'Wird eingerichtet …' : 'Social einschalten'}</button>
+            ${info.registered ? '<button class="btn ghost small danger" data-social="delete">Konto löschen</button>' : ''}
+          </div>
+        </div>
+        ${serverPanel}</div>`;
+    }
+    const me = socialRt.me;
+    const now = Date.now() + socialRt.skew;
+    const live = SOC.listening(socialRt.friends, Date.now(), socialRt.skew);
+    const nameLocked = me && me.nameChangeAt > now;
+    const code = socialRt.code && socialRt.code.expires > now ? socialRt.code : null;
+    const friendRows = socialRt.friends.length
+      ? socialRt.friends
+          .map((friend) => `<li class="social-friend">
+            <span class="social-friend-name"><strong>${esc(friend.name)}</strong> <span class="social-tag">· ${esc(friend.tag)}</span>
+              <small>${friend.activity ? `hört „${esc(friend.activity.ref.title)}“` : 'hört gerade nichts'}</small></span>
+            <span class="social-friend-actions">
+              <button class="btn ghost small" data-social="remove" data-id="${esc(friend.id)}">Entfernen</button>
+              <button class="btn ghost small" data-social="block" data-id="${esc(friend.id)}">Blockieren</button>
+              <button class="btn ghost small danger" data-social="report" data-id="${esc(friend.id)}">Melden</button>
+            </span>
+          </li>`)
+          .join('')
+      : '<li class="muted small">Noch keine Freunde. Erzeuge einen Freundescode und schick ihn an eine Person.</li>';
+    const reactions = socialRt.reactions.slice(0, 12).map((reaction) => `<li><span class="social-big-emoji">${reaction.emoji}</span> <strong>${esc(reaction.from.name)}</strong> <span class="social-tag">· ${esc(reaction.from.tag)}</span>${reaction.title ? ` zu „${esc(reaction.title)}“` : ''} <small class="muted">${esc(SOC.ago(reaction.at, now))}</small></li>`).join('');
+    const blocked = socialRt.blocked.map((person) => `<li class="social-friend"><span class="social-friend-name"><strong>${esc(person.name)}</strong> <span class="social-tag">· ${esc(person.tag)}</span></span>
+        <span class="social-friend-actions"><button class="btn ghost small" data-social="unblock" data-id="${esc(person.id)}">Freigeben</button></span></li>`).join('');
+    return `<div class="page narrow social-page">${head}
+      <div class="panel social-me-panel">
+        <h3>Du</h3>
+        <div class="social-me">${me ? `<strong>${esc(me.name)}</strong> <span class="social-tag">· ${esc(me.tag)}</span>${me.random ? ' <span class="chip">Zufallsname</span>' : ''}` : '<span class="muted">wird geladen …</span>'}</div>
+        <p class="muted small">Namen sind nicht eindeutig – das Kürzel hinter dem Punkt kommt aus deinem Schlüssel und lässt sich nicht nachmachen.</p>
+        <div class="rv-group-row">
+          <input id="social-name" type="text" maxlength="20" placeholder="Eigener Name (3–20 Zeichen)" spellcheck="false" ${nameLocked ? 'disabled' : ''} />
+          <button class="btn primary small" data-social="name" ${nameLocked ? 'disabled' : ''}>Speichern</button>
+          <button class="btn ghost small" data-social="random">Neuer Zufallsname</button>
+        </div>
+        <p class="muted small" id="social-name-msg">${esc(socialRt.nameMsg || (nameLocked ? `Eigenen Namen wieder ändern ab ${new Date(me.nameChangeAt).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}.` : 'Buchstaben, Ziffern, Leerzeichen und . _ - · einmal pro Tag änderbar.'))}</p>
+        <label class="toggle-row">
+          <span><strong>Meine Aktivität zeigen</strong><small>Deine Freunde sehen Titel und Artist des Songs, der gerade läuft (verfällt nach 10 Minuten). Lokale Dateien und Radio werden nie geteilt.</small></span>
+          <input type="checkbox" id="social-show-activity" ${socialLocal.showActivity ? 'checked' : ''} />
+        </label>
+      </div>
+
+      ${live.length ? `<div class="panel"><h3>Hören gerade</h3><div class="social-listen-row">${live.map((friend) => socialListenCard(friend, false)).join('')}</div></div>` : ''}
+
+      <div class="panel">
+        <h3>Freund hinzufügen</h3>
+        <p class="muted small">Ein Code gilt 24 Stunden für eine Person. Schick ihn per WhatsApp, Discord &amp; Co. – oder lass den QR-Code scannen.</p>
+        <div class="row">
+          <button class="btn primary small" data-social="code">Freundescode erzeugen</button>
+          ${code ? '<button class="btn ghost small" data-social="copy-code">Nochmal kopieren</button><button class="btn ghost small" data-social="revoke">Codes widerrufen</button>' : ''}
+        </div>
+        ${code ? `<div class="social-code">${code.qr ? `<img src="${esc(code.qr)}" alt="QR-Code für den Freundescode" width="132" height="132" />` : ''}
+          <div><strong class="social-code-text">${esc(code.code)}</strong><p class="small"><a href="${esc(code.link)}" target="_blank" rel="noreferrer">${esc(code.link)}</a></p>
+          <p class="muted small">Gültig bis ${esc(new Date(code.expires).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }))}.</p></div></div>` : ''}
+        <div class="rv-group-row" style="margin-top:10px">
+          <input id="social-redeem" type="text" placeholder="Code oder Link einfügen (F1-…)" spellcheck="false" />
+          <button class="btn ghost small" data-social="redeem">Hinzufügen</button>
+        </div>
+      </div>
+
+      ${reactions ? `<div class="panel"><h3>Reaktionen</h3><ul class="social-list">${reactions}</ul></div>` : ''}
+
+      <div class="panel">
+        <div class="home-section-head"><h3>Freunde · ${socialRt.friends.length}/200</h3><button class="btn ghost small" data-social="refresh">Aktualisieren</button></div>
+        <ul class="social-list">${friendRows}</ul>
+        ${socialRt.error ? `<p class="muted small">${esc(socialRt.error)}</p>` : ''}
+      </div>
+
+      ${blocked ? `<div class="panel"><h3>Blockiert</h3><ul class="social-list">${blocked}</ul></div>` : ''}
+
+      <div class="panel">
+        <h3>Konto</h3>
+        <p class="muted small">Gespeichert auf ${esc(info.server)}. <a href="${SOCIAL_PRIVACY_URL}" target="_blank" rel="noreferrer">Was wird wie lange gespeichert?</a></p>
+        <div class="row">
+          <button class="btn ghost small" data-social="disable">Social ausschalten</button>
+          <button class="btn ghost small danger" data-social="delete">Konto löschen</button>
+        </div>
+      </div>
+      ${serverPanel}
+    </div>`;
+  }
+
+  let socialNameTimer = 0;
+  function wireSocial() {
+    document.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-social]');
+      if (!button || button.disabled) return;
+      const id = button.dataset.id || '';
+      switch (button.dataset.social) {
+        case 'open':
+          showView('friends');
+          break;
+        case 'enable':
+          enableSocial();
+          break;
+        case 'disable':
+          disableSocial();
+          break;
+        case 'name':
+          saveSocialName();
+          break;
+        case 'random':
+          randomSocialName();
+          break;
+        case 'code':
+          createFriendCode();
+          break;
+        case 'copy-code':
+          if (socialRt.code) toast((await bridge.copyText(`${socialRt.code.link}\n${socialRt.code.code}`)) ? 'Freundescode kopiert.' : 'Kopieren nicht möglich');
+          break;
+        case 'revoke':
+          if (await socialCall('POST', '/v1/friend-code', { revoke: true })) {
+            socialRt.code = null;
+            toast('Alle offenen Freundescodes sind ungültig.');
+            renderFriends();
+          }
+          break;
+        case 'redeem': {
+          const field = $('#social-redeem');
+          redeemFriendCode(field ? field.value : '');
+          break;
+        }
+        case 'refresh':
+          refreshFriends();
+          break;
+        case 'play':
+          playFriend(id);
+          break;
+        case 'react':
+          reactToFriend(id, button.dataset.emoji);
+          break;
+        case 'remove':
+          removeFriend(id);
+          break;
+        case 'block':
+          blockFriend(id);
+          break;
+        case 'unblock':
+          unblockFriend(id);
+          break;
+        case 'report':
+          reportFriend(id);
+          break;
+        case 'delete':
+          deleteSocialAccount();
+          break;
+        case 'server':
+          saveSocialServer();
+          break;
+        default:
+          break;
+      }
+    });
+    document.addEventListener('input', (event) => {
+      const field = event.target;
+      if (!field || !['social-name', 'social-redeem', 'social-server'].includes(field.id)) return;
+      field.dataset.touched = '1';
+      if (field.id !== 'social-name' || !bridge.socialNameCheck) return;
+      clearTimeout(socialNameTimer);
+      socialNameTimer = setTimeout(async () => {
+        const message = $('#social-name-msg');
+        if (!message || !field.value.trim()) return;
+        const check = await bridge.socialNameCheck(field.value);
+        message.textContent = check && check.ok ? `„${check.name}“ ist möglich.` : (check && check.reason) || '';
+      }, 250);
+    });
+    document.addEventListener('change', (event) => {
+      if (event.target && event.target.id === 'social-show-activity') setShowActivity(event.target.checked);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || !event.target) return;
+      if (event.target.id === 'social-redeem') redeemFriendCode(event.target.value);
+      if (event.target.id === 'social-name') saveSocialName();
+    });
+  }
+
+  async function initSocial() {
+    updateFriendsCount();
+    if (!socialAvailable()) return;
+    wireSocial();
+    await refreshSocialInfo();
+    if (socialLocal.enabled && socialRt.info && socialRt.info.registered) {
+      startSocialTimers();
+      refreshFriends({ quiet: true });
+    } else if (socialLocal.enabled) {
+      socialLocal.enabled = false;
+      persistSocial();
+    }
+    if (state.view === 'friends') renderFriends();
+  }
+
+  function openFriendsView() {
+    renderFriends();
+    refreshSocialInfo().then(() => {
+      if (state.view !== 'friends') return;
+      if (socialLocal.enabled && Date.now() - socialRt.loaded > 15000) refreshFriends({ quiet: true });
+      else renderFriends();
+    });
   }
 
   /* ---------------------------------------------------------------- *
@@ -13170,6 +13867,7 @@ ${updatePanel()}
 
     if (name === 'home' || name === 'favorites') loadRecs(false);
     if (name === 'home') renderHomeMixes();
+    if (name === 'friends') openFriendsView();
 
     if (name === 'creator') {
       renderCreator();
@@ -14724,6 +15422,7 @@ ${updatePanel()}
     renderFavorites();
     supporterState();
     renderSettings();
+    initSocial();
     wirePlayer();
     wireQueuePanel();
     wireOnboarding();
@@ -14918,6 +15617,34 @@ ${updatePanel()}
     },
     extraLocked: (kind, id) => extraLocked(kind, id),
     playlistImportLink: (code, options) => importPlaylistLink(code, options),
+    // Social (Weg B) – smoke + manual checks
+    socialServer: (url) => saveSocialServer(url),
+    socialEnable: () => enableSocial({ confirm: true }),
+    socialState: () => JSON.parse(JSON.stringify({
+      local: socialLocal,
+      info: socialRt.info,
+      me: socialRt.me,
+      friends: socialRt.friends,
+      reactions: socialRt.reactions,
+      blocked: socialRt.blocked,
+      code: socialRt.code ? { code: socialRt.code.code, link: socialRt.code.link, qr: Boolean(socialRt.code.qr) } : null,
+    })),
+    socialRefresh: () => refreshFriends({ quiet: true }),
+    socialTick: () => socialTick(),
+    socialName: (name) => saveSocialName(name),
+    socialRandomName: () => randomSocialName(),
+    socialShowActivity: (on) => setShowActivity(on),
+    socialCode: () => createFriendCode(),
+    socialRedeem: (code) => redeemFriendCode(code, { confirm: true }),
+    socialFriendLink: (code) => importFriendLink(code, { confirm: true }),
+    socialPlay: (id) => playFriend(id),
+    socialReact: (id, emoji) => reactToFriend(id, emoji),
+    socialBlock: (id) => blockFriend(id, { confirm: true }),
+    socialUnblock: (id) => unblockFriend(id),
+    socialReport: (id, reason) => reportFriend(id, { reason, block: false }),
+    socialRemove: (id) => removeFriend(id, { confirm: true }),
+    socialDisable: () => disableSocial(),
+    socialDelete: () => deleteSocialAccount({ confirm: true }),
     groupReset: () => {
       group = GROUP.normalizeGroup({});
       persistGroup();

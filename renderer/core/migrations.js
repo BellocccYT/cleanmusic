@@ -61,6 +61,7 @@
     group: 'object',
     supporter: 'object',
     silentRefs: 'array',
+    social: 'object',
   };
 
   // Human-readable names for messages in the UI.

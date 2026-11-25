@@ -127,4 +127,11 @@ contextBridge.exposeInMainWorld('cm', {
   pluginDownload: (id, item) => ipcRenderer.invoke('plugin-download', id, item),
   pluginResolve: (id, refId, force) => ipcRenderer.invoke('plugin-resolve', id, refId, Boolean(force)),
   pluginMatch: (id, track) => ipcRenderer.invoke('plugin-match', id, track),
+
+  // Social (Weg B): the main process holds the key and signs every request.
+  socialInfo: () => ipcRenderer.invoke('social-info'),
+  socialServerSet: (url) => ipcRenderer.invoke('social-server-set', String(url || '')),
+  socialNameCheck: (name) => ipcRenderer.invoke('social-name-check', String(name || '')),
+  socialSetup: () => ipcRenderer.invoke('social-setup'),
+  socialRequest: (method, path, body) => ipcRenderer.invoke('social-request', { method, path, body: body || null }),
 });

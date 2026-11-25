@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="description" content="Datenschutz für CleanMusic Social: welche Daten der Social-Server speichert, wozu und wie lange." />
+  <meta name="robots" content="noindex" />
+  <title>Datenschutz · CleanMusic Social</title>
+  <link rel="icon" href="../../icon.png" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080a0e; --panel: #11161f; --panel2: #161c27; --border: #232c3a; --text: #e8ecf3; --muted: #8d99ac;
+      --accent: #5b8cff; --accent2: #35e0c0; --warn: #ffb547; --max: 860px;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { color-scheme: light; --bg: #eef1f6; --panel: #ffffff; --panel2: #f6f8fb; --border: #d0d8e4; --text: #172033; --muted: #536076; --accent: #2f6bff; --accent2: #0c9b86; --warn: #a35b00; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 "Segoe UI", system-ui, -apple-system, sans-serif; }
+    a { color: var(--accent); }
+    .wrap { width: min(var(--max), calc(100% - 32px)); margin-inline: auto; }
+    header { border-bottom: 1px solid var(--border); }
+    .nav { display: flex; align-items: center; gap: 11px; min-height: 68px; font-weight: 850; font-size: 19px; }
+    .nav img { width: 32px; height: 32px; }
+    .nav a { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 11px; }
+    main { padding: 44px 0 72px; }
+    .eyebrow { color: var(--accent2); text-transform: uppercase; font-size: 11.5px; font-weight: 850; letter-spacing: .16em; }
+    h1 { margin: 8px 0 12px; font-size: clamp(30px, 5vw, 44px); line-height: 1.08; letter-spacing: -.04em; }
+    h2 { margin: 34px 0 8px; font-size: 22px; }
+    .lead { color: var(--muted); font-size: 17px; margin: 0; }
+    .draft, .placeholder { border: 2px dashed var(--warn); border-radius: 14px; padding: 12px 16px; margin: 18px 0; background: var(--panel2); }
+    .draft strong, .placeholder strong { color: var(--warn); }
+    .table { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 560px; }
+    th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 700; }
+    ul { padding-left: 20px; }
+    li { margin: 4px 0; }
+    code { font-size: 13.5px; background: var(--panel2); padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+    .muted { color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header><div class="wrap nav"><a href="../../"><img src="../../icon.png" alt="" />CleanMusic</a></div></header>
+  <main class="wrap">
+    <div class="eyebrow">Datenschutz · Social</div>
+    <h1>Was der Social-Server speichert</h1>
+    <p class="lead">Social ist in CleanMusic freiwillig und standardmäßig aus. Ohne Social schickt CleanMusic nichts an diesen Server. Hier steht, was passiert, wenn du Social einschaltest.</p>
+
+    <div class="draft"><strong>Entwurf – noch nicht in Betrieb.</strong> Diese Seite beschreibt die Technik von CleanMusic Social. Die Angaben zum Verantwortlichen, zum Impressum und zur Übermittlung in Drittländer muss der Betreiber vor dem Start ergänzen und prüfen. Keine Rechtsberatung.</div>
+
+    <h2>Verantwortlicher</h2>
+    <div class="placeholder"><strong>[PLATZHALTER – vom Betreiber auszufüllen]</strong><br />
+      Vollständiger Name des Verantwortlichen (Art. 13 Abs. 1 lit. a DSGVO), ladungsfähige Anschrift und E-Mail-Adresse für Datenschutzanfragen.</div>
+
+    <h2>Kurz gesagt</h2>
+    <ul>
+      <li>Kein Konto mit E-Mail oder Passwort, kein Klarname, kein Profilbild. Dein Gerät erzeugt ein Schlüsselpaar; der öffentliche Schlüssel ist dein Konto.</li>
+      <li>Du bekommst einen Zufallsnamen. Einen eigenen Namen kannst du setzen; er wird auf anstößige Wörter geprüft.</li>
+      <li>Kontakt nur per Freundescode. Es gibt keine Suche nach Personen, keine öffentliche Liste und keinen Chat – nur feste Emoji-Reaktionen.</li>
+      <li>„Meine Aktivität zeigen“ ist standardmäßig aus. Eingeschaltet sehen nur deine Freunde Titel und Artist des laufenden Songs. Lokale Dateien und Radio werden nie geteilt. Es läuft kein Audio über den Server.</li>
+      <li>„Konto löschen“ in der App entfernt alles sofort.</li>
+    </ul>
+
+    <h2>Gespeicherte Daten und Speicherdauer</h2>
+    <div class="table"><table>
+      <thead><tr><th>Daten</th><th>Wozu</th><th>Wie lange</th></tr></thead>
+      <tbody>
+        <tr><td>Öffentlicher Schlüssel und daraus berechnete Konto-ID (mit Kürzel, z. B. „K7Q2“)</td><td>Konto, Prüfung der Signatur jeder Anfrage</td><td>bis du das Konto löschst; nach 12 Monaten ohne Nutzung automatisch gelöscht</td></tr>
+        <tr><td>Anzeigename (Zufallsname oder selbst gewählt), Zeitpunkt der letzten Namensänderung</td><td>Anzeige bei deinen Freunden, „einmal pro Tag ändern“</td><td>wie oben</td></tr>
+        <tr><td>Freundesliste, Blockierungen</td><td>die Funktion selbst</td><td>wie oben; Entfernen und Blockieren wirken sofort</td></tr>
+        <tr><td>Freundescodes – nur als SHA-256-Hash</td><td>Kontakt per Code</td><td>höchstens 24 Stunden; beim Einlösen oder Widerrufen sofort gelöscht</td></tr>
+        <tr><td>Aktivität: Titel, Artist, Song-Referenz (Deezer-, Apple- oder YouTube-ID bzw. Suchbegriff), Zeitpunkt – nur mit „Meine Aktivität zeigen“</td><td>„Freunde hören gerade“</td><td>10 Minuten nach der letzten Meldung</td></tr>
+        <tr><td>Reaktionen (Emoji, Absender, Songtitel)</td><td>Anzeige beim Empfänger</td><td>24 Stunden, höchstens 100 je Person</td></tr>
+        <tr><td>Meldungen (wer, wen, Grund aus einer festen Liste)</td><td>Missbrauchsschutz; nach drei Meldungen wird ein anstößiger Name durch einen Zufallsnamen ersetzt</td><td>30 Tage</td></tr>
+        <tr><td>Einmalwerte (Nonces) der Anfragen</td><td>Schutz gegen wiederholte Anfragen</td><td>10 Minuten</td></tr>
+        <tr><td>Zähler für Anfrage-Grenzen je Konto und je Netz: das IP-Präfix (IPv4 /24, IPv6 /48) nur als Hash mit täglich wechselndem Zufallswert</td><td>Schutz vor Massen-Konten und Spam</td><td>höchstens 24 Stunden</td></tr>
+        <tr><td>Sperrliste: Konto-IDs gesperrter Schlüssel</td><td>Missbrauchsschutz</td><td>bis die Sperre aufgehoben wird</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Nicht gespeichert:</strong> E-Mail, Passwort, Klarname, Profilbild, IP-Adressen im Klartext, Hör-Verlauf, lokale Dateien, Radiosender, Nachrichten (es gibt keinen Chat), Telemetrie. Request-Logs des Workers sind abgeschaltet (<code>observability.enabled = false</code>).</p>
+
+    <h2>Auf deinem Gerät</h2>
+    <ul>
+      <li>Der private Schlüssel liegt verschlüsselt (Electron <code>safeStorage</code>, unter Windows die Datenschutz-API des Systems) in <code>%APPDATA%\CleanMusic\social-key.json</code> und verlässt das Gerät nie. Ohne sicheren Schlüsselspeicher bleibt Social aus.</li>
+      <li>Die Schalter („Social an“, „Meine Aktivität zeigen“) liegen im lokalen Speicher der App, die Server-Adresse in <code>cleanmusic-config.json</code>.</li>
+    </ul>
+
+    <h2>Hosting</h2>
+    <p>Der Social-Server läuft als Cloudflare Worker mit Durable Objects (SQLite). Die gespeicherten Daten liegen per Jurisdiktion in der EU. Cloudflare verarbeitet als Auftragsverarbeiter die Verbindungsdaten (einschließlich der IP-Adresse), um Anfragen zuzustellen.</p>
+    <div class="placeholder"><strong>[PLATZHALTER – vom Betreiber zu prüfen und zu ergänzen]</strong><br />
+      Auftragsverarbeitungsvertrag mit Cloudflare, Inc. (Cloudflare Data Processing Addendum) und Grundlage für eine mögliche Übermittlung in die USA (z. B. EU-US Data Privacy Framework oder Standardvertragsklauseln).</div>
+
+    <h2>Rechtsgrundlage (Entwurf)</h2>
+    <ul>
+      <li>Art. 6 Abs. 1 lit. b DSGVO – Bereitstellung der Funktion, die du selbst einschaltest.</li>
+      <li>Art. 6 Abs. 1 lit. f DSGVO – Schutz vor Missbrauch (Anfrage-Grenzen, Meldungen, Sperrliste).</li>
+    </ul>
+
+    <h2>Mindestalter</h2>
+    <p>Social ist ab 16 Jahren gedacht. <span class="muted">[vom Betreiber zu bestätigen]</span></p>
+
+    <h2>Deine Rechte</h2>
+    <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Widerspruch und Datenübertragbarkeit (Art. 15–21 DSGVO) sowie auf Beschwerde bei einer Datenschutz-Aufsichtsbehörde (Art. 77 DSGVO). Löschen kannst du jederzeit selbst: <em>Freunde → Konto → Konto löschen</em>. Weil es keine E-Mail und keinen Namen gibt, kann der Betreiber dich nur über die Konto-ID zuordnen, die du in der App siehst.</p>
+
+    <h2>Impressum</h2>
+    <div class="placeholder"><strong>[PLATZHALTER – vom Betreiber auszufüllen]</strong><br />
+      Angaben nach § 5 DDG (u. a. Vor- und Nachname, ladungsfähige Anschrift, E-Mail).</div>
+
+    <p class="muted">Stand: 25.11.2026 · Technische Details: <code>server/social/</code> im Repository.</p>
+  </main>
+</body>
+</html>

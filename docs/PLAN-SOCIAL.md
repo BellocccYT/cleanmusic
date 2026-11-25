@@ -1,6 +1,7 @@
 # Plan: Echte Social-Funktionen (Weg B)
 
-Stand: 24.11.2026 – **noch nicht gebaut**. Weg A (ohne Server: Discord-Knopf, Playlist-Links,
+Stand: 25.11.2026 – **S1 ist gebaut** (Server, App-Anbindung, Tests; noch nicht veröffentlicht – Deploy und
+Datenschutz-Angaben macht der Betreiber, siehe `server/social/README.md`). S2 und S3 sind offen. Weg A (ohne Server: Discord-Knopf, Playlist-Links,
 Wochenkarte per Code) ist fertig und bleibt als Offline-Weg erhalten.
 
 ## Grundidee
@@ -65,7 +66,15 @@ Turnstile (CAPTCHA) nur, falls Proof-of-Work nicht reicht.
 
 ## Funktionen in Phasen
 
-### S1 – Konto, Freunde, „Hört gerade“
+### S1 – Konto, Freunde, „Hört gerade“ ✅ erledigt (25.11.2026)
+
+Umgesetzt in `server/social/` (Worker + Durable Object, Tests mit Miniflare), `lib/social-names.js`,
+`lib/social-protocol.js`, `social-main.js` (Schlüssel per `safeStorage`, Signatur, eine erlaubte
+Adresse), `renderer/core/social.js`, Ansicht „Freunde“ in `renderer/app.js`, `site/f/` und
+`site/privacy/social/` (Platzhalter für Verantwortlichen/Impressum). Zusätzlich zum Plan:
+`POST /v1/friend/remove` (Entfernen ohne Blockieren) und `/v1/admin/*` (Not-Aus, Sperren,
+Meldungen – nur mit `ADMIN_TOKEN`). Freundescodes gelten einmal. Smoke `SMOKE_SOCIAL_SERVER`.
+
 
 - Social einschalten mit Erklärung, Schlüssel und Zufallsnamen. Name ändern, Konto löschen.
 - Freundescode erzeugen (Link `site/f/#…`, QR, `cleanmusic://friend?c=…`) und einlösen.
