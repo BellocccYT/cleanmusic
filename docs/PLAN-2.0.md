@@ -138,6 +138,14 @@ und Top-Quelle) sowie `totalSeconds`. `statsListen`, `statsPlay` und `reviewData
 in app.js rufen nur noch diese Funktionen; der Rückblick bleibt unverändert. Test
 `test/stats.test.js` (9), Smoke `SMOKE_STATS`.
 
+**Titel-Form (2.0.0):** `renderer/core/entries.js` (`window.CMEntries`) enthält die
+Fabriken für alle abspielbaren Dinge (`previewEntry`, `pluginEntry`, `localEntry`,
+`radioEntry`, `ncsEntry`, `classicEntry`, `openverseEntry`, `migrateEntry`), die
+Speicherregeln (`storable` mit `FIELDS`/`addedAt`, `validEntry` mit `KINDS`) und die
+Lizenz-Kategorien (`licenseKey`, `licenseCategory`). app.js bindet sie per
+Destructuring – keine Aufrufstelle ändert sich, app.js verliert ~170 Zeilen. Test
+`test/entries.test.js` (9).
+
 **Offen:** Player und Sammlung schrittweise auf den Store umstellen, damit
 `app.js` tatsächlich schrumpft.
 
