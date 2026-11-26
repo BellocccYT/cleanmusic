@@ -8,7 +8,9 @@
  *   cinema     – dark film look, words glide in with motion blur, real spectrum
  *   2.2.0 adds glitch (calm digital tearing), collage (cut-out letters on
  *   paper), synthwave (chrome type over a neon grid) and comic (pop art with
- *   a speech bubble).
+ *   a speech bubble), plus cards (tarot/playing cards), revolt (red/black
+ *   poster) and story (flat illustration) – the last three pick their symbols
+ *   from the words of the line.
  *
  * app.js hands over the stage element (#fs-lyrics .ly-kinetic) plus the lines
  * and a time getter; everything that can be decided without a DOM (word
@@ -32,6 +34,9 @@ window.CMLyricStage = (function () {
     collage: ['900 100px "CM Fraunces"', '400 100px "Bebas Neue"', '700 100px "CM Cinzel"'],
     synthwave: ['700 100px "CM Orbitron"'],
     comic: ['400 100px "CM Bangers"'],
+    cards: ['400 100px "Bebas Neue"', '900 100px "CM Fraunces"'],
+    revolt: ['400 100px "Bebas Neue"'],
+    story: ['400 100px "Bebas Neue"', '900 100px "CM Fraunces"'],
   };
   const FPS = { saver: 15, balanced: 24, quality: 30 };
   const SIZE_SCALE = { s: 0.84, m: 1, l: 1.1, xl: 1.2 };
@@ -118,6 +123,7 @@ window.CMLyricStage = (function () {
         lineKey: '',
         dark: false,
         lastFlip: 0,
+        portrait: null,
         ro: null,
       };
       setupStage(run);
@@ -242,7 +248,12 @@ window.CMLyricStage = (function () {
         <div class="ls-frames"></div>`;
     } else if (style === 'comic') {
       stage.innerHTML = `<div class="lcm-halftone" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'revolt') {
+      stage.innerHTML = `<div class="lr-ground" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'story') {
+      stage.innerHTML = `<div class="ls2-wash" aria-hidden="true"></div><div class="ls-frames"></div>`;
     } else {
+      // cards (and any future plain stage)
       stage.innerHTML = '<div class="ls-frames"></div>';
     }
   }
@@ -352,6 +363,31 @@ window.CMLyricStage = (function () {
       stage.style.setProperty('--lcm-pop', c.pop);
       stage.style.setProperty('--lcm-bubble', c.bubble);
       stage.style.setProperty('--lcm-shadow', c.shadow);
+    } else if (r.style === 'cards') {
+      const c = LV.cardsColors(colors);
+      r.cards = c;
+      stage.style.setProperty('--lcd-bg', c.bg);
+      stage.style.setProperty('--lcd-paper', c.paper);
+      stage.style.setProperty('--lcd-ink', c.ink);
+      stage.style.setProperty('--lcd-accent', c.accent);
+      stage.style.setProperty('--lcd-gold', c.gold);
+      stage.style.setProperty('--lcd-soft', c.soft);
+    } else if (r.style === 'revolt') {
+      const c = LV.revoltColors(colors, 'red');
+      r.revolt = c;
+      stage.style.setProperty('--lr-bg', c.bg);
+      stage.style.setProperty('--lr-fg', c.fg);
+      stage.style.setProperty('--lr-accent', c.accent);
+      stage.style.setProperty('--lr-ink', c.ink);
+    } else if (r.style === 'story') {
+      const c = LV.storyColors(colors);
+      r.story = c;
+      stage.style.setProperty('--ls2-bg', c.bg);
+      stage.style.setProperty('--ls2-fg', c.fg);
+      stage.style.setProperty('--ls2-accent', c.accent);
+      stage.style.setProperty('--ls2-accent-2', c.accent2);
+      stage.style.setProperty('--ls2-soft', c.soft);
+      stage.style.setProperty('--ls2-paper', c.paper);
     }
     r.chunkIndex = -1;
     showChunk(r, LV.activeChunk(r.chunks, currentTime(r)));
@@ -365,6 +401,8 @@ window.CMLyricStage = (function () {
     const now = currentTime(r);
     const seed = seedOf(`${r.lineText}#${index}`);
     const k = r.frameBase + Math.max(0, index);
+    const box = stageSize(r);
+    r.portrait = Boolean(box && box.portrait);
     // Word delays relative to "now", so a frame shown mid-way (seek, reopen) is complete.
     const delayOf = (word) => Math.max(0, Math.min(2.4, (Number(word.time) || 0) - now));
     let el;
@@ -374,7 +412,10 @@ window.CMLyricStage = (function () {
     else if (r.style === 'glitch') el = glitchEl(r, chunk, seed, delayOf);
     else if (r.style === 'collage') el = collageEl(r, chunk, seed, delayOf);
     else if (r.style === 'synthwave') el = synthwaveEl(r, chunk, seed, delayOf);
-    else el = comicEl(r, chunk, seed, delayOf);
+    else if (r.style === 'comic') el = comicEl(r, chunk, seed, delayOf);
+    else if (r.style === 'cards') el = cardsEl(r, chunk, seed, delayOf);
+    else if (r.style === 'revolt') el = revoltEl(r, chunk, seed, delayOf);
+    else el = storyEl(r, chunk, seed, delayOf);
     if (r.style === 'cinema' && !r.reduced) {
       host.querySelectorAll('.lc-frame:not(.lc-out)').forEach((old) => {
         old.classList.add('lc-out');
@@ -636,6 +677,170 @@ window.CMLyricStage = (function () {
     return el;
   }
 
+  // Cards (2.2.0) -------------------------------------------------------------
+
+  const ICON_PATHS = {
+    heart: '<path d="M50 88 C 20 66 6 50 6 33 C 6 17 18 6 32 6 C 40 6 47 12 50 20 C 53 12 60 6 68 6 C 82 6 94 17 94 33 C 94 50 80 66 50 88 Z"/>',
+    spade: '<path d="M50 6 C 34 30 12 42 12 59 C 12 72 22 80 34 80 C 40 80 45 77 48 72 L 44 94 H 56 L 52 72 C 55 77 60 80 66 80 C 78 80 88 72 88 59 C 88 42 66 30 50 6 Z"/>',
+    diamond: '<path d="M50 4 L 92 50 L 50 96 L 8 50 Z"/>',
+    club: '<circle cx="50" cy="27" r="18"/><circle cx="26" cy="56" r="18"/><circle cx="74" cy="56" r="18"/><path d="M44 60 L 39 94 H 61 L 56 60 Z"/>',
+    star: '<path d="M50 3 L 61 35 L 96 36 L 68 57 L 79 92 L 50 71 L 21 92 L 32 57 L 4 36 L 39 35 Z"/>',
+    moon: '<path d="M64 4 A 46 46 0 1 0 96 66 A 38 38 0 0 1 64 4 Z"/>',
+    eye: '<path fill-rule="evenodd" d="M4 50 C 24 21 76 21 96 50 C 76 79 24 79 4 50 Z M50 35 A 15 15 0 1 0 50 65 A 15 15 0 1 0 50 35 Z"/>',
+    flower: '<g><circle cx="50" cy="24" r="15"/><circle cx="75" cy="42" r="15"/><circle cx="69" cy="72" r="15"/><circle cx="31" cy="72" r="15"/><circle cx="25" cy="42" r="15"/><circle class="lcd-center" cx="50" cy="50" r="13"/></g>',
+    coin: '<circle cx="50" cy="50" r="34"/><circle class="lcd-line" cx="50" cy="50" r="22"/><path class="lcd-line" d="M50 34 V66"/>',
+    flame: '<path d="M50 3 C 60 25 79 35 79 56 A 29 29 0 0 1 21 56 C 21 42 31 32 39 19 C 41 34 47 39 50 45 C 54 32 54 17 50 3 Z"/>',
+    wave: '<path class="lcd-line" d="M3 38 Q 17 22 31 38 T 59 38 T 87 38 T 99 34"/><path class="lcd-line" d="M3 58 Q 17 42 31 58 T 59 58 T 87 58 T 99 54"/><path class="lcd-line" d="M3 78 Q 17 62 31 78 T 59 78 T 87 78 T 99 74"/>',
+    city: '<path d="M4 94 V 48 H 20 V 94 Z M26 94 V 28 H 46 V 94 Z M52 94 V 56 H 68 V 94 Z M74 94 V 20 H 94 V 94 Z"/><path class="lcd-line" d="M32 38 H40 M32 50 H40 M32 62 H40 M80 32 H88 M80 44 H88"/>',
+    clock: '<circle cx="50" cy="50" r="35"/><path class="lcd-line" d="M50 26 V 52 L 67 63"/>',
+    sun: '<circle cx="50" cy="50" r="21"/><path class="lcd-line" d="M50 4 V 16 M50 84 V 96 M4 50 H 16 M84 50 H 96 M18 18 L 27 27 M73 73 L 82 82 M82 18 L 73 27 M27 73 L 18 82"/>',
+    burst: '<path d="M50 2 L 58 30 L 82 12 L 70 38 L 98 44 L 72 56 L 88 82 L 60 70 L 50 98 L 40 70 L 12 82 L 28 56 L 2 44 L 30 38 L 18 12 L 42 30 Z"/>',
+    cloud: '<path d="M20 76 C 6 76 2 58 14 50 C 12 34 28 26 38 34 C 44 18 66 16 74 32 C 88 30 96 44 92 56 C 100 64 94 76 82 76 Z"/>',
+  };
+
+  function iconSvg(icon, cls) {
+    return `<svg class="lcd-icon${cls ? ` ${cls}` : ''}" viewBox="0 0 100 100" aria-hidden="true">${ICON_PATHS[icon] || ICON_PATHS.star}</svg>`;
+  }
+
+  function cardsEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.cardsFrame(chunk, seed, { portrait: Boolean(box && box.portrait), text: r.lineText });
+    const el = document.createElement('div');
+    el.className = `lcd-frame lcd-side-${layout.side}${layout.stack ? ' lcd-stack' : ''}${box && box.portrait ? ' lcd-portrait' : ''}`;
+    const cards = layout.cards
+      .map(
+        (card, i) => `<div class="lcd-card" style="--rot:${card.rot}deg;--x:${card.x}%;--y:${card.y}%;--sc:${card.scale};--d:${(i * 0.07).toFixed(2)}s;z-index:${layout.cards.length - i}">
+          <span class="lcd-rank">${esc(card.rank)}</span>
+          ${iconSvg(card.suit, 'lcd-corner')}
+          <span class="lcd-pic">${iconSvg(card.icon, 'lcd-pic-icon')}</span>
+          ${card.label ? `<span class="lcd-label">${esc(card.label)}</span>` : ''}
+          ${iconSvg(card.suit, 'lcd-corner lcd-corner-b')}
+        </div>`
+      )
+      .join('');
+    const words = chunk.words.length
+      ? chunk.words
+          .map(
+            (word, i) =>
+              `<span class="ls-w lcd-w${i === layout.key ? ' lcd-key' : ''}" style="--d:${delayOf(word).toFixed(2)}s">${esc(word.text)}</span>`
+          )
+          .join('')
+      : '<span class="ls-w lcd-w" style="--d:0s">♪</span>';
+    el.innerHTML = `
+      <div class="lcd-cards" aria-hidden="true">${cards}</div>
+      <div class="lcd-copy"><div class="lcd-words">${words}</div><div class="lcd-rule"></div><span class="lcd-caption">${esc(layout.motif.label)}</span></div>
+      ${layout.spark ? `<svg class="lcd-spark" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 2 L58 38 L94 50 L58 62 L50 98 L42 62 L6 50 L42 38 Z"/></svg>` : ''}`;
+    return el;
+  }
+
+  // Revolt (2.2.0) ------------------------------------------------------------
+
+  function revoltEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.revoltFrame(chunk, seed, { portrait: Boolean(box && box.portrait), text: r.lineText });
+    const c = LV.revoltColors(r.opts.colors, layout.tone);
+    const el = document.createElement('div');
+    el.className = `lr-frame lr-tone-${layout.tone}${layout.stack ? ' lr-stack' : ''}`;
+    el.style.setProperty('--lr-bg', c.bg);
+    el.style.setProperty('--lr-fg', c.fg);
+    el.style.setProperty('--lr-accent', c.accent);
+    el.style.setProperty('--lr-ink', c.ink);
+    el.style.setProperty('--lr-angle', `${layout.angle}deg`);
+    const words = chunk.words.length
+      ? chunk.words
+          .map(
+            (word, i) =>
+              `<span class="ls-w lr-w${i === layout.key ? ' lr-key' : ''}" style="--d:${delayOf(word).toFixed(2)}s">${esc(word.text)}</span>`
+          )
+          .join('')
+      : '<span class="ls-w lr-w" style="--d:0s">♪</span>';
+    const slash = Array.from({ length: layout.slashes }, () => '<i></i>').join('');
+    el.innerHTML = `
+      <div class="lr-bands" aria-hidden="true"></div>
+      ${layout.burst ? '<svg class="lr-burst" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 2 L58 30 L82 12 L70 38 L98 44 L72 56 L88 82 L60 70 L50 98 L40 70 L12 82 L28 56 L2 44 L30 38 L18 12 L42 30 Z"/></svg>' : ''}
+      <div class="lr-words">${words}</div>
+      <div class="lr-foot"><span class="lr-label">${esc(layout.motif.label)}</span><span class="lr-slashes" aria-hidden="true">${slash}</span></div>`;
+    return el;
+  }
+
+  // Story (2.2.0) -------------------------------------------------------------
+
+  const STORY_ART = {
+    night:
+      '<circle class="ls2-accent" cx="70" cy="27" r="17"/><circle class="ls2-bg-fill" cx="63" cy="22" r="15"/>' +
+      '<path class="ls2-paper" d="M22 18 L25 26 L33 29 L25 32 L22 40 L19 32 L11 29 L19 26 Z M48 40 L50 45 L55 47 L50 49 L48 54 L46 49 L41 47 L46 45 Z"/>' +
+      '<path class="ls2-soft" d="M0 74 C 18 58 36 70 52 64 C 70 57 84 70 100 62 V100 H0 Z"/>' +
+      '<path class="ls2-ink" d="M0 88 C 18 78 34 90 52 84 C 70 78 84 90 100 83 V100 H0 Z"/>',
+    sea:
+      '<circle class="ls2-accent" cx="68" cy="26" r="15"/><path class="ls2-stroke ls2-stroke-paper" d="M8 62 Q 22 46 36 62 T 64 62 T 92 62"/>' +
+      '<path class="ls2-stroke ls2-stroke-accent" d="M4 76 Q 18 60 32 76 T 60 76 T 88 76"/><path class="ls2-stroke ls2-stroke-paper" d="M14 90 Q 28 74 42 90 T 70 90 T 98 90"/>',
+    city:
+      '<circle class="ls2-accent2" cx="22" cy="22" r="12"/><circle class="ls2-bg-fill" cx="27" cy="18" r="10"/>' +
+      '<path class="ls2-paper" d="M58 16 L61 23 L68 26 L61 29 L58 36 L55 29 L48 26 L55 23 Z"/>' +
+      '<path class="ls2-soft" d="M4 100 V 48 H 20 V 100 Z M26 100 V 28 H 46 V 100 Z M52 100 V 56 H 68 V 100 Z M74 100 V 20 H 94 V 100 Z"/>' +
+      '<path class="ls2-paper" d="M32 38 H41 V 44 H32 Z M32 50 H41 V 56 H32 Z M80 32 H89 V 38 H80 Z M80 44 H89 V 50 H80 Z M58 64 H65 V 70 H58 Z"/>' +
+      '<path class="ls2-ink" d="M0 82 H100 V100 H0 Z"/><path class="ls2-stroke ls2-stroke-accent2" d="M8 88 H92"/><rect class="ls2-accent" x="22" y="86" width="32" height="7" rx="3"/><circle class="ls2-paper" cx="28" cy="94" r="3"/><circle class="ls2-paper" cx="48" cy="94" r="3"/>',
+    love:
+      '<path class="ls2-accent" d="M50 86 C 24 66 10 51 10 36 C 10 21 21 11 34 11 C 42 11 47 16 50 23 C 53 16 58 11 66 11 C 79 11 90 21 90 36 C 90 51 76 66 50 86 Z"/>' +
+      '<path class="ls2-stroke ls2-stroke-paper" d="M18 6 L14 22 M34 2 L30 18 M66 2 L70 18 M82 6 L86 22"/>' +
+      '<path class="ls2-paper" d="M50 52 L54 62 L64 62 L56 68 L59 78 L50 72 L41 78 L44 68 L36 62 L46 62 Z"/>',
+    fire:
+      '<circle class="ls2-soft" cx="50" cy="54" r="34"/><path class="ls2-accent2" d="M50 8 C 61 32 80 42 80 61 A 30 30 0 0 1 20 61 C 20 46 31 36 39 23 C 41 38 47 44 50 50 C 54 37 54 22 50 8 Z"/>' +
+      '<path class="ls2-paper" d="M50 44 C 56 56 64 60 64 69 A 14 14 0 0 1 36 69 C 36 62 43 56 46 50 C 47 57 49 59 50 61 C 52 55 52 50 50 44 Z"/>' +
+      '<path class="ls2-stroke ls2-stroke-accent2" d="M12 22 L22 30 M88 22 L78 30 M8 54 H20 M80 54 H92"/>',
+    flower:
+      '<path class="ls2-stroke ls2-stroke-soft" d="M50 94 V 52"/><path class="ls2-accent" d="M50 76 C 36 76 28 68 26 58 C 40 58 48 64 50 76 Z M50 84 C 64 84 72 76 74 66 C 60 66 52 72 50 84 Z"/>' +
+      '<g class="ls2-paper"><circle cx="50" cy="30" r="13"/><circle cx="68" cy="40" r="13"/><circle cx="64" cy="58" r="13"/><circle cx="36" cy="58" r="13"/><circle cx="32" cy="40" r="13"/></g>' +
+      '<circle class="ls2-accent2" cx="50" cy="45" r="10"/><circle class="ls2-accent" cx="84" cy="18" r="10"/>',
+    money:
+      '<circle class="ls2-accent2" cx="50" cy="46" r="26"/><circle class="ls2-stroke ls2-stroke-ink" cx="50" cy="46" r="17"/><path class="ls2-stroke ls2-stroke-ink" d="M50 34 V 58"/>' +
+      '<circle class="ls2-accent" cx="22" cy="76" r="9"/><circle class="ls2-paper" cx="78" cy="74" r="7"/>' +
+      '<path class="ls2-paper" d="M14 16 L17 24 L25 27 L17 30 L14 38 L11 30 L3 27 L11 24 Z M82 12 L85 20 L93 23 L85 26 L82 34 L79 26 L71 23 L79 20 Z"/>',
+    time:
+      '<g class="ls2-stroke ls2-stroke-soft"><circle cx="50" cy="50" r="44"/><circle cx="50" cy="50" r="38"/></g><circle class="ls2-paper" cx="50" cy="50" r="28"/>' +
+      '<path class="ls2-stroke ls2-stroke-ink" d="M50 30 V 52 L 64 62"/><circle class="ls2-accent" cx="50" cy="50" r="4"/>' +
+      '<path class="ls2-paper" d="M14 14 L17 22 L25 25 L17 28 L14 36 L11 28 L3 25 L11 22 Z"/>',
+    eye:
+      '<path class="ls2-paper" fill-rule="evenodd" d="M4 50 C 24 20 76 20 96 50 C 76 80 24 80 4 50 Z M50 34 A 16 16 0 1 0 50 66 A 16 16 0 1 0 50 34 Z"/>' +
+      '<circle class="ls2-accent" cx="50" cy="50" r="12"/><circle class="ls2-ink" cx="50" cy="50" r="5"/>' +
+      '<path class="ls2-stroke ls2-stroke-accent2" d="M12 24 L22 32 M88 24 L78 32 M10 76 L20 68 M90 76 L80 68"/>',
+    dream:
+      '<path class="ls2-paper" d="M18 72 C 6 72 2 56 12 48 C 10 34 26 26 36 34 C 42 18 64 16 72 32 C 86 30 94 44 90 56 C 98 64 92 72 80 72 Z"/>' +
+      '<circle class="ls2-accent" cx="74" cy="24" r="11"/><path class="ls2-accent2" d="M28 16 L31 24 L39 27 L31 30 L28 38 L25 30 L17 27 L25 24 Z M82 56 L84 61 L89 63 L84 65 L82 70 L80 65 L75 63 L80 61 Z"/>',
+    fight:
+      '<path class="ls2-accent" d="M50 2 L58 30 L82 12 L70 38 L98 44 L72 56 L88 82 L60 70 L50 98 L40 70 L12 82 L28 56 L2 44 L30 38 L18 12 L42 30 Z"/>' +
+      '<path class="ls2-stroke ls2-stroke-paper" d="M16 90 L28 78 M40 94 L52 82 M72 94 L60 82"/>',
+  };
+
+  function storyEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.storyFrame(chunk, seed, { portrait: Boolean(box && box.portrait), text: r.lineText });
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row) =>
+              `<div class="ls2-row">${row
+                .map(
+                  (index) =>
+                    `<span class="ls-w ls2-w${index === layout.key ? ' ls2-key' : ''}" style="--d:${delayOf(words[index]).toFixed(2)}s">${esc(words[index].text)}</span>`
+                )
+                .join('')}</div>`
+          )
+          .join('')
+      : '<div class="ls2-row"><span class="ls-w ls2-w" style="--d:0s">♪</span></div>';
+    const el = document.createElement('div');
+    el.className = `ls2-frame ls2-align-${layout.align}${layout.stack ? ' ls2-stack' : ''}`;
+    el.style.setProperty('--ls2-tilt', `${layout.tilt}deg`);
+    el.innerHTML = `
+      <div class="ls2-art" aria-hidden="true"><svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">${STORY_ART[layout.scene] || STORY_ART.night}</svg></div>
+      <div class="ls2-copy"><div class="ls2-words">${rows}</div><div class="ls2-caption"><span>${esc(layout.caption)}</span></div></div>`;
+    return el;
+  }
+
   function drawSpectrum(r, bands) {
     const canvas = r.stage.querySelector('.lc-spectrum');
     if (!canvas) return;
@@ -846,6 +1051,15 @@ window.CMLyricStage = (function () {
     } else if (r.style === 'comic') {
       const stacked = Boolean(el.querySelector('.lcm-frame.lcm-stack'));
       fitGroup(r, el.querySelector('.lcm-words'), box.w * (stacked ? 0.8 : 0.82) * s, box.h * (stacked ? 0.62 : 0.42), box.h * (stacked ? 0.28 : 0.46) * s, '.lcm-w');
+    } else if (r.style === 'cards') {
+      const stacked = el.classList.contains('lcd-stack') || el.classList.contains('lcd-portrait');
+      fitGroup(r, el.querySelector('.lcd-words'), box.w * (stacked ? 0.86 : 0.42) * s, box.h * (stacked ? 0.34 : 0.56), box.h * (stacked ? 0.2 : 0.36) * s, '.lcd-w');
+    } else if (r.style === 'revolt') {
+      const stacked = el.classList.contains('lr-stack');
+      fitGroup(r, el.querySelector('.lr-words'), box.w * 0.84 * s, box.h * (stacked ? 0.58 : 0.44), box.h * (stacked ? 0.28 : 0.44) * s, '.lr-w');
+    } else if (r.style === 'story') {
+      const stacked = el.classList.contains('ls2-stack');
+      fitGroup(r, el.querySelector('.ls2-words'), box.w * (stacked ? 0.86 : 0.45) * s, box.h * (stacked ? 0.3 : 0.5), box.h * (stacked ? 0.18 : 0.34) * s, '.ls2-w');
     }
   }
 
@@ -853,6 +1067,13 @@ window.CMLyricStage = (function () {
     if (!r || r !== run || !r.stage.isConnected) return;
     if (r.style === 'lyricvideo') {
       fitStacked(r);
+      return;
+    }
+    // A resize/rotation changes side-by-side versus stacked layouts: rebuild
+    // the current frame instead of only scaling the old one.
+    const box = stageSize(r);
+    if (box && r.portrait !== null && box.portrait !== r.portrait) {
+      showChunk(r, r.chunkIndex);
       return;
     }
     const frames = r.stage.querySelectorAll('.ls-frames > :not(.lc-out)');

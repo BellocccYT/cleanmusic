@@ -77,3 +77,24 @@ Schriftzüge oder Marken. Farben werden aus dem Cover abgeleitet, aber mit
 Mindestkontrast und einer festen Stilfamilie; ohne Cover gilt eine feste
 Palette. Die Wortgruppen kommen aus derselben `chunkLine`-Logik wie Poster,
 Pinsel und Kino, die Größe aus `fitSize`/der Messung der echten Wortkästen.
+
+## Zweite Welle: Stile, die den Songtext lesen
+
+Die folgenden drei Richtungen kommen aus derselben Recherche, betonen aber
+stärker das **Thema der Zeile** statt nur die Typografie. Vorbilder sind
+Karten-/Tarot-Ästhetik, laute Spiel-UI-Poster in Rot/Schwarz/Weiß und
+illustrierte Lyric-Videos, in denen eine kleine Szene zur Zeile erzählt.
+Übernommen wurde nur die Richtung; Kartenbilder, Figuren, Masken und
+Schriftzüge sind eigene, abstrakte Entwürfe.
+
+| Richtung | Beobachtung | Umsetzung in CleanMusic |
+| --- | --- | --- |
+| Karten / Tarot | Ein Fächer aus Karten trägt das Bild; Symbole und kurze Titel machen aus der Zeile eine kleine Legung. Oft dunkler Grund, cremefarbene Karten, eine rote Druckfarbe. | **Karten**: 2–3 Karten mit Rang, Farbe und einem Symbol aus dem Songtext (Herz, Münze, Mond, Flamme, Welle, Stadt, Auge). Das Schlüsselwort steht groß daneben, das Motiv als kleines Label. |
+| Laute Spiel-UI / Protest | Rot, Schwarz und Weiß, schräge Flächen, harte Konturen, Sterne/Bursts, sehr große Caps. Wirkt wie ein Menü oder ein Plakat, nicht wie ein ruhiger Songtext. | **Revolte**: rotes oder schwarzes Poster mit diagonalen Bändern, Stern-Burst und Slashes. Feuer-, Kampf-, Liebes- und Geldzeilen werden rot und bekommen mehr Slashes; ruhige Zeilen bleiben schwarz. |
+| Illustrierter Bilderbogen | Eine flache, plakative Szene erzählt die Zeile: Mond über Wellen, Stadt mit Auto, Herz im Regen. Die Schrift ist handgesetzt und groß, die Illustration bleibt geometrisch. | **Bilderbogen**: eine von elf Szenen (Nacht, Meer, Stadt mit Auto, Liebe, Feuer, Blume, Münze, Uhr, Auge, Traum, Kampf), gewählt über die Wörter der Zeile. Tiefes Ink-Blau, warmes Papier, Rot und Gold; die Wörter stehen daneben bzw. darunter. |
+
+Damit hängen die drei Stile sichtbar am Text: „My heart is on fire“ ergibt
+Herz-Karten und eine Liebesszene, „Drive fast“ eine Stadt mit Auto,
+„The price of fame“ ein rotes Poster mit Münze. Die Motiv-Erkennung ist rein
+und deterministisch (`motifOf`), damit dieselbe Zeile immer gleich aussieht.
+

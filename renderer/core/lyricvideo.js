@@ -12,7 +12,9 @@
  *
  * Since 2.2.0 four more directions: glitch (digital tearing in calm waves),
  * collage (cut-out letters on paper snippets), synthwave (chrome type over a
- * neon grid) and comic (pop-art lettering with a speech bubble).
+ * neon grid) and comic (pop-art lettering with a speech bubble). Three of the
+ * styles read the line itself: cards (playing/tarot cards), revolt (red/black
+ * poster) and story (flat illustration) pick symbols via motifOf().
  *
  * Everything here is deterministic (seeded by the line text) and DOM-free,
  * so it can be tested with plain Node. Loaded before app.js as
@@ -221,9 +223,9 @@
    * wordTimes(). Everything below is pure and deterministic.
    */
 
-  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
+  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
   // Styles that play frame by frame (chunks of a line).
-  const FRAME_STYLES = ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
+  const FRAME_STYLES = ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
 
   const CHUNK_RULES = {
     poster: { words: 3, letters: 12 },
@@ -233,6 +235,9 @@
     collage: { words: 2, letters: 10 },
     synthwave: { words: 2, letters: 11 },
     comic: { words: 3, letters: 13 },
+    cards: { words: 3, letters: 14 },
+    revolt: { words: 3, letters: 14 },
+    story: { words: 3, letters: 13 },
   };
 
   function isStyle(id) {
@@ -873,6 +878,220 @@
     };
   }
 
+  /* --- 2.2.0: cards, revolt, story ---------------------------------------- */
+
+  // Lyric motifs: the new styles pick their symbols and colours from the
+  // words of the line, so a love line gets hearts, a night line gets a moon.
+  const MOTIFS = [
+    { id: 'love', icon: 'heart', suit: 'heart', label: 'LOVE', test: /(love|heart|kiss|herz|lieb|kuss|amor|coeur|cœur|sex|body|körper|koerper|touch|berühr|beruehr)/i },
+    { id: 'money', icon: 'coin', suit: 'diamond', label: 'FORTUNE', test: /(money|cash|gold|rich|dollar|geld|reich|coin|price|preis|fame|ruhm|pay|zahl)/i },
+    { id: 'night', icon: 'moon', suit: 'spade', label: 'NIGHT', test: /(night|moon|star|dark|nacht|mond|stern|dunkel|traum|dream|sleep|schlaf)/i },
+    { id: 'fire', icon: 'flame', suit: 'club', label: 'FIRE', test: /(fire|burn|flame|feuer|brenn|flamme|blood|blut|hot|heiss)/i },
+    { id: 'sea', icon: 'wave', suit: 'spade', label: 'TIDE', test: /(sea|ocean|wave|rain|water|meer|welle|regen|wasser|river|fluss|storm|sturm)/i },
+    { id: 'city', icon: 'city', suit: 'club', label: 'CITY', test: /(city|street|car|road|drive|stadt|strasse|straße|auto|fahrt|licht|light|highway|freeway)/i },
+    { id: 'time', icon: 'clock', suit: 'diamond', label: 'TIME', test: /(time|clock|year|hour|zeit|uhr|jahr|stunde|minute|endless)/i },
+    { id: 'flower', icon: 'flower', suit: 'heart', label: 'BLOOM', test: /(flower|garden|blume|garten|rose|tree|baum|grow|wächst|waechst)/i },
+    { id: 'eye', icon: 'eye', suit: 'spade', label: 'VISION', test: /(eye|see|look|watch|auge|seh|blick|vision|stare)/i },
+    { id: 'fight', icon: 'burst', suit: 'club', label: 'FIGHT', test: /(fight|war|battle|kampf|krieg|strike|schlag|enemy|feind)/i },
+  ];
+
+  const MOTIF_FALLBACKS = [
+    { id: 'star', icon: 'star', suit: 'spade', label: 'STAR' },
+    { id: 'night', icon: 'moon', suit: 'spade', label: 'NIGHT' },
+    { id: 'eye', icon: 'eye', suit: 'spade', label: 'VISION' },
+    { id: 'flower', icon: 'flower', suit: 'heart', label: 'BLOOM' },
+    { id: 'love', icon: 'heart', suit: 'heart', label: 'LOVE' },
+  ];
+
+  // First matching motif in reading order; a seeded fallback for neutral lines.
+  function motifOf(text, seed) {
+    const raw = String(text || '');
+    for (const motif of MOTIFS) {
+      if (motif.test.test(raw)) return { id: motif.id, icon: motif.icon, suit: motif.suit, label: motif.label };
+    }
+    const rnd = prng((Number(seed) >>> 0) ^ 0x51f3a7);
+    const fallback = MOTIF_FALLBACKS[Math.floor(rnd() * MOTIF_FALLBACKS.length)];
+    return Object.assign({}, fallback);
+  }
+
+  const CARDS_DEFAULT = { bg: '#0a0913', paper: '#f6eedc', ink: '#16110d', accent: '#cf2038', gold: '#d7a73c', soft: '#b9a98c' };
+
+  // Dark table, cream cards, one red printing ink – readable on every cover.
+  function cardsColors(colors) {
+    const out = Object.assign({}, CARDS_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    out.bg = hsl(ha, Math.max(0.12, Math.min(0.45, sa * 0.4)), 0.065);
+    out.paper = hsl(ha + 24, 0.22, 0.93);
+    out.ink = ensureContrast(hsl(ha, 0.2, 0.12), hexToRgb(out.paper), 12, '#16110d');
+    // Playing-card red stays red; a cover near red may tint it slightly.
+    const redHue = hueDistance(ha, 355) <= 26 ? ha : hueDistance(hb, 355) <= 26 ? hb : 355;
+    out.accent = ensureContrast(hsl(redHue, 0.82, 0.46), hexToRgb(out.paper), 4.5, CARDS_DEFAULT.accent);
+    out.gold = ensureContrast(hsl(42 + Math.max(-14, Math.min(14, ha - 42)), 0.62, 0.54), hexToRgb(out.paper), 1.8, CARDS_DEFAULT.gold);
+    out.soft = ensureContrast(hsl(ha + 15, 0.25, 0.35), hexToRgb(out.paper), 3, CARDS_DEFAULT.soft);
+    return out;
+  }
+
+  const REVOLT_RED = { bg: '#e01b2e', fg: '#fff8ee', ink: '#0b0b0d', accent: '#ffd21f' };
+  const REVOLT_BLACK = { bg: '#0b0b0d', fg: '#fff8ee', ink: '#000000', accent: '#ff3045' };
+
+  // Protest-poster red/black/white; a cover near red may tint the ground.
+  function revoltColors(colors, tone) {
+    const out = Object.assign({}, tone === 'black' ? REVOLT_BLACK : REVOLT_RED);
+    const pair = coverPair(colors);
+    if (pair) {
+      const [ha, sa] = rgbToHsl(pair[0]);
+      const [hb, sb] = rgbToHsl(pair[1]);
+      if (sa >= 0.3 && hueDistance(ha, 355) <= 20) out.bg = hsl(ha, Math.max(0.72, sa), tone === 'black' ? 0.2 : 0.46);
+      if (sb >= 0.3) out.accent = hsl(hb, Math.max(0.8, sb), 0.6);
+    }
+    const bg = hexToRgb(out.bg);
+    out.fg = ensureContrast(out.fg, bg, tone === 'black' ? 12 : 4.5, '#ffffff');
+    out.accent = ensureContrast(out.accent, bg, 3.5, REVOLT_RED.accent);
+    out.ink = ensureContrast(out.ink, hexToRgb(out.fg), 10, '#000000');
+    return out;
+  }
+
+  const STORY_DEFAULT = { bg: '#12202b', fg: '#f4eee2', accent: '#e3563f', accent2: '#e9c46a', soft: '#31576b', paper: '#efe4cf' };
+
+  // Editorial illustration ground: deep ink blue, warm paper, red + gold.
+  // The cover only leans the hues a little – an orange cover must not turn
+  // the night scene brown.
+  function storyColors(colors) {
+    const out = Object.assign({}, STORY_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha] = rgbToHsl(pair[0]);
+    const lean = (target) => target + Math.max(-18, Math.min(18, ha - target)) * 0.35;
+    out.bg = hsl(lean(205), 0.46, 0.1);
+    out.accent = hsl(lean(6), 0.74, 0.56);
+    out.accent2 = hsl(lean(42), 0.78, 0.63);
+    out.soft = hsl(lean(198), 0.32, 0.34);
+    out.paper = hsl(lean(40), 0.3, 0.91);
+    const bg = hexToRgb(out.bg);
+    out.fg = ensureContrast(out.fg, bg, 10, '#ffffff');
+    out.accent = ensureContrast(out.accent, bg, 3.5, STORY_DEFAULT.accent);
+    out.accent2 = ensureContrast(out.accent2, bg, 3.5, STORY_DEFAULT.accent2);
+    out.soft = ensureContrast(out.soft, bg, 1.5, '#4f7a8c');
+    return out;
+  }
+
+  /**
+   * Card frame: a fan of playing/tarot cards whose symbols follow the line.
+   *   { motif, cards: [{ icon, suit, rank, label, rot, x, y, scale }],
+   *     key, stack, side: 'left'|'right', spark }
+   */
+  function cardsFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const text = options && options.text ? String(options.text) : texts.join(' ');
+    const portrait = Boolean(options && options.portrait);
+    const motif = motifOf(text, seed);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x1c4a);
+    const count = 2 + Math.floor(rnd() * 2);
+    const ranks = ['A', 'II', 'V', 'X', 'XIII', 'XXI'];
+    const alt = ['star', 'moon', 'eye', 'heart', 'sun', 'flower'];
+    const cards = [];
+    for (let i = 0; i < count; i += 1) {
+      cards.push({
+        icon: i === 0 ? motif.icon : alt[Math.floor(rnd() * alt.length)],
+        suit: motif.suit,
+        rank: ranks[Math.floor(rnd() * ranks.length)],
+        label: i === 0 ? motif.label : '',
+        rot: Math.round((-9 + i * 7 + rnd() * 5) * 10) / 10,
+        x: Math.round((i * 7 - (count - 1) * 3.5 + rnd() * 2) * 10) / 10,
+        y: Math.round((i * 4 - (count - 1) * 2 + rnd() * 2) * 10) / 10,
+        scale: Math.round((1 - i * 0.035) * 100) / 100,
+      });
+    }
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    return {
+      motif,
+      cards,
+      key,
+      stack: portrait && texts.length > 1,
+      side: portrait || rnd() < 0.72 ? 'left' : 'right',
+      spark: rnd() < 0.8,
+    };
+  }
+
+  /**
+   * Revolt frame: red/black poster, cut-out caps, slashes and a star burst.
+   *   { motif, tone: 'red'|'black', key, slashes, burst, angle, stack }
+   */
+  function revoltFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const text = options && options.text ? String(options.text) : texts.join(' ');
+    const rnd = prng((Number(seed) >>> 0) ^ 0x7e21);
+    const portrait = Boolean(options && options.portrait);
+    const motif = motifOf(text, seed);
+    const hot = ['love', 'fire', 'fight', 'money'].includes(motif.id);
+    const tone = hot ? 'red' : rnd() < 0.78 ? 'red' : 'black';
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    return {
+      motif,
+      tone,
+      key,
+      slashes: 1 + (hot ? 2 : 0) + Math.floor(rnd() * 2),
+      burst: rnd() < 0.85,
+      angle: Math.round((rnd() * 5 - 2.5) * 10) / 10,
+      stack: portrait && texts.length > 1,
+    };
+  }
+
+  const SCENE_OF = {
+    love: 'love',
+    money: 'money',
+    night: 'night',
+    fire: 'fire',
+    fight: 'fire',
+    sea: 'sea',
+    city: 'city',
+    time: 'time',
+    flower: 'flower',
+    eye: 'eye',
+    star: 'night',
+  };
+
+  /**
+   * Story frame: flat vector scene chosen from the line, hand-set words.
+   *   { motif, scene, key, rows, stack, align, tilt, caption }
+   */
+  function storyFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const text = options && options.text ? String(options.text) : texts.join(' ');
+    const portrait = Boolean(options && options.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x3b9d);
+    const motif = motifOf(text, seed);
+    const total = texts.reduce((sum, t) => sum + letterCount(t), 0);
+    const stack = texts.length >= 2 && (portrait || total > 12);
+    const rows = stack ? texts.map((_t, i) => [i]) : [texts.map((_t, i) => i)];
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    return {
+      motif,
+      scene: SCENE_OF[motif.id] || 'night',
+      key,
+      rows,
+      stack,
+      align: rnd() < 0.6 ? 'left' : 'center',
+      tilt: Math.round((rnd() * 4 - 2) * 10) / 10,
+      caption: motif.label,
+    };
+  }
+
   window.CMLyricVideo = {
     FILLERS,
     normWord,
@@ -903,6 +1122,11 @@
     collagePalette,
     synthColors,
     comicColors,
+    cardsColors,
+    revoltColors,
+    storyColors,
+    MOTIFS,
+    motifOf,
     posterFrame,
     brushFrame,
     cinemaFrame,
@@ -910,6 +1134,9 @@
     collageFrame,
     synthFrame,
     comicFrame,
+    cardsFrame,
+    revoltFrame,
+    storyFrame,
     cinemaHeart,
     prng,
   };

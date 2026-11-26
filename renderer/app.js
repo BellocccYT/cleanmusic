@@ -5503,8 +5503,9 @@
   const WHATS_NEW = {
     '2.2.0': [
       'Vier neue Motion-Songtexte für den Vollbild-Player: „Störung“ (Glitch mit RGB-Versatz, Scanlines und Zeitcode – ruhig statt flackernd), „Collage“ (jeder Buchstabe ein eigener Papierschnipsel mit Klebeband), „Synthwave“ (Chromschrift über Rasterhorizont und gestreifter Sonne) und „Comic“ (Pop-Art-Lettern mit Sprechblase, Stern und Rasterpunkten).',
-      'Alle acht Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
-      'Die vier neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
+      'Drei Stile, die den Songtext lesen: „Karten“ legt Tarot-/Spielkarten mit Herz für Liebe, Münze für Geld oder Mond für die Nacht; „Revolte“ wird bei Feuer-, Kampf- und Liebeszeilen zum roten Poster mit Stern; „Bilderbogen“ zeichnet eine flache Szene aus der Zeile (Stadt und Auto bei „Drive“, Mond bei „Night“, Herz bei „Love“).',
+      'Alle elf Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
+      'Die neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
       'Neu als optionales Plugin: CleanMusic auf dem CORSAIR XENEON EDGE (inoffiziell). Das iCUE-Widget zeigt Cover, Titel, Songtext und große Touch-Knöpfe; gekoppelt wird mit einem 4-stelligen Code unter Einstellungen → Plugins. Widget und Plugin-Datei liegen beim Release auf GitHub.',
     ],
     '2.1.1': [
@@ -6414,11 +6415,14 @@
     ['collage', 'Collage'],
     ['synthwave', 'Synthwave'],
     ['comic', 'Comic'],
+    ['cards', 'Karten'],
+    ['revolt', 'Revolte'],
+    ['story', 'Bilderbogen'],
   ];
   // Effects that show one big line instead of the scrolling list.
-  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
+  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
   // Motion styles (lyric-stage.js): fill the whole fullscreen player.
-  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
+  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
 
   function lyricsEffect() {
     return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';

@@ -134,14 +134,17 @@ check('wordTimes is safe for empty lines and missing next time', () => {
 
 /* --- 2.1.1: motion lyric styles (poster, brush, cinema) --------------------- */
 
-check('the eight motion styles are known, frame styles exclude the stacked one', () => {
-  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic']);
-  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic']);
+check('the eleven motion styles are known, frame styles exclude the stacked one', () => {
+  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story']);
+  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story']);
   assert.equal(LV.isStyle('poster'), true);
   assert.equal(LV.isStyle('glitch'), true);
   assert.equal(LV.isStyle('collage'), true);
   assert.equal(LV.isStyle('synthwave'), true);
   assert.equal(LV.isStyle('comic'), true);
+  assert.equal(LV.isStyle('cards'), true);
+  assert.equal(LV.isStyle('revolt'), true);
+  assert.equal(LV.isStyle('story'), true);
   assert.equal(LV.isStyle('karaoke'), false);
   assert.equal(LV.letterCount("i'm"), 2);
   assert.equal(LV.letterCount('愛してる'), 4, 'non-Latin letters count');
@@ -428,6 +431,83 @@ check('synthFrame and comicFrame: rows, stack and sensible keywords', () => {
   const empty = LV.comicFrame({ words: [] }, 5);
   assert.equal(empty.key, -1);
   assert.equal(empty.accent, -1, 'no accent without words');
+});
+
+/* --- 2.2.0: lyric-aware cards, revolt, story ------------------------------- */
+
+check('motifOf reads love, money, night, city and fire from the line', () => {
+  assert.equal(LV.motifOf('My heart is on fire').id, 'love');
+  assert.equal(LV.motifOf('A lot of money, be my own housewife').id, 'money');
+  assert.equal(LV.motifOf('Acres of open stars in the dark night').id, 'night');
+  assert.equal(LV.motifOf('Drive fast through the city').id, 'city');
+  assert.equal(LV.motifOf('We fight until the war is over').id, 'fight');
+  assert.equal(LV.motifOf('Rain on the sea').id, 'sea');
+  assert.equal(LV.motifOf('Mein Herz brennt').id, 'love');
+  // Neutral lines get a deterministic fallback.
+  const a = plain(LV.motifOf('la la la', 42));
+  assert.deepEqual(a, plain(LV.motifOf('la la la', 42)));
+  assert.ok(['star', 'night', 'eye', 'flower', 'love'].includes(a.id));
+  assert.equal(LV.motifOf('sex on the side').suit, 'heart');
+  assert.equal(LV.motifOf('cash and gold').suit, 'diamond');
+});
+
+check('card/revolt/story colours stay readable on every cover', () => {
+  for (const colors of covers) {
+    const cards = LV.cardsColors(colors);
+    assert.ok(LV.contrast(cards.ink, cards.paper) >= 12, `card ink (${colors && colors[0]})`);
+    assert.ok(LV.contrast(cards.accent, cards.paper) >= 4.5, 'card printing ink');
+    const red = LV.revoltColors(colors, 'red');
+    const black = LV.revoltColors(colors, 'black');
+    assert.ok(LV.contrast(red.fg, red.bg) >= 4.5, 'red poster type');
+    assert.ok(LV.contrast(red.accent, red.bg) >= 3.5, 'red poster accent');
+    assert.ok(LV.contrast(black.fg, black.bg) >= 12, 'black poster type');
+    const story = LV.storyColors(colors);
+    assert.ok(LV.contrast(story.fg, story.bg) >= 10, 'story type');
+    assert.ok(LV.contrast(story.accent, story.bg) >= 3.5, 'story accent');
+  }
+});
+
+check('cardsFrame derives cards and symbols from the words', () => {
+  const love = plain(LV.cardsFrame(frameChunkLong, 11, { text: 'Be my sex on the side' }));
+  assert.deepEqual(love, plain(LV.cardsFrame(frameChunkLong, 11, { text: 'Be my sex on the side' })), 'deterministic');
+  assert.equal(love.motif.id, 'love');
+  assert.equal(love.cards[0].icon, 'heart');
+  assert.equal(love.cards[0].suit, 'heart');
+  assert.ok(love.cards.length >= 2 && love.cards.length <= 3);
+  love.cards.forEach((card) => {
+    assert.ok(card.rot >= -15 && card.rot <= 25);
+    assert.ok(card.scale > 0.8 && card.scale <= 1);
+  });
+  const money = LV.cardsFrame(frameChunk, 11, { text: 'A lot of money' });
+  assert.equal(money.motif.id, 'money');
+  assert.equal(money.cards[0].icon, 'coin');
+  assert.equal(LV.cardsFrame(frameChunkLong, 11, { text: 'Be my sex', portrait: true }).stack, true);
+});
+
+check('revoltFrame picks a red poster for hot lines and keeps calm ones quieter', () => {
+  const hot = plain(LV.revoltFrame(frameChunkLong, 9, { text: 'We fight the fire' }));
+  assert.deepEqual(hot, plain(LV.revoltFrame(frameChunkLong, 9, { text: 'We fight the fire' })), 'deterministic');
+  assert.equal(hot.tone, 'red');
+  assert.ok(hot.slashes >= 3, 'hot lines get more slashes');
+  assert.equal(hot.motif.id, 'fire');
+  const calm = LV.revoltFrame(frameChunkLong, 9, { text: 'A quiet afternoon' });
+  assert.ok(['red', 'black'].includes(calm.tone));
+  assert.ok(calm.slashes >= 1 && calm.slashes <= 3);
+  assert.equal(LV.revoltFrame(frameChunkLong, 9, { text: 'We fight the fire', portrait: true }).stack, true);
+});
+
+check('storyFrame turns the line into a scene and keeps every word', () => {
+  const drive = plain(LV.storyFrame(frameChunkLong, 4, { text: 'Drive fast out of here' }));
+  assert.deepEqual(drive, plain(LV.storyFrame(frameChunkLong, 4, { text: 'Drive fast out of here' })), 'deterministic');
+  assert.equal(drive.motif.id, 'city');
+  assert.equal(drive.scene, 'city');
+  assert.equal(drive.caption, 'CITY');
+  assert.equal(LV.storyFrame(frameChunkLong, 4, { text: 'My heart is on fire' }).scene, 'love');
+  assert.equal(LV.storyFrame(frameChunkLong, 4, { text: 'Rain on the sea' }).scene, 'sea');
+  assert.equal(LV.storyFrame(frameChunkLong, 4, { text: 'Stars in the night' }).scene, 'night');
+  assert.equal(LV.storyFrame(frameChunkLong, 4, { text: 'Drive fast', portrait: true }).stack, true);
+  const rows = LV.storyFrame(frameChunkLong, 4, { text: 'Drive fast', portrait: true }).rows;
+  assert.equal(rows.length, 4, 'upright: one word per row');
 });
 
 console.log(`${checks} passed, 0 failed`);
