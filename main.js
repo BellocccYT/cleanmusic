@@ -3868,6 +3868,12 @@ function createMainWindow() {
         }
 
         try {
+          console.log('SMOKE_REDIRECT:', JSON.stringify(await smokeRedirect()));
+        } catch (error) {
+          console.error('SMOKE_REDIRECT_FAIL:', error.message);
+        }
+
+        try {
           const startMenuSmoke = await smokeStartMenu();
           console.log('SMOKE_STARTMENU:', JSON.stringify(startMenuSmoke));
           const broken =
@@ -6960,6 +6966,122 @@ async function smokeDiagnose() {
   }
 }
 
+// 12 s of a 440 Hz tone as 16-bit mono WAV (audible, unlike the silence smoke).
+function smokeToneWav(seconds = 12, rate = 22050) {
+  const samples = seconds * rate;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + samples * 2, 4);
+  wav.write('WAVE', 8);
+  wav.write('fmt ', 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24);
+  wav.writeUInt32LE(rate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i += 1) {
+    wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 0.4 * 32767), 44 + i * 2);
+  }
+  return wav;
+}
+
+// A stream that the server redirects to another origin, played with the audio
+// chain on: up to 2.3.0 Web Audio only got zeros (silent title, flat
+// visualizer, no error). Now the player loads the target directly.
+async function smokeRedirect() {
+  if (!isSmoke) throw new Error('Weiterleitungs-Smoke ist nur im Smoke-Profil erlaubt.');
+  const tone = smokeToneWav();
+  const listen = (server) =>
+    new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+  const target = http.createServer((request, response) => {
+    const range = /bytes=(\d+)-(\d*)/.exec(request.headers.range || '');
+    if (range) {
+      const start = Math.min(Number(range[1]), tone.length - 1);
+      const end = range[2] ? Math.min(Number(range[2]), tone.length - 1) : tone.length - 1;
+      response.writeHead(206, {
+        'content-type': 'audio/wav',
+        'content-length': end - start + 1,
+        'content-range': `bytes ${start}-${end}/${tone.length}`,
+        'accept-ranges': 'bytes',
+      });
+      response.end(tone.subarray(start, end + 1));
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'audio/wav', 'content-length': tone.length, 'accept-ranges': 'bytes' });
+    response.end(tone);
+  });
+  await listen(target);
+  const targetPort = target.address().port;
+  const to = `http://127.0.0.1:${targetPort}/ziel.wav?t=1`;
+  const origin = http.createServer((request, response) => {
+    if (request.url && request.url.startsWith('/weiter')) {
+      response.writeHead(302, { location: to });
+      response.end();
+      return;
+    }
+    response.writeHead(404, { 'content-type': 'text/plain' });
+    response.end('nicht da');
+  });
+  await listen(origin);
+  const originPort = origin.address().port;
+  const from = `http://127.0.0.1:${originPort}/weiter.wav?t=1`;
+  try {
+    const played = await mainWindow.webContents.executeJavaScript(`
+      (async () => {
+        const cm = window.CleanMusic;
+        const viz = window.CMVisualizer;
+        const audio = document.querySelector('#audio');
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        cm.setTone(3, 0); // audio chain on – the case that went silent
+        cm.diagnosticPlay(${JSON.stringify(from)}, { title: 'Weiterleitung' });
+        let peak = 0;
+        let followed = false;
+        for (let i = 0; i < 48; i += 1) {
+          await wait(250);
+          followed = followed || audio.getAttribute('src') === ${JSON.stringify(to)};
+          const value = viz.signal();
+          if (value !== null && audio.currentTime > 0.3) peak = Math.max(peak, value);
+          if (followed && peak > 0.05 && audio.currentTime > 2) break;
+        }
+        const result = {
+          engine: viz.hasEngine(),
+          followed,
+          peak: Number(peak.toFixed(4)),
+          time: Number(audio.currentTime.toFixed(2)),
+          paused: audio.paused,
+        };
+        cm.setTone(0, 0);
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+        return result;
+      })()
+    `);
+    const text = await diagnosticText();
+    const result = {
+      ...played,
+      listed:
+        text.includes('Medien-Weiterleitungen auf andere Server (letzte 10)') &&
+        text.includes(`127.0.0.1:${originPort} → 127.0.0.1:${targetPort}`),
+      hostOnly: !text.includes('/weiter.wav') && !text.includes('/ziel.wav'),
+    };
+    if (!result.engine || !result.followed || !(result.peak > 0.05) || !result.listed || !result.hostOnly) {
+      throw new Error(JSON.stringify(result));
+    }
+    return result;
+  } finally {
+    origin.close();
+    target.close();
+  }
+}
+
 // Start menu shortcut: portable copies have none, and without it Windows has
 // nothing to pin to Start or the taskbar. The smoke profile writes into its own
 // folder, so the real Start menu is never touched.
@@ -7567,6 +7689,42 @@ function mediaHost(value) {
   }
 }
 
+// Media redirects to another origin (diagnosis): host only, never the URL.
+// Such a title plays, but Web Audio only gets zeros – with the audio chain on
+// it runs silent. The renderer then loads the target directly (media-redirect).
+const mediaRedirects = [];
+
+function recordMediaRedirect(from, to) {
+  mediaRedirects.push({ at: new Date().toISOString(), from: mediaHost(from), to: mediaHost(to) });
+  if (mediaRedirects.length > 10) mediaRedirects.splice(0, mediaRedirects.length - 10);
+}
+
+function mediaOriginOf(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return /^https?:$/.test(url.protocol) ? url.origin : '';
+  } catch {
+    return '';
+  }
+}
+
+function onMediaRedirect(details) {
+  if (!details || details.resourceType !== 'media') return;
+  const from = String(details.url || '');
+  const to = cleanUrl(details.redirectURL);
+  if (!to) return;
+  // The plugin asked for these headers on its URL – the next hop is the same file.
+  const headers = pluginStreamHeaders.get(from);
+  if (headers && !pluginStreamHeaders.has(to)) pluginStreamHeaders.set(to, headers);
+  const before = mediaOriginOf(from);
+  const after = mediaOriginOf(to);
+  if (!before || !after || before === after) return;
+  recordMediaRedirect(from, to);
+  if (mainWindow && !mainWindow.isDestroyed() && details.webContentsId === mainWindow.webContents.id) {
+    sendToRenderer('media-redirect', { from, to });
+  }
+}
+
 function recordMediaRequestError(what, url) {
   mediaRequestErrors.push({
     at: new Date().toISOString(),
@@ -7669,6 +7827,13 @@ async function diagnosticText() {
   else {
     mediaRequestErrors.forEach((error) => {
       lines.push(`[${error.at}] ${error.what} · ${error.host || 'ohne Host'}`);
+    });
+  }
+  lines.push('', 'Medien-Weiterleitungen auf andere Server (letzte 10):');
+  if (!mediaRedirects.length) lines.push('Keine.');
+  else {
+    mediaRedirects.forEach((redirect) => {
+      lines.push(`[${redirect.at}] ${redirect.from || 'ohne Host'} → ${redirect.to || 'ohne Host'}`);
     });
   }
   lines.push('', 'Letzte Fehler (maximal 30):');
@@ -9327,6 +9492,7 @@ app.whenReady().then(async () => {
     if (!error || error === 'net::ERR_ABORTED') return;
     recordMediaRequestError(error, details.url);
   });
+  session.defaultSession.webRequest.onBeforeRedirect(mediaFilter, onMediaRedirect);
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
   updateLoginItem();
   try {

@@ -115,4 +115,55 @@ check('stall guard leaves pauses, seeks, radio, local and handled titles alone',
   assert.equal(P.stallDecision(null), 'wait');
 });
 
+check('mediaOrigin: scheme + host, default ports dropped, nothing else', () => {
+  assert.equal(P.mediaOrigin('https://rr2---sn-abc.googlevideo.com/videoplayback?id=1'), 'https://rr2---sn-abc.googlevideo.com');
+  assert.equal(P.mediaOrigin('HTTPS://Example.COM:443/a'), 'https://example.com');
+  assert.equal(P.mediaOrigin('http://127.0.0.1:80/x'), 'http://127.0.0.1');
+  assert.equal(P.mediaOrigin('http://127.0.0.1:4810/x'), 'http://127.0.0.1:4810');
+  assert.equal(P.mediaOrigin('https://user:pw@host.example/x'), 'https://host.example');
+  assert.equal(P.mediaOrigin('file:///C:/Musik/a.mp3'), '');
+  assert.equal(P.mediaOrigin('blob:abc'), '');
+  assert.equal(P.mediaOrigin(null), '');
+});
+
+check('redirect to another origin is followed for the title that is loading', () => {
+  const sample = {
+    from: 'https://rr2---sn-a.googlevideo.com/videoplayback?id=1',
+    to: 'https://rr5---sn-b.googlevideo.com/videoplayback?id=1&cms_redirect=yes',
+    src: 'https://rr2---sn-a.googlevideo.com/videoplayback?id=1',
+    kind: 'plugin',
+    hops: 0,
+  };
+  assert.equal(P.redirectDecision(sample), 'follow');
+  // currentSrc and the src attribute may differ in spelling – either matches.
+  assert.equal(P.redirectDecision({ ...sample, src: ['https://other/', sample.from] }), 'follow');
+  // Radio and Jamendo/Openverse links redirect to their CDN as well.
+  assert.equal(P.redirectDecision({ ...sample, kind: 'radio' }), 'follow');
+  assert.equal(P.redirectDecision({ ...sample, kind: 'stream' }), 'follow');
+  assert.equal(P.redirectDecision({ ...sample, hops: undefined }), 'follow');
+  assert.equal(P.redirectDecision({ ...sample, to: 'http://rr5---sn-b.googlevideo.com/x' }), 'follow');
+  assert.equal(P.redirectDecision({ ...sample, from: 'http://127.0.0.1:4810/a', src: 'http://127.0.0.1:4810/a', to: 'http://127.0.0.1:4811/a' }), 'follow');
+});
+
+check('redirect: same origin, other element, local files, loops and junk are ignored', () => {
+  const sample = {
+    from: 'https://a.example/x',
+    to: 'https://b.example/x',
+    src: 'https://a.example/x',
+    kind: 'preview',
+    hops: 0,
+  };
+  assert.equal(P.redirectDecision({ ...sample, to: 'https://a.example/y' }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, to: 'https://a.example:443/y' }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, src: 'https://prefetch.example/next' }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, src: '' }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, kind: 'local' }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, hops: P.REDIRECT_HOPS }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, to: 'javascript:alert(1)' }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, to: 'file:///C:/x.mp3' }), 'ignore');
+  assert.equal(P.redirectDecision({ ...sample, to: sample.from }), 'ignore');
+  assert.equal(P.redirectDecision(null), 'ignore');
+  assert.equal(P.REDIRECT_HOPS, 3);
+});
+
 console.log(`\n${checks} passed, 0 failed`);

@@ -89,6 +89,44 @@
     return 'fail';
   }
 
+  // A media request that the server redirects to another origin – YouTube's
+  // CDN sends rarely played videos to a different cache server, radio and
+  // Jamendo links point to their CDN. Chromium then treats the data as
+  // cross-origin: the element still plays it, but Web Audio only gets zeros.
+  // With the audio chain on (EQ, bass/treble, levelling, boost) the title runs
+  // silent and the visualizer stays flat – no error, so nothing is reported.
+  // Loading the redirect target directly keeps the data single-origin.
+  const REDIRECT_HOPS = 3;
+
+  // "scheme://host[:port]" without default ports, '' for anything but http(s).
+  function mediaOrigin(url) {
+    const match = /^(https?):\/\/([^/?#\s]+)/i.exec(String(url || ''));
+    if (!match) return '';
+    const scheme = match[1].toLowerCase();
+    let host = match[2].toLowerCase().replace(/^[^@]*@/, '');
+    if ((scheme === 'http' && /:80$/.test(host)) || (scheme === 'https' && /:443$/.test(host))) {
+      host = host.replace(/:\d+$/, '');
+    }
+    return host ? `${scheme}://${host}` : '';
+  }
+
+  function redirectDecision(sample) {
+    const input = sample && typeof sample === 'object' ? sample : {};
+    const from = String(input.from || '');
+    const to = String(input.to || '');
+    if (!from || !to || from === to) return 'ignore';
+    // Only what the player is loading right now (not a prefetch, not an old title).
+    const sources = (Array.isArray(input.src) ? input.src : [input.src]).map((value) => String(value || ''));
+    if (!sources.includes(from)) return 'ignore';
+    if (input.kind === 'local') return 'ignore';
+    const before = mediaOrigin(from);
+    const after = mediaOrigin(to);
+    // Same origin stays usable for Web Audio – nothing to do.
+    if (!before || !after || before === after) return 'ignore';
+    if ((Number(input.hops) || 0) >= REDIRECT_HOPS) return 'ignore';
+    return 'follow';
+  }
+
   window.CMPlayback = {
     REPEAT,
     normalize,
@@ -103,5 +141,8 @@
     singleContext,
     STALL_MS,
     stallDecision,
+    REDIRECT_HOPS,
+    mediaOrigin,
+    redirectDecision,
   };
 })();

@@ -443,7 +443,14 @@ Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. E
   nie aus). Liefert ein voller Titel über ein Plugin nach einigen Sekunden keinen
   Ton, wird er einmal neu geladen; bleibt es dabei, läuft die 30-s-Vorschau.
   Vorschauen und lokale Titel bekommen nur einen Hinweis, Radio bleibt außen vor
-  (Pausen sind dort normal). Ohne Visualizer wird nichts vermutet.
+  (Pausen sind dort normal). Ohne Visualizer wird nichts vermutet. Jeder dieser
+  Schritte steht unter *Wiedergabe-Probleme* in der Diagnose („ohne Ton → …“).
+- **Weiterleitungen auf andere Server:** Manche Streams (z. B. selten gehörte
+  YouTube-Videos über das Plugin, Radiosender, Jamendo-Links) leiten auf einen
+  anderen Server weiter. Chromium gibt der Audio-Kette (EQ, Bass/Höhen,
+  Angleichen, Boost) für solche Daten nur Stille weiter. CleanMusic lädt deshalb
+  die Zieladresse direkt an derselben Stelle nach. Die Diagnose listet solche
+  Weiterleitungen unter *Medien-Weiterleitungen auf andere Server*, nur mit Hosts.
 
 ### Visualizer (optional)
 

@@ -101,6 +101,12 @@ contextBridge.exposeInMainWorld('cm', {
   onStageScene: (listener) => {
     ipcRenderer.on('stage-scene', (_event, scene) => listener(scene || null));
   },
+  // A media request was redirected to another origin (see main.js onMediaRedirect).
+  onMediaRedirect: (listener) => {
+    ipcRenderer.on('media-redirect', (_event, info) =>
+      listener({ from: String((info && info.from) || ''), to: String((info && info.to) || '') })
+    );
+  },
   onDiscordStatus: (listener) => {
     ipcRenderer.on('discord-status', (_event, status) => listener(status));
   },

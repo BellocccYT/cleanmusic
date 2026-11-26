@@ -5144,14 +5144,22 @@
 
   // One entry per title (playToken), never the full URL. The main process
   // cleans and limits the list again before it lands in the diagnostic text.
-  function notePlaybackProblem(reason) {
-    if (failedPlayToken === playToken) return;
-    failedPlayToken = playToken;
+  // The silence guard notes each of its steps (`detail`) – a title that runs
+  // without sound has no error, so nothing else would show up.
+  function notePlaybackProblem(reason, detail = '') {
+    const silent = reason === 'silence';
+    if (!silent) {
+      if (failedPlayToken === playToken) return;
+      failedPlayToken = playToken;
+    }
     const item = currentItem();
     const source = audio.currentSrc || audio.getAttribute('src') || '';
     const error = audio.error;
-    const art =
-      reason === 'stall'
+    const viz = window.CMVisualizer;
+    const chain = Boolean(viz && typeof viz.hasEngine === 'function' && viz.hasEngine());
+    const art = silent
+      ? `ohne Ton → ${detail || 'Hinweis'}${chain ? ' · Audio-Kette an' : ''}`
+      : reason === 'stall'
         ? 'hängt 12 s'
         : error
           ? `Fehlercode ${error.code}`
@@ -5289,6 +5297,52 @@
           ? 'Die Datei ist nicht lesbar oder wurde verschoben.'
           : 'Der Titel konnte nicht abgespielt werden.'
     );
+  }
+
+  // A media request redirected to another origin (main.js onMediaRedirect):
+  // Chromium then hands Web Audio only zeros – with the audio chain on the
+  // title runs silent and the visualizer stays flat. Load the target URL
+  // directly instead (same position, same play state); see
+  // CMPlayback.redirectDecision for what is left alone.
+  const redirectFollow = { token: 0, hops: 0 };
+
+  function followMediaRedirect(info) {
+    const from = String((info && info.from) || '');
+    const to = String((info && info.to) || '');
+    if (redirectFollow.token !== playToken) {
+      redirectFollow.token = playToken;
+      redirectFollow.hops = 0;
+    }
+    const item = currentItem();
+    const decision = CMPlayback.redirectDecision({
+      from,
+      to,
+      src: [audio.getAttribute('src') || '', audio.currentSrc || ''],
+      kind: item ? item.kind : '',
+      hops: redirectFollow.hops,
+    });
+    if (decision !== 'follow') return;
+    redirectFollow.hops += 1;
+
+    const token = playToken;
+    const at = Number(audio.currentTime) || 0;
+    const resume = !audio.paused;
+    audio.src = to;
+    if (at > 0.5) {
+      audio.addEventListener(
+        'loadedmetadata',
+        () => {
+          if (token !== playToken) return;
+          try {
+            audio.currentTime = at;
+          } catch {
+            /* keep the start */
+          }
+        },
+        { once: true }
+      );
+    }
+    if (resume) audio.play().catch(() => {});
   }
 
   // A title that never moves on is treated like a failed one. Polling is
@@ -12268,6 +12322,7 @@
 
     if (decision === 'rematch') {
       silence.tries = 1;
+      notePlaybackProblem('silence', 'anderer Treffer');
       markSilentRef(state.nowRef);
       forgetMatch(item);
       toast('Der gefundene volle Titel hat keinen Ton – suche einen anderen …');
@@ -12277,12 +12332,14 @@
 
     if (decision === 'reload') {
       silence.tries = 1;
+      notePlaybackProblem('silence', 'neu laden');
       toast('Der Stream liefert keinen Ton – Titel wird neu geladen …');
       playFromQueue(state.queue.index, { force: true, retry: true });
       return;
     }
     if (decision === 'preview') {
       silence.tries = 2;
+      notePlaybackProblem('silence', 'Vorschau');
       const token = playToken;
       const index = state.queue.index;
       freshPreview(item, true)
@@ -12303,6 +12360,7 @@
     // Never nag: at most one hint every 90 seconds, even across titles.
     if (Date.now() - silence.toldAt < 90000) return;
     silence.toldAt = Date.now();
+    notePlaybackProblem('silence', 'Hinweis');
     toast(`„${item.title}“ läuft ohne Ton – bitte Ausgabegerät und Titel prüfen.`);
   }
 
@@ -17445,6 +17503,7 @@ ${updatePanel()}
     if (bridge.onPluginsChanged) bridge.onPluginsChanged(() => refreshPlugins(false));
     if (bridge.onStageScene) bridge.onStageScene(applyStageScene);
     if (bridge.stageGet) bridge.stageGet().then(applyStageScene).catch(() => {});
+    if (bridge.onMediaRedirect) bridge.onMediaRedirect(followMediaRedirect);
 
     if (bridge.onUpdateState) bridge.onUpdateState(onUpdateState);
     if (bridge.updateGet) bridge.updateGet().then(onUpdateState).catch(() => {});
