@@ -102,7 +102,7 @@ Verlassen/Entfernen, die Leitung geht an das älteste Mitglied, leere Gruppen ve
 - Gemeinsame Gruppen-Playlist: Referenzen, höchstens 200 Titel. Alle dürfen hinzufügen,
   der Ersteller darf entfernen.
 
-### 2.1 – Freundschaftsanfragen und Online-Status (gebaut 25.11.2026, Server-Deploy offen)
+### 2.1 – Freundschaftsanfragen und Online-Status (gebaut 25.11.2026, Worker deployt)
 
 **Anfragen statt Sofort-Freundschaft.** `POST /v1/friend-code { requests: true }` legt einen
 „Frage-Code“ an (Spalte `codes.ask`, per `ALTER TABLE` ergänzt). Wer ihn mit
@@ -152,7 +152,7 @@ Die Seitenleiste zählt offene Anfragen (vor „hören gerade“). Im Smoke werd
 deploy`, CleanMusic-Konto), dann die App 2.1.0 veröffentlichen. Umgekehrt ginge es auch (die App
 fällt auf das alte Verhalten zurück), aber dann gäbe es bis zum Deploy keine Anfragen.
 
-### S3 – Gemeinsam hören (Listening-Party) ✅ gebaut (25.11.2026, für 2.1.0; Worker noch nicht deployt)
+### S3 – Gemeinsam hören (Listening-Party) ✅ gebaut (25.11.2026, für 2.1.0; Worker deployt)
 
 Umgesetzt in `server/social/src/rooms.js` (Andockpunkte in `hub.js`: `ROOM_SCHEMA`, `ROOM_RATE`, Fälle in
 `route`, `webSocketMessage`/`webSocketClose`, `deleteAccountRooms`, `cleanupRooms`, Not-Aus schließt alle
@@ -174,7 +174,7 @@ Quellen-Plugin; ohne Plugin fällt der Gast auf die 30-Sekunden-Vorschau zurück
 Titel/Artist im Katalog, auch für YouTube-Referenzen). Mit „Im Raum nur Vorschauen“ (`previewOnly`)
 spielt auch der Host die Vorschau, damit alle ohne Plugin dasselbe hören.
 
-2.2 – Jam und Algorithmus-Schalter: Raum-Snapshots tragen zusätzlich `jam` und `queue` (bis 50
+2.2 – Jam und Algorithmus-Schalter (veröffentlicht mit App 2.3.0; Worker deployt 26.11.2026, Version `c827bc68`): Raum-Snapshots tragen zusätzlich `jam` und `queue` (bis 50
 Einträge, nur `ref` + wer hinzugefügt hat, keine Audiodaten). Nachrichten: `jam` (nur Host schaltet
 an/aus), `add` (alle bei aktivem Jam, Host immer), `unqueue` (Host oder wer den Titel hinzugefügt hat)
 und `queue-clear` (Host). Der Host löst jeden Eintrag auf, hängt ihn an seine eigene Warteschlange
