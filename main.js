@@ -3030,7 +3030,23 @@ function createMainWindow() {
             if (!(first && first.effect === 'lyricvideo' && first.words > 0 && first.accent === 1 && first.html === second.html)) {
               throw new Error(JSON.stringify({ first, seedStable: first && first.html === second.html }));
             }
-            console.log('SMOKE_LYRIC_VIDEO:', JSON.stringify({ words: first.words, accent: first.accent, seedStable: first.html === second.html }));
+            // 2.1.1: alle Motion-Stile füllen den Vollbild-Player, die Steuerung blendet aus und wieder ein.
+            const stage = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsStageTest()');
+            const styles = (stage && stage.styles) || {};
+            const styleOk = (name, s) =>
+              s && s.stageMode && s.fills && s.words > 0 && s.big > 0.12 &&
+              (name === 'lyricvideo' || (s.frames >= 1 && s.chunks >= 2)) &&
+              (name !== 'cinema' || s.spectrum);
+            const broken = ['lyricvideo', 'poster', 'brush', 'cinema'].filter((name) => !styleOk(name, styles[name]));
+            if (broken.length || !(stage.idleOpacity < 0.05 && stage.activeOpacity > 0.95) || stage.plainEffectStage) {
+              throw new Error(JSON.stringify({ broken, stage }));
+            }
+            const bigness = Object.fromEntries(Object.entries(styles).map(([name, s]) => [name, Math.round(s.big * 100) / 100]));
+            console.log('SMOKE_LYRIC_VIDEO:', JSON.stringify({
+              words: first.words, accent: first.accent, seedStable: first.html === second.html,
+              styles: Object.keys(styles).length, fullscreen: true, big: bigness,
+              idle: stage.idleOpacity, active: stage.activeOpacity,
+            }));
           } catch (error) {
             console.error('SMOKE_LYRIC_VIDEO_FAIL:', error.message);
           }

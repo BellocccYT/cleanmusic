@@ -5503,6 +5503,8 @@
   const WHATS_NEW = {
     '2.1.1': [
       'Freunde, die gerade hören, erscheinen jetzt als große Karten mit Cover – mit „Mithören“ und den Emoji-Reaktionen direkt auf der Karte, dazu kleine Live-Effekte (bei „Bewegung reduzieren“ und im Sparmodus ohne Bewegung).',
+      'Motion-Songtexte im ganzen Bildschirm: Mit „Lyric Video“ und den neuen Stilen füllt der Songtext im Vollbild-Player den kompletten Bildschirm – Steuerung, Titel und „Als Nächstes“ blenden sich aus und kommen bei Mausbewegung, Tippen oder Taste zurück.',
+      'Drei neue Songtext-Stile: „Poster“ (pastellige Riesen-Schrift mit Formen, Farben wechseln je Wortgruppe), „Pinsel“ (gemalte Buchstaben auf kräftigem Grund) und „Kino“ (dunkles Glühen, Wörter gleiten mit Bewegungsunschärfe herein, echtes Spektrum unten). Farben kommen nach Möglichkeit aus dem Cover; A−/A+ ändert die Größe.',
     ],
     '2.1.0': [
       'Freundschaftsanfragen: Wer deinen Freundescode einlöst, schickt dir jetzt eine Anfrage – erst wenn du „Annehmen“ drückst, seid ihr Freunde. Ablehnen ist still, offene Anfragen laufen nach 7 Tagen ab.',
@@ -6365,7 +6367,7 @@
   function showLyricLine(index, force) {
     const host = $('#fs-lyrics');
     if (host && !host.hidden && BIG_EFFECTS.includes(lyricsEffect()) && host.querySelector('.ly-kinetic')) {
-      if (lyricsEffect() === 'lyricvideo') renderLyricVideo(host, index);
+      if (MOTION_EFFECTS.includes(lyricsEffect())) renderMotionLyric(host, index);
       else renderKinetic(host, index);
       return;
     }
@@ -6399,9 +6401,14 @@
     ['typer', 'Schreibmaschine'],
     ['zoom', 'Zoom'],
     ['lyricvideo', 'Lyric Video'],
+    ['poster', 'Poster'],
+    ['brush', 'Pinsel'],
+    ['cinema', 'Kino'],
   ];
   // Effects that show one big line instead of the scrolling list.
-  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo'];
+  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema'];
+  // Motion styles (lyric-stage.js): fill the whole fullscreen player.
+  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema'];
 
   function lyricsEffect() {
     return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';
@@ -6439,115 +6446,28 @@
       <p class="ly-k-next">${esc((next && next.text) || '')}</p>`;
   }
 
-  // Lyric Video: kinetic typography in TikTok/Shorts style (core/lyricvideo.js).
-  let lyricVideoRaf = 0;
-
-  function stopLyricVideoRaf() {
-    if (lyricVideoRaf) {
-      cancelAnimationFrame(lyricVideoRaf);
-      lyricVideoRaf = 0;
-    }
-  }
-
-  function lyricVideoReduced() {
-    return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  }
-
-  function renderLyricVideo(host, index) {
+  // Motion styles (Lyric Video, Poster, Pinsel, Kino): drawn by lyric-stage.js,
+  // full screen via #fullscreen.lyrics-stage (lyric-stage.css).
+  function renderMotionLyric(host, index) {
     const stage = host.querySelector('.ly-kinetic');
-    if (!stage) return;
-    stopLyricVideoRaf();
-    const LV = window.CMLyricVideo;
-    const line = lyricsState.lines[index];
-    const next = lyricsState.lines[index + 1];
-    const text = String((line && line.text) || '♪');
-    const layout = LV
-      ? LV.layoutLine(text, stringSeed(text))
-      : { dark: false, single: false, accent: '', vertical: '', blocks: [] };
-    const reduced = lyricVideoReduced();
-    const saver = document.documentElement.dataset.perf === 'saver';
-    const dur = lineDuration(index);
-
-    stage.className = `ly-kinetic ly-k-lyricvideo lv-stage ${layout.dark ? 'lv-dark' : 'lv-light'}${
-      layout.single ? ' lv-single' : ''
-    }${reduced ? ' lv-reduced' : ''}`;
-
-    // Flatten the layout once so word timings line up with the token order.
-    const flat = [];
-    layout.blocks.forEach((block) => block.forEach((word) => flat.push(word)));
-    const times = LV && line ? LV.wordTimes(line, next ? next.time : undefined) : [];
-    const start = line ? Number(line.time) || 0 : 0;
-
-    const wordHtml = (word, at) => {
-      const delay = times[at]
-        ? Math.max(0, Math.min(dur * 0.65, times[at].time - start))
-        : (at / Math.max(1, flat.length)) * Math.min(2.4, dur * 0.65);
-      const style = word.style;
-      const cls = `lv-word lv-${style} lv-s${word.size}`;
-      const dir = stringSeed(`${word.text}:${at}`) % 4;
-      const vars = reduced
-        ? `--lv-delay:${delay.toFixed(2)}s`
-        : `--lv-delay:${delay.toFixed(2)}s;--lv-dx:${dir === 0 ? '-46vw' : dir === 1 ? '46vw' : '0'};--lv-dy:${
-            dir === 2 ? '-30vh' : dir === 3 ? '30vh' : '0'
-          };--lv-skew:${((stringSeed(word.text) % 21) - 10)}deg;--lv-blur:${saver ? '0px' : '12px'}`;
-      const inner = style === 'vertical' ? Array.from(word.text).map((ch) => `<i>${esc(ch)}</i>`).join('') : esc(word.text);
-      return `<span class="${cls}" style="${vars}">${inner}</span>`;
-    };
-
-    let body;
-    if (layout.single) {
-      const word = flat[0] ? Object.assign({}, flat[0], { style: 'accent', size: 3 }) : { text, style: 'accent', size: 3 };
-      body = `<div class="lv-frame lv-frame-single">${wordHtml(word, 0)}</div>`;
-    } else {
-      let at = 0;
-      body = layout.blocks
-        .map((block) => `<div class="lv-block">${block.map((word) => wordHtml(word, at++)).join('')}</div>`)
-        .join('');
-    }
-
-    const cover = currentItem();
-    const silhouette =
-      !saver && cover && cover.artwork ? `<img class="lv-silhouette" src="${esc(cover.artwork)}" alt="" aria-hidden="true" />` : '';
-    const deco = saver
-      ? ''
-      : `<svg class="lv-deco" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        <g class="lv-lines">
-          <line x1="0" y1="11" x2="100" y2="4" />
-          <line x1="0" y1="30" x2="100" y2="23" />
-          <line x1="6" y1="99" x2="100" y2="91" />
-          <line x1="0" y1="72" x2="100" y2="65" />
-        </g>
-        <path class="lv-flame lv-flame-a" d="M12 6 C 19 14 22 20 22 27 A 10 10 0 1 1 2 27 C 2 20 5 14 12 6 Z" />
-        <path class="lv-flame lv-flame-b" d="M92 74 C 97 80 99 85 99 91 A 7 7 0 1 1 85 91 C 85 85 87 80 92 74 Z" />
-        <circle class="lv-circle" cx="80" cy="18" r="6" />
-      </svg>`;
-
-    stage.innerHTML = `<div class="lv-body">${body}</div>${silhouette}${deco}<p class="ly-k-next">${esc((next && next.text) || '')}</p>`;
-
-    if (!reduced) startLyricVideoPulse(stage);
+    if (!stage || !window.CMLyricStage) return;
+    const item = currentItem();
+    window.CMLyricStage.render(stage, {
+      style: lyricsEffect(),
+      lines: lyricsState.lines,
+      index,
+      time: () => (audio.currentTime || 0) + lyricsOffset(),
+      colors: state.coverColors || null,
+      artwork: item && item.artwork ? item.artwork : '',
+      title: item ? item.title || '' : '',
+      size: state.settings.lyricsSize,
+    });
   }
 
-  function startLyricVideoPulse(stage) {
-    const viz = window.CMVisualizer;
-    let dark = stage.classList.contains('lv-dark');
-    let lastFlip = 0;
-    const tick = () => {
-      if (!stage.isConnected) return;
-      const level = viz && viz.level ? viz.level() : 0;
-      const energy = viz && viz.energy ? viz.energy() : 0;
-      stage.style.setProperty('--lv-pulse', (1 + Math.min(1, level * 1.5) * 0.035).toFixed(4));
-      stage.style.setProperty('--lv-shake', `${(energy * 2).toFixed(2)}px`);
-      const now = performance.now();
-      // Strong beat flips light/dark with a minimum gap – no strobing.
-      if (energy > 0.82 && now - lastFlip > 900) {
-        lastFlip = now;
-        dark = !dark;
-        stage.classList.toggle('lv-dark', dark);
-        stage.classList.toggle('lv-light', !dark);
-      }
-      lyricVideoRaf = requestAnimationFrame(tick);
-    };
-    lyricVideoRaf = requestAnimationFrame(tick);
+  function lyricsStageOn() {
+    return (
+      lyricsOn() && lyricsSynced() && !lyricsState.loading && lyricsState.lines.length > 0 && MOTION_EFFECTS.includes(lyricsEffect())
+    );
   }
 
   function applyLyricsStyle(host) {
@@ -6558,7 +6478,10 @@
     host.dataset.fx = lyricsSynced() ? lyricsEffect() : 'none';
     host.classList.toggle('dim-past', state.settings.lyricsDim !== false);
     const fullscreen = $('#fullscreen');
-    if (fullscreen) fullscreen.classList.toggle('lyrics-focus', lyricsOn() && Boolean(state.settings.lyricsFocus));
+    if (fullscreen) {
+      fullscreen.classList.toggle('lyrics-focus', lyricsOn() && Boolean(state.settings.lyricsFocus));
+      fullscreen.classList.toggle('lyrics-stage', lyricsStageOn());
+    }
   }
 
   function offsetLabel() {
@@ -16664,7 +16587,15 @@ ${updatePanel()}
     $('#np-art').addEventListener('dblclick', () => openFullscreen());
 
     const fullscreen = $('#fullscreen');
-    fullscreen.addEventListener('mousemove', fsActivity);
+    // Chromium fires mousemove when the content under a resting pointer changes
+    // (every lyric frame) – only a real pointer move brings the controls back.
+    let fsPointer = '';
+    fullscreen.addEventListener('mousemove', (event) => {
+      const at = `${event.screenX},${event.screenY}`;
+      if (at === fsPointer) return;
+      fsPointer = at;
+      fsActivity();
+    });
     fullscreen.addEventListener('change', (event) => {
       if (event.target.id === 'fs-background-mode') setFullscreenBackground(event.target.value);
     });
@@ -16999,13 +16930,15 @@ ${updatePanel()}
     shareCurrent: () => shareEntry(currentItem()),
     // Smoke only: play a URL as a normal catalogue preview entry, so the
     // diagnosis can see a failing media request and a playback problem.
-    diagnosticPlay: (url) => {
+    diagnosticPlay: (url, meta = {}) => {
       // A direct stream, not a catalogue preview: with a match plugin active a
       // preview would be re-resolved and the smoke would never reach the URL.
+      // meta (title/artist/artwork) only for screenshots with real lyrics.
       const entry = CMEntries.openverseEntry({
         id: `diagnostic:${Date.now()}`,
-        title: 'Diagnose-Smoke',
-        artist: '',
+        title: String((meta && meta.title) || 'Diagnose-Smoke'),
+        artist: String((meta && meta.artist) || ''),
+        artwork: String((meta && meta.artwork) || ''),
         url: String(url || ''),
         sourceLabel: 'Diagnose',
       });
@@ -17462,6 +17395,82 @@ ${updatePanel()}
         state.nowMode = saved.mode;
         Object.assign(lyricsState, saved.data);
         renderLyrics();
+      }
+    },
+    // 2.1.1: every motion style fills the fullscreen player; controls fade out while idle.
+    lyricsStageTest: async () => {
+      const saved = {
+        lyrics: state.settings.lyrics,
+        effect: state.settings.lyricsEffect,
+        mode: state.nowMode,
+        data: Object.assign({}, lyricsState),
+        hold: lyricsHold,
+        open: state.fullscreen,
+      };
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const root = $('#fullscreen');
+      const out = { styles: {} };
+      lyricsHold = true;
+      try {
+        state.settings.lyrics = true;
+        state.nowMode = 'plugin';
+        Object.assign(lyricsState, {
+          key: 'smoke|stage',
+          lines: [
+            { time: 0, text: 'Think my paradise' },
+            { time: 3, text: "Truth is, it's more like loads of cash and a nice guy" },
+            { time: 7, text: 'So dance alone' },
+            { time: 10, text: '' },
+          ],
+          plain: '',
+          loading: false,
+          error: null,
+          index: -1,
+        });
+        if (!state.fullscreen) openFullscreen();
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
+        await wait(450); // the player fades in with scale(1.03) for 0.35 s
+        for (const style of MOTION_EFFECTS) {
+          state.settings.lyricsEffect = style;
+          renderLyrics();
+          showLyricLine(1, true);
+          await wait(80);
+          window.CMLyricStage.refit();
+          const stage = root.querySelector('#fs-lyrics .ly-kinetic');
+          const rect = stage ? stage.getBoundingClientRect() : { left: -1, top: -1, width: 0, height: 0 };
+          const snap = window.CMLyricStage.snapshot() || {};
+          out.styles[style] = {
+            stageMode: root.classList.contains('lyrics-stage'),
+            fills:
+              Math.abs(rect.left) < 2 && Math.abs(rect.top) < 2 &&
+              Math.abs(rect.width - window.innerWidth) < 3 && Math.abs(rect.height - window.innerHeight) < 3,
+            words: snap.words || 0,
+            frames: snap.frames || 0,
+            chunks: snap.chunks || 0,
+            // The biggest word is huge compared with the screen (not the old 900 × 320 box).
+            big: Math.max(0, ...Array.from(stage ? stage.querySelectorAll('.ls-w, .lv-word') : []).map((el) => el.getBoundingClientRect().height)) / window.innerHeight,
+            spectrum: Boolean(stage && stage.querySelector('.lc-spectrum')),
+          };
+        }
+        const controls = root.querySelector('.fs-controls');
+        root.classList.add('idle');
+        await wait(700);
+        out.idleOpacity = Number(getComputedStyle(controls).opacity);
+        fsActivity();
+        await wait(700);
+        out.activeOpacity = Number(getComputedStyle(controls).opacity);
+        state.settings.lyricsEffect = 'karaoke';
+        renderLyrics();
+        out.plainEffectStage = root.classList.contains('lyrics-stage');
+        return out;
+      } finally {
+        lyricsHold = saved.hold;
+        state.settings.lyrics = saved.lyrics;
+        state.settings.lyricsEffect = saved.effect;
+        state.nowMode = saved.mode;
+        Object.assign(lyricsState, saved.data);
+        renderLyrics();
+        if (!saved.open) closeFullscreen();
       }
     },
     lyricsModeTest: () => {

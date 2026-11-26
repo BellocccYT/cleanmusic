@@ -30,7 +30,7 @@
   const LOCKED = {
     theme: ['synthwave', 'ozean', 'sonnenuntergang', 'terminal', 'gold', 'kirschbluete'],
     background: ['lava', 'waves', 'synthwave', 'nebula', 'rain', 'custom'],
-    lyricsEffect: ['neon', 'wave', 'typer', 'zoom', 'lyricvideo'],
+    lyricsEffect: ['neon', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema'],
     vizStyle: ['mirror', 'particles'],
   };
 

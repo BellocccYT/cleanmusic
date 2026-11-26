@@ -42,12 +42,14 @@ check('only listed extras are locked, and only while locked', () => {
   assert.equal(S.isLocked('background', 'aurora', locked), false);
   assert.equal(S.isLocked('lyricsEffect', 'neon', locked), true);
   assert.equal(S.isLocked('lyricsEffect', 'lyricvideo', locked), true);
+  // 2.1.1: the full-screen motion styles are extras as well.
+  for (const style of ['poster', 'brush', 'cinema']) assert.equal(S.isLocked('lyricsEffect', style, locked), true);
   assert.equal(S.isLocked('lyricsEffect', 'karaoke', locked), false);
   assert.equal(S.isLocked('vizStyle', 'particles', locked), true);
   assert.equal(S.isLocked('vizStyle', 'off', locked), false);
   assert.equal(S.isLocked('unknown', 'x', locked), false);
   assert.equal(S.isLocked('theme', 'synthwave', { unlocked: true }), false);
-  assert.equal(S.lockedCount(), 19);
+  assert.equal(S.lockedCount(), 22);
 });
 
 const DAY = 24 * 60 * 60 * 1000;

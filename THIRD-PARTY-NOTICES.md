@@ -38,6 +38,27 @@ eingebettet (kein Nachladen aus dem Netz, kein Tracking) und nur für den
 Songtext-Effekt „Lyric Video“ verwendet. Der vollständige Lizenztext steht in
 `renderer/assets/fonts/LICENSE-BebasNeue.txt`.
 
+## Schriftarten der Motion-Songtexte „Poster“, „Pinsel“ und „Kino“
+
+Alle drei werden lokal eingebettet (Untergruppen als woff2 aus Google Fonts,
+kein Nachladen aus dem Netz, kein Tracking) und nur für die Songtext-Effekte
+im Vollbild-Player verwendet:
+
+- **Fraunces** (Black, „Soft“) – `renderer/assets/fonts/fraunces-black-latin.woff2`
+  und `fraunces-black-latin-ext.woff2`; Copyright 2018/2020 The Fraunces Project
+  Authors (Undercase Type, Phaedra Charles, Flavia Zimbardi), lizenziert unter der
+  [SIL Open Font License 1.1](https://openfontlicense.org). Lizenztext:
+  `renderer/assets/fonts/LICENSE-Fraunces.txt`. Verwendet für „Poster“.
+- **Permanent Marker** – `renderer/assets/fonts/permanent-marker-latin.woff2`;
+  Copyright (c) 2010 by Font Diner, Inc., lizenziert unter der
+  [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Lizenztext:
+  `renderer/assets/fonts/LICENSE-PermanentMarker.txt`. Verwendet für „Pinsel“.
+- **Cinzel** (Bold) – `renderer/assets/fonts/cinzel-bold-latin.woff2` und
+  `cinzel-bold-latin-ext.woff2`; Copyright 2020 The Cinzel Project Authors
+  (Natanael Gama), lizenziert unter der
+  [SIL Open Font License 1.1](https://openfontlicense.org). Lizenztext:
+  `renderer/assets/fonts/LICENSE-Cinzel.txt`. Verwendet für „Kino“.
+
 ## MIT-Lizenz (gilt für jede der oben genannten Paletten)
 
 Copyright (c) die jeweiligen oben genannten Rechteinhaber
