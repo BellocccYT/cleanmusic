@@ -2474,8 +2474,10 @@ function createMainWindow() {
               await wait(300);
               return {
                 home,
-                rows: document.querySelectorAll('#view-friends .social-friend').length,
+                rows: document.querySelectorAll('#view-friends .social-all .social-friend').length,
                 listen: document.querySelectorAll('#view-friends .social-listen').length,
+                cards: document.querySelectorAll('#view-friends .social-card .social-cover').length,
+                homeCover: document.querySelectorAll('#home-friends .social-cover').length,
                 emojis: document.querySelectorAll('#view-friends .social-emoji').length,
                 count: document.querySelector('#friends-count').textContent,
                 me: (document.querySelector('#view-friends .social-me') || {}).textContent || '',
@@ -2679,7 +2681,7 @@ function createMainWindow() {
             const ok = result.noServer === 'kein-server' && result.badServer === 'adresse' && result.allowlist === 'adresse,adresse' &&
               enabled === true && result.keyEncrypted && result.bridge === 'onSocialRoom,socialInfo,socialNameCheck,socialRequest,socialRoom,socialServerSet,socialSetup' &&
               result.names === 'false,true' && result.me.startsWith('Smoke Tester') && requestsOk &&
-              ui.home === 1 && ui.rows === 1 && ui.listen === 1 && ui.emojis === 5 && ui.count === '1' && result.qr &&
+              ui.home === 1 && ui.rows === 0 && ui.listen === 1 && ui.cards === 1 && ui.homeCover === 1 && ui.emojis === 5 && ui.count === '1' && result.qr &&
               reacted === true && result.played && tickOff === 'none' && result.shared === 'false,true' && result.inbox === 1 &&
               result.cleared && deepOk && result.viaLink && result.reports === 1 && result.blocked && result.killSwitch &&
               result.signed && result.deleted && groupOk && roomOk;

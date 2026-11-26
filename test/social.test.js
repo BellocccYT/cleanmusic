@@ -283,4 +283,31 @@ check('S3 rooms: code, snapshot, guest follows (title, pause, seek), host sends,
   assert.deepEqual(plain(S.normalizeRoomLocal({ code: '<x>', room: 'R' })), { code: '', room: '', at: 0 });
 });
 
+check('2.1.1 cards: cover source without the server, safe image URLs, careful search pick, fresh keys', () => {
+  assert.deepEqual(plain(S.coverSource(ref)), { type: 'link', url: 'https://www.deezer.com/track/3135553' });
+  assert.deepEqual(plain(S.coverSource({ src: 'apple', id: '1440818839', title: 'X' })), { type: 'link', url: 'https://music.apple.com/song/1440818839' });
+  assert.deepEqual(plain(S.coverSource({ src: 'youtube', id: 'dQw4w9WgXcQ', title: 'X' })), { type: 'image', url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg' });
+  assert.deepEqual(plain(S.coverSource({ src: 'search', title: 'Numb', artist: 'Linkin Park' })), { type: 'search', query: 'Linkin Park Numb' });
+  assert.equal(S.coverSource({ src: 'youtube', id: 'x"><img', title: 'X' }), null, 'nur gültige IDs');
+  assert.equal(S.coverSource({ src: 'local', title: 'C:/a.mp3' }), null);
+  assert.equal(S.safeImage('https://is1.mzstatic.com/a/100x100bb.jpg'), 'https://is1.mzstatic.com/a/300x300bb.jpg');
+  for (const bad of ['http://x.test/a.jpg', 'https://x.test/a".jpg', 'javascript:alert(1)', 'https://x.test/a b.jpg', '']) assert.equal(S.safeImage(bad), '', bad);
+  const tracks = [
+    { title: 'Numb (Live)', artist: 'Someone Else', artwork: 'https://x.test/wrong.jpg' },
+    { title: 'Numb', artist: 'Linkin Park', artwork: 'https://x.test/numb.jpg' },
+  ];
+  assert.equal(S.pickCover(tracks, { title: 'Numb', artist: 'Linkin Park' }), 'https://x.test/numb.jpg');
+  assert.equal(S.pickCover([{ title: 'Faint', artist: 'Linkin Park', artwork: 'https://x.test/f.jpg' }], { title: 'Numb', artist: 'Linkin Park' }), '', 'falscher Titel = kein Cover');
+  assert.equal(S.pickCover([{ title: 'Numb', artist: 'Linkin Park', artwork: 'http://x.test/n.jpg' }], { title: 'Numb' }), '', 'nur https');
+  assert.match(S.coverId(ref), /^c[0-9a-z]+$/);
+  assert.equal(S.coverId(ref), S.coverId(Object.assign({}, ref)));
+  assert.notEqual(S.coverId(ref), S.coverId(Object.assign({}, ref, { title: 'Other' })));
+  const friend = { id: A, activity: { ref } };
+  assert.equal(S.cardKey(friend), `${A}|deezer:3135553:one more time`);
+  assert.equal(S.cardKey({ id: B, activity: null }), '');
+  assert.deepEqual(plain(S.freshKeys(null, ['a', 'b'])), ['a', 'b'], 'erstes Zeichnen: alles neu');
+  assert.deepEqual(plain(S.freshKeys(new Set(['a']), ['a', 'b'])), ['b']);
+  assert.deepEqual(plain(S.freshKeys(['a', 'b'], ['a', 'b'])), []);
+});
+
 console.log(`\n${checks} passed, 0 failed`);

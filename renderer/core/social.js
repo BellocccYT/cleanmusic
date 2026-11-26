@@ -528,6 +528,77 @@
     return { code: code && room ? code : '', room: code && room ? room : '', at: Number.isFinite(value.at) ? value.at : 0 };
   }
 
+  /* --- 2.1.1: cards with cover, "live" effects --------------------------- */
+
+  /** Only plain https image URLs (no quotes, spaces or angle brackets); Apple's 100 px art → 300 px. */
+  function safeImage(url) {
+    const value = String(url || '').trim();
+    if (value.length > 600 || !/^https:\/\/[^\s"'<>\\]+$/.test(value)) return '';
+    return value.replace(/\/100x100bb\./, '/300x300bb.');
+  }
+
+  /**
+   * Where a cover for a song reference comes from – without asking the social
+   * server: Deezer/Apple through the catalog link lookup, YouTube as the
+   * public thumbnail of the (validated) video ID, everything else through a
+   * catalog search. null when there is nothing to look up.
+   */
+  function coverSource(ref) {
+    const clean = validRef(ref);
+    if (!clean) return null;
+    if (clean.src === 'deezer') return { type: 'link', url: `https://www.deezer.com/track/${clean.id}` };
+    if (clean.src === 'apple') return { type: 'link', url: `https://music.apple.com/song/${clean.id}` };
+    if (clean.src === 'youtube') return { type: 'image', url: `https://i.ytimg.com/vi/${clean.id}/mqdefault.jpg` };
+    return { type: 'search', query: `${clean.artist} ${clean.title}`.trim() };
+  }
+
+  function loose(text) {
+    return String(text || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\(.*?\)|\[.*?\]/g, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  }
+
+  /** From catalog search results: the artwork of a hit whose title (and artist, if known) really matches – else ''. */
+  function pickCover(tracks, ref) {
+    const title = loose(ref && ref.title);
+    const artist = loose(ref && ref.artist);
+    if (!title) return '';
+    const hit = (Array.isArray(tracks) ? tracks : []).slice(0, 10).find((track) => {
+      if (!track) return false;
+      const name = loose(track.title);
+      const by = loose(track.artist);
+      const titleOk = name === title || name.startsWith(`${title} `) || title.startsWith(`${name} `);
+      const artistOk = !artist || !by || by.includes(artist.split(' ')[0]) || artist.includes(by.split(' ')[0]);
+      return titleOk && artistOk && safeImage(track.artwork);
+    });
+    return hit ? safeImage(hit.artwork) : '';
+  }
+
+  /** Short, attribute-safe id for a ref (for data-cover). */
+  function coverId(ref) {
+    const key = refKey(validRef(ref));
+    let hash = 5381;
+    for (let index = 0; index < key.length; index += 1) hash = ((hash << 5) + hash + key.charCodeAt(index)) >>> 0;
+    return `c${hash.toString(36)}`;
+  }
+
+  /** A card is "new" for the fade-in when the friend or their song changed. */
+  function cardKey(friend) {
+    return friend && friend.activity ? `${friend.id}|${refKey(friend.activity.ref)}` : '';
+  }
+
+  /** Keys that were not there at the last drawing; null = first drawing (everything is new). */
+  function freshKeys(prev, keys) {
+    const list = Array.isArray(keys) ? keys : [];
+    if (!prev) return list.slice();
+    const seen = prev instanceof Set ? prev : new Set(prev);
+    return list.filter((key) => !seen.has(key));
+  }
+
   window.CMSocial = {
     EMOJIS,
     REPORT_REASONS,
@@ -572,5 +643,11 @@
     roomHostPlan,
     roomDeviation,
     normalizeRoomLocal,
+    safeImage,
+    coverSource,
+    pickCover,
+    coverId,
+    cardKey,
+    freshKeys,
   };
 })();

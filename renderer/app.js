@@ -5501,6 +5501,9 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.1.1': [
+      'Freunde, die gerade hören, erscheinen jetzt als große Karten mit Cover – mit „Mithören“ und den Emoji-Reaktionen direkt auf der Karte, dazu kleine Live-Effekte (bei „Bewegung reduzieren“ und im Sparmodus ohne Bewegung).',
+    ],
     '2.1.0': [
       'Freundschaftsanfragen: Wer deinen Freundescode einlöst, schickt dir jetzt eine Anfrage – erst wenn du „Annehmen“ drückst, seid ihr Freunde. Ablehnen ist still, offene Anfragen laufen nach 7 Tagen ab.',
       'Online-Status (freiwillig): Mit „Mir online zeigen“ sehen deine Freunde, wenn CleanMusic bei dir gerade aktiv ist. Standardmäßig aus – der Server merkt sich dafür nur einen auf die Minute gerundeten Zeitpunkt.',
@@ -7544,6 +7547,16 @@
     poll: 0,
   };
 
+  // 2.1.1: covers for "hört gerade" – this app looks them up itself (catalog
+  // link lookup, catalog search, YouTube thumbnail), never via the social
+  // server; kept in memory only.
+  const socialCovers = new Map(); // coverId → https URL, '' = nothing found
+  const coverQueue = [];
+  const coverPending = new Set();
+  let coverBusy = 0;
+  // 2.1.1: what was drawn last time – only new cards, requests and reactions animate.
+  const socialFx = { cards: null, requests: null, reactionsAt: -1 };
+
   function socialAvailable() {
     return Boolean(SOC && bridge.socialRequest && bridge.socialInfo && bridge.socialSetup);
   }
@@ -8283,17 +8296,126 @@
     return `<span class="social-avatar" aria-hidden="true">${esc(letters)}${status ? `<i class="social-dot ${status}"></i>` : ''}</span>`;
   }
 
-  function socialListenCard(friend, compact) {
+  function socialCoverHtml(ref) {
+    const id = SOC.coverId(ref);
+    const url = socialCovers.get(id);
+    if (url === undefined) queueCover(id, ref);
+    return `<span class="social-cover${url ? ' has-cover' : ''}" data-cover="${id}" aria-hidden="true">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" />` : '<span class="social-cover-note">♪</span>'}</span>`;
+  }
+
+  function queueCover(id, ref) {
+    if (socialCovers.has(id) || coverPending.has(id)) return;
+    coverPending.add(id);
+    coverQueue.push({ id, ref });
+    pumpCovers();
+  }
+
+  // At most two lookups at a time; every result (also "nothing") is kept for this session.
+  function pumpCovers() {
+    while (coverBusy < 2 && coverQueue.length) {
+      const { id, ref } = coverQueue.shift();
+      coverBusy += 1;
+      resolveCover(ref)
+        .catch(() => '')
+        .then((url) => {
+          socialCovers.set(id, url || '');
+          if (socialCovers.size > 200) socialCovers.delete(socialCovers.keys().next().value);
+          paintCover(id, url);
+        })
+        .finally(() => {
+          coverBusy -= 1;
+          coverPending.delete(id);
+          pumpCovers();
+        });
+    }
+  }
+
+  async function resolveCover(ref) {
+    const source = SOC.coverSource(ref);
+    if (!source) return '';
+    if (source.type === 'image') return SOC.safeImage(source.url);
+    if (source.type === 'link' && bridge.requestLink) {
+      const result = await bridge.requestLink(source.url);
+      return SOC.safeImage(result && result.track && result.track.artwork);
+    }
+    if (source.type === 'search' && source.query && bridge.searchCatalog) {
+      const result = await bridge.searchCatalog(source.query);
+      return SOC.pickCover(result && result.tracks, ref);
+    }
+    return '';
+  }
+
+  // Fill covers that arrive later in place – no full redraw.
+  function paintCover(id, url) {
+    if (!url) return;
+    document.querySelectorAll(`.social-cover[data-cover="${id}"]`).forEach((node) => {
+      node.classList.add('has-cover');
+      node.innerHTML = `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" />`;
+    });
+  }
+
+  function socialMotionOk() {
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return !reduced && document.documentElement.dataset.perf !== 'saver';
+  }
+
+  // A sent reaction rises from its button (skipped with reduced motion / Sparmodus).
+  function socialFly(anchor, emoji) {
+    if (!anchor || !socialMotionOk()) return;
+    const rect = anchor.getBoundingClientRect();
+    const node = document.createElement('span');
+    node.className = 'social-fly';
+    node.textContent = emoji;
+    node.style.left = `${Math.round(rect.left + rect.width / 2)}px`;
+    node.style.top = `${Math.round(rect.top)}px`;
+    document.body.appendChild(node);
+    const done = () => node.remove();
+    node.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 1600);
+  }
+
+  const SOCIAL_EQ = '<span class="social-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>';
+
+  // Home: a compact row with a small cover. Friends view: a big card with cover,
+  // "Mithören" and the fixed reactions. Shown is only what the activity says:
+  // title, artist, when it was last reported – no progress, no guessed start.
+  function socialListenCard(friend, compact, fresh) {
     const act = friend.activity;
+    const ago = SOC.ago(act.at, Date.now() + socialRt.skew);
     const emojis = SOC.EMOJIS.map((emoji) => `<button class="social-emoji" data-social="react" data-id="${esc(friend.id)}" data-emoji="${esc(emoji)}" title="Reagieren mit ${esc(emoji)}" aria-label="Reagieren mit ${esc(emoji)}">${emoji}</button>`).join('');
-    return `<div class="social-listen${compact ? ' compact' : ''}">
+    if (compact) {
+      return `<div class="social-listen compact">
         <button class="social-listen-play" data-social="play" data-id="${esc(friend.id)}" title="Diesen Song abspielen">
-          <span class="social-who">${esc(friend.name)} <span class="social-tag">· ${esc(friend.tag)}</span></span>
-          <strong>${esc(act.ref.title)}</strong>
-          <small>${act.ref.artist ? `${esc(act.ref.artist)} · ` : ''}${esc(SOC.ago(act.at, Date.now() + socialRt.skew))}</small>
+          ${socialCoverHtml(act.ref)}
+          <span class="social-listen-text">
+            <span class="social-who">${esc(friend.name)} <span class="social-tag">· ${esc(friend.tag)}</span>${act.playing ? SOCIAL_EQ : ''}</span>
+            <strong>${esc(act.ref.title)}</strong>
+            <small>${act.ref.artist ? `${esc(act.ref.artist)} · ` : ''}${esc(ago)}</small>
+          </span>
         </button>
         <div class="social-emojis">${emojis}</div>
       </div>`;
+    }
+    return `<article class="social-listen social-card${fresh ? ' is-new' : ''}" data-card="${esc(friend.id)}">
+        <button class="social-card-cover" data-social="play" data-id="${esc(friend.id)}" title="Mithören: „${esc(act.ref.title)}“ bei dir abspielen" aria-label="Mithören: ${esc(act.ref.title)}">
+          ${socialCoverHtml(act.ref)}
+          <span class="social-card-badge">${act.playing ? `${SOCIAL_EQ} hört gerade` : 'zuletzt gehört'}</span>
+          <span class="social-card-play" aria-hidden="true">${ICONS.play || '▶'}</span>
+        </button>
+        <div class="social-card-body">
+          <div class="social-card-who">
+            ${socialAvatar(friend, 'listening')}
+            <span class="social-card-name"><strong>${esc(friend.name)}</strong> <span class="social-tag">· ${esc(friend.tag)}</span><small title="Zuletzt gemeldet">${esc(ago)}</small></span>
+            <button class="icon-btn small social-more" data-social="menu" data-kind="friend" data-id="${esc(friend.id)}" title="Mehr" aria-label="Mehr zu ${esc(friend.name)}">⋯</button>
+          </div>
+          <strong class="social-card-title" title="${esc(act.ref.title)}">${esc(act.ref.title)}</strong>
+          <span class="social-card-artist">${esc(act.ref.artist || '\u00a0')}</span>
+          <div class="social-card-actions">
+            <button class="btn primary small" data-social="play" data-id="${esc(friend.id)}">Mithören</button>
+            <div class="social-emojis">${emojis}</div>
+          </div>
+        </div>
+      </article>`;
   }
 
   function renderHomeFriends() {
@@ -8320,6 +8442,11 @@
     });
     const focused = document.activeElement && document.activeElement.id;
     host.innerHTML = friendsHtml();
+    if (socialLocal.enabled && SOC) {
+      socialFx.cards = new Set(SOC.listening(socialRt.friends, Date.now(), socialRt.skew).map(SOC.cardKey));
+      socialFx.requests = new Set(socialRt.requests.map((row) => row.from.id));
+      socialFx.reactionsAt = socialRt.reactions.reduce((max, row) => Math.max(max, row.at), Math.max(0, socialFx.reactionsAt));
+    }
     Object.entries(keep).forEach(([id, value]) => {
       const field = document.getElementById(id);
       if (field) {
@@ -8385,14 +8512,13 @@
     const live = SOC.listening(socialRt.friends, Date.now(), socialRt.skew);
     const sorted = SOC.sortFriends(socialRt.friends, Date.now(), socialRt.skew);
     const statusOf = (friend) => SOC.friendStatus(friend, Date.now(), socialRt.skew);
-    const onlineOnly = sorted.filter((friend) => statusOf(friend) === 'online');
     const nameLocked = me && me.nameChangeAt > now;
     const code = socialRt.code && socialRt.code.expires > now ? socialRt.code : null;
     const tag = (person) => `<span class="social-tag">· ${esc(person.tag)}</span>`;
     const more = (person, kind) => `<button class="icon-btn small social-more" data-social="menu" data-kind="${kind}" data-id="${esc(person.id)}" title="Mehr" aria-label="Mehr zu ${esc(person.name)}">⋯</button>`;
-    const statusText = { listening: 'hört gerade', online: 'online', offline: '' };
 
-    const requestRows = socialRt.requests.map((request) => `<li class="social-friend social-request">
+    const freshRequests = new Set(SOC.freshKeys(socialFx.requests, socialRt.requests.map((row) => row.from.id)));
+    const requestRows = socialRt.requests.map((request) => `<li class="social-friend social-request${freshRequests.has(request.from.id) ? ' is-new' : ''}">
         ${socialAvatar(request.from)}
         <span class="social-friend-name"><strong>${esc(request.from.name)}</strong> ${tag(request.from)}
           <small>möchte mit dir befreundet sein · ${esc(SOC.ago(request.at, now))}</small></span>
@@ -8410,40 +8536,37 @@
         </div>`
       : '';
 
-    const onlineRows = onlineOnly.map((friend) => `<li class="social-friend compact">${socialAvatar(friend, 'online')}
-        <span class="social-friend-name"><strong>${esc(friend.name)}</strong> ${tag(friend)}<small>online</small></span>${more(friend, 'friend')}</li>`).join('');
-    const onlinePanel = socialRt.friends.length
-      ? `<div class="panel social-online">
-          <h3>Online · hört gerade <span class="muted small">${live.length + onlineOnly.length ? `· ${live.length + onlineOnly.length}` : ''}</span></h3>
-          ${live.length ? `<div class="social-listen-row">${live.map((friend) => socialListenCard(friend, false)).join('')}</div>` : ''}
-          ${onlineRows ? `<ul class="social-list social-online-list">${onlineRows}</ul>` : ''}
-          ${live.length || onlineRows ? '' : '<p class="muted small">Gerade ist niemand online. Freunde erscheinen hier, wenn sie „Meine Aktivität zeigen“ oder „Mir online zeigen“ eingeschaltet haben.</p>'}
+    // 2.1.1: who is listening gets a big card; everyone else a compact row (online first).
+    const freshCards = new Set(SOC.freshKeys(socialFx.cards, live.map(SOC.cardKey)));
+    const livePanel = live.length
+      ? `<div class="panel social-live">
+          <div class="home-section-head"><h3><span class="social-live-dot" aria-hidden="true"></span>Hört gerade <span class="muted small">· ${live.length}</span></h3>
+            <span class="muted small">„Mithören“ spielt den Song bei dir</span></div>
+          <div class="social-cards">${live.map((friend) => socialListenCard(friend, false, freshCards.has(SOC.cardKey(friend)))).join('')}</div>
         </div>`
       : '';
-
-    const friendRows = sorted.length
-      ? sorted
+    const others = sorted.filter((friend) => statusOf(friend) !== 'listening');
+    const onlineCount = others.filter((friend) => statusOf(friend) === 'online').length;
+    const friendRows = !socialRt.friends.length
+      ? '<li class="muted small social-empty">Noch keine Freunde. Erzeuge unten einen Freundescode und schick ihn an eine Person – sie schickt dir damit eine Anfrage.</li>'
+      : others
           .map((friend) => {
             const status = statusOf(friend);
-            const detail = status === 'listening'
-              ? `„${esc(friend.activity.ref.title)}“${friend.activity.ref.artist ? ` · ${esc(friend.activity.ref.artist)}` : ''}`
-              : esc(statusText[status]);
-            return `<li class="social-friend ${status}">
+            return `<li class="social-friend compact ${status}">
             ${socialAvatar(friend, status)}
-            <span class="social-friend-name"><strong>${esc(friend.name)}</strong> ${tag(friend)}${detail ? `<small>${detail}</small>` : ''}</span>
-            <span class="social-friend-actions">
-              ${status === 'listening' ? `<button class="btn ghost small" data-social="play" data-id="${esc(friend.id)}">Abspielen</button>` : ''}
-              ${more(friend, 'friend')}
-            </span>
+            <span class="social-friend-name"><strong>${esc(friend.name)}</strong> ${tag(friend)}${status === 'online' ? '<small>online</small>' : ''}</span>
+            <span class="social-friend-actions">${more(friend, 'friend')}</span>
           </li>`;
           })
-          .join('')
-      : '<li class="muted small social-empty">Noch keine Freunde. Erzeuge unten einen Freundescode und schick ihn an eine Person – sie schickt dir damit eine Anfrage.</li>';
+          .join('') || '<li class="muted small social-empty">Alle deine Freunde hören gerade etwas – siehe oben.</li>';
+    const quiet = socialRt.friends.length && !live.length
+      ? '<p class="muted small">Gerade hört niemand etwas. Freunde erscheinen oben als Karte, sobald sie „Meine Aktivität zeigen“ eingeschaltet haben und Musik läuft.</p>'
+      : '';
 
     const sentRows = socialRt.sent.map((row) => `<li class="social-friend compact">${socialAvatar(row.to)}
         <span class="social-friend-name"><strong>${esc(row.to.name)}</strong> ${tag(row.to)}<small>wartet auf Bestätigung · ${esc(SOC.expiresIn(row.expires, now))}</small></span>
         <span class="social-friend-actions"><button class="btn ghost small" data-social="withdraw" data-id="${esc(row.to.id)}">Zurückziehen</button></span></li>`).join('');
-    const reactions = socialRt.reactions.slice(0, 12).map((reaction) => `<li><span class="social-big-emoji">${reaction.emoji}</span> <strong>${esc(reaction.from.name)}</strong> ${tag(reaction.from)}${reaction.title ? ` zu „${esc(reaction.title)}“` : ''} <small class="muted">${esc(SOC.ago(reaction.at, now))}</small></li>`).join('');
+    const reactions = socialRt.reactions.slice(0, 12).map((reaction) => `<li class="social-reaction${socialFx.reactionsAt >= 0 && reaction.at > socialFx.reactionsAt ? ' is-new' : ''}"><span class="social-big-emoji">${reaction.emoji}</span> <strong>${esc(reaction.from.name)}</strong> ${tag(reaction.from)}${reaction.title ? ` zu „${esc(reaction.title)}“` : ''} <small class="muted">${esc(SOC.ago(reaction.at, now))}</small></li>`).join('');
     const blocked = socialRt.blocked.map((person) => `<li class="social-friend"><span class="social-friend-name"><strong>${esc(person.name)}</strong> ${tag(person)}</span>
         <span class="social-friend-actions"><button class="btn ghost small" data-social="unblock" data-id="${esc(person.id)}">Freigeben</button></span></li>`).join('');
     const chip = (on, yes, no) => `<span class="chip social-chip${on ? ' on' : ''}">${on ? yes : no}</span>`;
@@ -8463,12 +8586,13 @@
 
       ${requestsPanel}
 
-      ${onlinePanel}
+      ${livePanel}
 
-      ${roomPanelHtml()}
+      ${reactions ? `<div class="panel social-reactions"><h3>Reaktionen an dich</h3><ul class="social-list">${reactions}</ul></div>` : ''}
 
       <div class="panel social-all">
-        <div class="home-section-head"><h3>Alle Freunde · ${socialRt.friends.length}/200</h3><button class="btn ghost small" data-social="refresh">Aktualisieren</button></div>
+        <div class="home-section-head"><h3>Freunde · ${socialRt.friends.length}/200${onlineCount ? ` <span class="chip social-chip on">${onlineCount} online</span>` : ''}</h3><button class="btn ghost small" data-social="refresh">Aktualisieren</button></div>
+        ${quiet}
         <ul class="social-list">${friendRows}</ul>
         ${socialRt.error ? `<p class="muted small">${esc(socialRt.error)}</p>` : ''}
       </div>
@@ -8490,7 +8614,7 @@
         ${sentRows ? `<h4 class="social-sub">Gesendete Anfragen</h4><ul class="social-list">${sentRows}</ul>` : ''}
       </div>
 
-      ${reactions ? `<div class="panel"><h3>Reaktionen</h3><ul class="social-list">${reactions}</ul></div>` : ''}
+      ${roomPanelHtml()}
 
       ${groupsPanelHtml()}
 
@@ -8533,6 +8657,16 @@
 
   let socialNameTimer = 0;
   function wireSocial() {
+    // Live effects pause while the window is hidden; broken covers fall back to the gradient.
+    document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('doc-hidden', document.hidden));
+    document.addEventListener('error', (event) => {
+      const img = event.target;
+      const node = img && img.tagName === 'IMG' && img.parentElement;
+      if (!node || !node.classList.contains('social-cover')) return;
+      socialCovers.set(node.dataset.cover, '');
+      node.classList.remove('has-cover');
+      node.innerHTML = '<span class="social-cover-note">♪</span>';
+    }, true);
     document.addEventListener('click', async (event) => {
       const button = event.target.closest('[data-social]');
       if (!button || button.disabled) return;
@@ -8598,6 +8732,7 @@
           playFriend(id);
           break;
         case 'react':
+          socialFly(button, button.dataset.emoji);
           reactToFriend(id, button.dataset.emoji);
           break;
         case 'remove':
@@ -8729,6 +8864,9 @@
   }
 
   function openFriendsView() {
+    // Opening the view again: cards fade in, open requests light up once more.
+    socialFx.cards = null;
+    socialFx.requests = null;
     renderFriends();
     refreshSocialInfo().then(() => {
       if (state.view !== 'friends') return;
