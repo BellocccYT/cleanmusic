@@ -74,7 +74,7 @@ Glühen und Effekte zuständig. Screenshots: `screenshots/styles-840x344-*.png`.
 node test\xeneon-edge.test.js          # in npm run test:unit enthalten
 npm.cmd run smoke:xeneon               # echtes CleanMusic + Plugin
 icuewidget validate extras\xeneon-edge\widget
-icuewidget package extras\xeneon-edge\widget -o release\CleanMusic-Xeneon-Edge-1.0.0.icuewidget
+icuewidget package extras\xeneon-edge\widget -o release\CleanMusic-Xeneon-Edge-1.1.0.icuewidget
 node_modules\.bin\electron.cmd extras\xeneon-edge\preview\shoot.js
 node_modules\.bin\electron.cmd extras\xeneon-edge\preview\styles.js
 ```

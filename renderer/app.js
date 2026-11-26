@@ -5515,15 +5515,21 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
-    '2.2.0': [
-      'Vier neue Motion-Songtexte für den Vollbild-Player: „Störung“ (Glitch mit RGB-Versatz, Scanlines und Zeitcode – ruhig statt flackernd), „Collage“ (jeder Buchstabe ein eigener Papierschnipsel mit Klebeband), „Synthwave“ (Chromschrift über Rasterhorizont und gestreifter Sonne) und „Comic“ (Pop-Art-Lettern mit Sprechblase, Stern und Rasterpunkten).',
+    '2.3.0': [
       'Drei Stile, die den Songtext lesen: „Karten“ legt Tarot-/Spielkarten mit Herz für Liebe, Münze für Geld oder Mond für die Nacht; „Revolte“ wird bei Feuer-, Kampf- und Liebeszeilen zum roten Poster mit Stern; „Bilderbogen“ zeichnet eine flache Szene aus der Zeile (Stadt und Auto bei „Drive“, Mond bei „Night“, Herz bei „Love“).',
       'Vier weitere Motion-Stile: „Tagebuch“ (liniertes Papier, Handschrift, eingeklebtes Cover und eine Kritzelei), „Zeitung“ (Schlagzeile, Spalten, Rasterfoto), „Terminal“ (CRT-Fenster mit Prompt und Befehl) und „Tunnel“ (Neonringe in die Tiefe). Auch sie nehmen ihr Motiv aus der Zeile.',
       'Der Effekt-Knopf öffnet jetzt ein Menü mit Vorschaubildern aller Motion-Stile – ein Klick übernimmt den Stil, statt sich durchzuklicken. Auch in den Einstellungen gibt es die Auswahl mit Bild.',
       'Alle fünfzehn Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
       'Die neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
-      'Neu als optionales Plugin: CleanMusic auf dem CORSAIR XENEON EDGE (inoffiziell). Das iCUE-Widget zeigt Cover, Titel, Songtext und große Touch-Knöpfe; gekoppelt wird mit einem 4-stelligen Code unter Einstellungen → Plugins. Widget und Plugin-Datei liegen beim Release auf GitHub.',
       'Unter Windows lässt sich CleanMusic jetzt zuverlässig an Start und Taskleiste anheften: Einstellungen → System → „Im Startmenü anlegen“ schreibt die Verknüpfung (auch bei der portablen EXE, die sonst gar nicht im Startmenü steht) und zeigt sie im Explorer – dort Rechtsklick → „An Start anheften“.',
+      'Gemeinsam hören mit Jam: Im Raum darf jetzt jede Person Titel in eine gemeinsame Warteschlange legen, der Host spielt sie der Reihe nach. „Algorithmus aus“ stoppt im Raum den Autoplay, „Im Raum nur Vorschauen“ sorgt dafür, dass alle ohne Plugin dasselbe hören, und die Freundesliste aktualisiert sich im offenen Tab alle 10 Sekunden.',
+      'XENEON EDGE: Das iCUE-Widget hat sechs Stile – Automatisch (Coverfarben), Nacht, Neon, Glas, Hell und Retro – einstellbar in iCUE unter den Widget-Eigenschaften. Neue Widget-Datei beim Release auf GitHub.',
+    ],
+    '2.2.0': [
+      'Vier neue Motion-Songtexte für den Vollbild-Player: „Störung“ (Glitch mit RGB-Versatz, Scanlines und Zeitcode – ruhig statt flackernd), „Collage“ (jeder Buchstabe ein eigener Papierschnipsel mit Klebeband), „Synthwave“ (Chromschrift über Rasterhorizont und gestreifter Sonne) und „Comic“ (Pop-Art-Lettern mit Sprechblase, Stern und Rasterpunkten).',
+      'Alle acht Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
+      'Die vier neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
+      'Neu als optionales Plugin: CleanMusic auf dem CORSAIR XENEON EDGE (inoffiziell). Das iCUE-Widget zeigt Cover, Titel, Songtext und große Touch-Knöpfe; gekoppelt wird mit einem 4-stelligen Code unter Einstellungen → Plugins. Widget und Plugin-Datei liegen beim Release auf GitHub.',
     ],
     '2.1.1': [
       'Freunde, die gerade hören, erscheinen jetzt als große Karten mit Cover – mit „Mithören“ und den Emoji-Reaktionen direkt auf der Karte, dazu kleine Live-Effekte (bei „Bewegung reduzieren“ und im Sparmodus ohne Bewegung).',

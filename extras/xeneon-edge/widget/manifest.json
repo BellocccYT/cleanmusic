@@ -3,7 +3,7 @@
   "id": "de.belloccc.cleanmusic",
   "name": "CleanMusic",
   "description": "Touch-Player für CleanMusic auf dem CORSAIR XENEON EDGE. Inoffiziell – nicht von CORSAIR.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "preview_icon": "resources/icon.png",
   "min_app_version": "5.52",
   "min_framework_version": "1.9.0",
