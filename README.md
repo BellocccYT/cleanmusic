@@ -103,11 +103,23 @@ eine kleine Karte, was neu ist.
 | **Discord Rich Presence** | ⚙️ optional – eigene Discord-Application-ID nötig; ab 1.26.0 mit Knopf „In CleanMusic anhören“ für Freunde |
 | **Freunde & Gruppen (Social, Beta, ab 2.0)** | ⚙️ optional, standardmäßig **aus** – über den CleanMusic-Social-Server (Cloudflare, Daten in der EU): Zufallsname, Freundescode statt Suche, „Freunde hören gerade“, Emoji-Reaktionen, Gruppen mit Wochenkarte und gemeinsamer Playlist, Blockieren/Melden, Konto löschen |
 | **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren; ab 1.25.0 zeigen Plugins mit Manifest ihre Berechtigungen vor dem Aktivieren, ab 2.0 auch Bibliothek lesen und eigene Panels |
+| **CORSAIR XENEON EDGE** | ⚙️ optional – iCUE-Widget „CleanMusic“ als Touch-Player; lokale Brücke `extras/plugins/xeneon-edge.js` (inoffiziell, nicht von CORSAIR) |
 | Apple Music | ✅ offizieller Web-Player; zusätzlich **MusicKit-Fenster** für volle Titel (Developer-Token nötig) |
 | Spotify, YouTube Music, TIDAL, Deezer, Amazon Music, SoundCloud | ✅ als offizieller Web-Player eingebettet |
 | Qobuz, Bandcamp, Audius | ✅ zusätzlich als offizieller Web-Player – ausklappbar unter „Weitere Dienste“ |
 | Dienste in der Seitenleiste | ✅ vier häufige Dienste sichtbar, der Rest hinter „Weitere Dienste“; Creator separat ausklappbar |
 | Suche in einem Dienst | ✅ startet die Suche im jeweiligen Web-Player |
+
+### CORSAIR XENEON EDGE (optional, inoffiziell)
+
+Das 14,5-Zoll-Display zeigt das iCUE-Widget **CleanMusic**: Cover, Titel, Artist,
+Songtext-Zeile, Fortschritt, Zurück/Play/Weiter, Lautstärke und „Als Nächstes“.
+Die Steuerung läuft über die lokale Brücke `extras/plugins/xeneon-edge.js`
+(nur `localhost:4790`), gekoppelt wird mit einem 4-stelligen Code in
+**Einstellungen → Plugins**. Das Widget liegt als
+`CleanMusic-Xeneon-Edge-<version>.icuewidget` im Release und wird in iCUE
+importiert. Inoffiziell – nicht von CORSAIR; Details in
+`extras/xeneon-edge/README.md`.
 
 ### Songs & Vorschauen
 

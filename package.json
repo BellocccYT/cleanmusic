@@ -10,7 +10,7 @@
   "scripts": {
     "start": "electron .",
     "test:core": "node test/core.text.test.js && node test/core.storage.test.js",
-    "test:unit": "node test/core.text.test.js && node test/core.storage.test.js && node test/persist.test.js && node test/queue.test.js && node test/queue-slice.test.js && node test/collection.test.js && node test/volume.test.js && node test/playback.test.js && node test/stats.test.js && node test/entries.test.js && node test/taste.test.js && node test/mixes.test.js && node test/migrations.test.js && node test/state.test.js && node test/recipes.test.js && node test/group.test.js && node test/plugin-manifest.test.js && node test/share.test.js && node test/supporter.test.js && node test/lyricvideo.test.js && node test/studio.test.js && node test/social-names.test.js && node test/social-protocol.test.js && node test/social.test.js && node test/obs-visualizer.test.js",
+    "test:unit": "node test/core.text.test.js && node test/core.storage.test.js && node test/persist.test.js && node test/queue.test.js && node test/queue-slice.test.js && node test/collection.test.js && node test/volume.test.js && node test/playback.test.js && node test/stats.test.js && node test/entries.test.js && node test/taste.test.js && node test/mixes.test.js && node test/migrations.test.js && node test/state.test.js && node test/recipes.test.js && node test/group.test.js && node test/plugin-manifest.test.js && node test/share.test.js && node test/supporter.test.js && node test/lyricvideo.test.js && node test/studio.test.js && node test/social-names.test.js && node test/social-protocol.test.js && node test/social.test.js && node test/obs-visualizer.test.js && node test/xeneon-edge.test.js",
     "dev": "electron . --dev",
     "smoke": "electron . --smoke",
     "smoke:plugin": "electron . --smoke --smoke-plugin",
@@ -23,7 +23,8 @@
     "build:linux": "electron-builder --linux AppImage",
     "build:dir": "electron-builder --win dir",
     "icons": "electron tools/make-icons.js",
-    "smoke:update-setup": "electron . --smoke --smoke-update --smoke-update-setup"
+    "smoke:update-setup": "electron . --smoke --smoke-update --smoke-update-setup",
+    "smoke:xeneon": "electron . --smoke --smoke-xeneon"
   },
   "build": {
     "appId": "de.cleanmusic.launcher",

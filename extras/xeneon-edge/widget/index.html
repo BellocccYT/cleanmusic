@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>tr('CleanMusic')</title>
+<link rel="icon" type="image/svg+xml" href="resources/icon.svg" />
+<meta name="x-icue-widget-group" content="tr('CleanMusic')" />
+<meta name="x-icue-widget-preview" content="resources/preview.png" />
+
+<meta name="x-icue-property" content="layout" data-label="tr('Layout')" data-type="combobox" data-default="'auto'" data-values="[{'key':'auto','value':tr('Automatic')},{'key':'compact','value':tr('Compact')},{'key':'large','value':tr('Large')}]" />
+<meta name="x-icue-property" content="showLyrics" data-label="tr('Show Lyrics')" data-type="switch" data-default="true" />
+<meta name="x-icue-property" content="showQueue" data-label="tr('Show Up Next')" data-type="switch" data-default="true" />
+<meta name="x-icue-property" content="showSpectrum" data-label="tr('Mini Spectrum')" data-type="switch" data-default="true" />
+<meta name="x-icue-property" content="pairKey" data-label="tr('Pairing Key')" data-type="textfield" data-default="''" />
+
+<meta name="x-icue-property" content="textColor" data-label="tr('Text Color')" data-type="color" data-default="'#f4f7ff'" />
+<meta name="x-icue-property" content="accentColor" data-label="tr('Accent Color')" data-type="color" data-default="'#5b8cff'" />
+<meta name="x-icue-property" content="backgroundColor" data-label="tr('Background Color')" data-type="color" data-default="'#0b0d12'" />
+
+<script type="application/json" id="x-icue-groups">
+[
+  {
+    "title": "tr('Widget')",
+    "properties": ["layout", "showLyrics", "showQueue", "showSpectrum", "pairKey"]
+  },
+  {
+    "title": "tr('Widget Personalization')",
+    "properties": ["textColor", "accentColor", "backgroundColor"]
+  }
+]
+</script>
+
+<link rel="stylesheet" href="styles/widget.css" />
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 5a1 1 0 0 1 2 0v14a1 1 0 0 1-2 0zM19.5 5.2a1 1 0 0 1 .5.9v11.8a1 1 0 0 1-1.6.8L10 12.8a1 1 0 0 1 0-1.6l8.4-5.9a1 1 0 0 1 1.1-.1z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M18 5a1 1 0 0 0-2 0v14a1 1 0 0 0 2 0zM4.5 5.2a1 1 0 0 0-.5.9v11.8a1 1 0 0 0 1.6.8L14 12.8a1 1 0 0 0 0-1.6L5.6 5.3a1 1 0 0 0-1.1-.1z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.1v13.8a1 1 0 0 0 1.5.9l10.4-6.9a1 1 0 0 0 0-1.8L9.5 4.2A1 1 0 0 0 8 5.1z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 4.5h3.4v15H7zM13.6 4.5H17v15h-3.4z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 21.2c-.4 0-.8-.1-1.1-.4C7.3 17.6 2 13.3 2 8.7 2 5.6 4.4 3.2 7.4 3.2c1.8 0 3.5.9 4.6 2.3 1.1-1.4 2.8-2.3 4.6-2.3 3 0 5.4 2.4 5.4 5.5 0 4.6-5.3 8.9-8.9 12.1-.3.3-.7.4-1.1.4z"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.2h3.3L12 5.1a1 1 0 0 1 1.6.8v12.2a1 1 0 0 1-1.6.8L7.3 14.8H4a1 1 0 0 1-1-1V10.2a1 1 0 0 1 1-1z"/><path d="M16.1 8.2a1 1 0 0 1 1.4 0 5.4 5.4 0 0 1 0 7.6 1 1 0 1 1-1.4-1.4 3.4 3.4 0 0 0 0-4.8 1 1 0 0 1 0-1.4z"/><path d="M18.6 5.7a1 1 0 0 1 1.4 0 9.3 9.3 0 0 1 0 12.6 1 1 0 1 1-1.4-1.4 7.3 7.3 0 0 0 0-9.8 1 1 0 0 1 0-1.4z"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.2h3.3L12 5.1a1 1 0 0 1 1.6.8v12.2a1 1 0 0 1-1.6.8L7.3 14.8H4a1 1 0 0 1-1-1V10.2a1 1 0 0 1 1-1z"/><path d="M16.2 9.4a1 1 0 0 1 1.4 0l1.5 1.5 1.5-1.5a1 1 0 1 1 1.4 1.4L20.5 12.3l1.5 1.5a1 1 0 0 1-1.4 1.4l-1.5-1.5-1.5 1.5a1 1 0 0 1-1.4-1.4l1.5-1.5-1.5-1.5a1 1 0 0 1 0-1.4z"/></symbol>
+  <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 6h16v2H4zM4 11h16v2H4zM4 16h10v2H4z" transform="translate(0,-1)"/></symbol>
+</svg>
+
+<div class="app" id="app" data-view="boot" data-playing="false" data-offline="false">
+  <div class="bg" aria-hidden="true"><div class="bg-glow"></div></div>
+
+  <main class="layout">
+    <button class="art" id="art" type="button" aria-label="Cover: tippen für Play/Pause, doppelt tippen für Favorit, seitlich wischen für den nächsten Titel">
+      <div class="art-fallback" id="artFallback"><span id="artLetter">♪</span></div>
+      <img class="art-img" id="artImg" alt="" draggable="false" />
+      <div class="art-heart" id="artHeart" aria-hidden="true">♥</div>
+      <div class="volume-flash" id="volumeFlash" hidden>
+        <span id="volumeFlashValue">70 %</span>
+        <span class="volume-flash-bar"><i id="volumeFlashFill"></i></span>
+      </div>
+    </button>
+
+    <section class="info" aria-live="polite">
+      <div class="eyebrow">
+        <span class="live-pill" id="livePill" hidden><i></i>LIVE</span>
+        <span class="kind" id="kindLabel"></span>
+        <span class="offline-dot" id="offlineDot" hidden>offline</span>
+      </div>
+      <h1 class="title" id="title">CleanMusic</h1>
+      <p class="artist" id="artist">Bereit für deine Musik</p>
+
+      <div class="lyrics" id="lyrics" hidden>
+        <p class="lyric-line" id="lyricLine"></p>
+        <p class="lyric-next" id="lyricNext"></p>
+      </div>
+
+      <div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Fortschritt">
+        <canvas class="spectrum" id="spectrum" aria-hidden="true"></canvas>
+        <div class="progress-track" id="progressTrack"><div class="progress-fill" id="progressFill"></div><div class="progress-knob" id="progressKnob"></div></div>
+        <div class="progress-times"><span id="timeNow">0:00</span><span id="timeTotal">0:00</span></div>
+        <div class="progress-bubble" id="progressBubble" hidden>0:00</div>
+      </div>
+      <div class="live-note" id="liveNote" hidden>Live-Stream – Spulen nicht möglich</div>
+    </section>
+
+    <section class="controls">
+      <div class="transport">
+        <button class="icon-btn" id="btnPrev" type="button" aria-label="Vorheriger Titel"><svg><use href="#i-prev"/></svg></button>
+        <button class="icon-btn play" id="btnPlay" type="button" aria-label="Abspielen">
+          <svg class="ic-play"><use href="#i-play"/></svg>
+          <svg class="ic-pause"><use href="#i-pause"/></svg>
+        </button>
+        <button class="icon-btn" id="btnNext" type="button" aria-label="Nächster Titel"><svg><use href="#i-next"/></svg></button>
+      </div>
+      <div class="extras">
+        <button class="icon-btn like" id="btnLike" type="button" aria-label="Favorit" aria-pressed="false" hidden><svg><use href="#i-heart"/></svg></button>
+        <div class="volume" id="volume">
+          <button class="icon-btn" id="btnMute" type="button" aria-label="Stumm schalten">
+            <svg class="ic-volume"><use href="#i-volume"/></svg>
+            <svg class="ic-mute"><use href="#i-mute"/></svg>
+          </button>
+          <div class="vbar" id="vbar" role="slider" aria-label="Lautstärke" aria-valuemin="0" aria-valuemax="150" aria-valuenow="100"><div class="vfill" id="vfill"></div></div>
+        </div>
+        <button class="icon-btn queue-btn" id="btnQueue" type="button" aria-label="Als Nächstes" hidden><svg><use href="#i-queue"/></svg></button>
+      </div>
+    </section>
+
+    <aside class="queue" id="queue" aria-label="Als Nächstes" hidden>
+      <div class="queue-title">Als Nächstes</div>
+      <div class="queue-list" id="queueList"></div>
+    </aside>
+  </main>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="card" id="card">
+      <section class="card-body" id="cardConnect">
+        <div class="card-kicker">In drei Schritten</div>
+        <h2>CleanMusic verbinden</h2>
+        <div class="steps">
+          <div class="step"><b>1</b><span>CleanMusic öffnen<br />Einstellungen → Plugins</span></div>
+          <div class="step"><b>2</b><span>„Xeneon Edge“<br />einschalten</span></div>
+          <div class="step"><b>3</b><span>Hier „Verbinden“<br />antippen und erlauben</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="primary" id="btnConnect" type="button">Verbinden</button>
+          <span class="card-note" id="connectNote">CleanMusic wird gesucht …</span>
+        </div>
+        <p class="card-hint">Keine Einstellungen nötig. Der Schlüssel bleibt auf diesem PC.</p>
+      </section>
+
+      <section class="card-body" id="cardPair" hidden>
+        <div class="card-kicker">Kopplung</div>
+        <h2>Code bestätigen</h2>
+        <p class="card-text">In CleanMusic unter <b>Einstellungen → Plugins</b> bei „Xeneon Edge“ denselben Code erlauben.</p>
+        <div class="pair-code" id="pairCode">0000</div>
+        <div class="card-actions">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="card-note" id="pairNote">Warte auf Bestätigung …</span>
+          <button class="ghost" id="btnPairCancel" type="button">Abbrechen</button>
+        </div>
+      </section>
+
+      <section class="card-body" id="cardIdle" hidden>
+        <div class="card-kicker">Bereit</div>
+        <h2>Nichts läuft gerade</h2>
+        <p class="card-text">Tippe auf Weiterhören – CleanMusic startet den nächsten Titel.</p>
+        <div class="card-actions"><button class="primary" id="btnResume" type="button">Weiterhören</button></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+
+<script src="scripts/logic.js"></script>
+<script src="scripts/widget.js"></script>
+</body>
+</html>

@@ -242,6 +242,33 @@ wachsend). Der Befehl **Streamer.bot neu verbinden** in der Plugin-Karte hilft
 beim Einrichten. Die Action wird beim Verbinden einmal für den laufenden Titel
 und danach bei jedem Titelwechsel aufgerufen.
 
+## Xeneon Edge (`xeneon-edge.js`)
+
+Macht CleanMusic zum Touch-Player auf dem CORSAIR XENEON EDGE. Das Plugin ist
+die lokale Brücke für das iCUE-Widget **CleanMusic** (eigene Datei
+`CleanMusic-Xeneon-Edge-<version>.icuewidget` aus dem Release).
+
+1. Plugin wie oben hinzufügen und einschalten. Es öffnet nur
+   `http://localhost:4790` (IPv4 und IPv6); andere Geräte im Netzwerk kommen
+   nicht heran.
+2. Das Widget in iCUE importieren und auf dem Edge öffnen.
+3. Im Widget **Verbinden** antippen – in der Plugin-Karte erscheint ein
+   4-stelliger Code. Denselben Code mit **Xeneon Edge erlauben** bestätigen.
+
+Danach verbindet sich das Widget automatisch (SSE, sonst jede Sekunde
+Abfrage). Die Karte zeigt gekoppelte Geräte (höchstens drei), den Code während
+der Kopplung und die Aktionen **Kopplungsschlüssel kopieren** (Notlösung für
+die Widget-Eigenschaft „Kopplungsschlüssel“), **Widget herunterladen** und
+**Kopplungen zurücksetzen**. Einstellungen: Mini-Spektrum und Songtext-Zeile
+senden (beides an).
+
+Das Widget zeigt nur Titel, Artist, Album, Cover, Songtext-Zeile, Position und
+Lautstärke; Cover werden über die Brücke geladen, damit das Widget keine
+Deezer-/Apple-/YouTube-Adressen braucht. Spulen und Herz erscheinen erst, wenn
+die Plugin-API `seek`/`toggleFavorite` liefert (geplant für CleanMusic 2.2,
+Teil C); bis dahin werden sie ausgeblendet. Inoffiziell – nicht von CORSAIR,
+Markennamen nur beschreibend.
+
 ## Berechtigungen (Plugin-API v3)
 
 Ab CleanMusic 1.25.0 kann ein Plugin am Dateianfang ein Manifest tragen

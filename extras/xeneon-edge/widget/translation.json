@@ -1,0 +1,38 @@
+{
+  "en": {
+    "translation": {
+      "CleanMusic": "CleanMusic",
+      "Widget": "Widget",
+      "Widget Personalization": "Widget Personalization",
+      "Layout": "Layout",
+      "Automatic": "Automatic",
+      "Compact": "Compact",
+      "Large": "Large",
+      "Show Lyrics": "Show Lyrics",
+      "Show Up Next": "Show Up Next",
+      "Mini Spectrum": "Mini Spectrum",
+      "Pairing Key": "Pairing Key",
+      "Text Color": "Text Color",
+      "Accent Color": "Accent Color",
+      "Background Color": "Background Color"
+    }
+  },
+  "de": {
+    "translation": {
+      "CleanMusic": "CleanMusic",
+      "Widget": "Widget",
+      "Widget Personalization": "Eigene Farben",
+      "Layout": "Layout",
+      "Automatic": "Automatisch",
+      "Compact": "Kompakt",
+      "Large": "Groß",
+      "Show Lyrics": "Songtext anzeigen",
+      "Show Up Next": "Als Nächstes anzeigen",
+      "Mini Spectrum": "Mini-Spektrum",
+      "Pairing Key": "Kopplungsschlüssel",
+      "Text Color": "Textfarbe",
+      "Accent Color": "Akzentfarbe",
+      "Background Color": "Hintergrundfarbe"
+    }
+  }
+}

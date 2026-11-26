@@ -40,6 +40,7 @@ const isSmoke = process.argv.includes('--smoke');
 const isSmokePlugin = process.argv.includes('--smoke-plugin');
 const isSmokeObs = process.argv.includes('--smoke-obs');
 const isSmokeVisualizer = process.argv.includes('--smoke-visualizer');
+const isSmokeXeneon = process.argv.includes('--smoke-xeneon');
 const isSmokeStreamerbot = process.argv.includes('--smoke-streamerbot');
 const isAutostart = process.argv.includes('--autostart');
 if (process.platform === 'win32') app.setAppUserModelId('de.cleanmusic.launcher');
@@ -3537,6 +3538,15 @@ function createMainWindow() {
           }
         }
 
+        // Optional: the XENEON EDGE bridge from extras/ (pairing + HTTP/SSE).
+        if (isSmokeXeneon) {
+          try {
+            console.log('SMOKE_XENEON:', JSON.stringify(await smokeXeneonPlugin()));
+          } catch (error) {
+            console.error('SMOKE_XENEON_FAIL:', error.message);
+          }
+        }
+
         // Optional: the Streamer.bot plugin from extras/ (Fetch-URL commands).
         if (isSmokeStreamerbot) {
           try {
@@ -5760,6 +5770,163 @@ async function smokeVisualizerPlugin() {
     width: afterData ? afterData.width : null,
     gap: afterData ? afterData.gap : null,
     styleServed: afterData ? afterData.style : null,
+    closedAfterUnload: closed.status === 0,
+  };
+}
+
+/* Smoke test for extras/plugins/xeneon-edge.js (npm run smoke:xeneon). */
+async function smokeXeneonPlugin() {
+  const http = require('node:http');
+  const port = 4797;
+  process.env.CLEANMUSIC_XENEON_PORT = String(port);
+  const target = path.join(pluginDirs()[0], 'xeneon-edge.js');
+  fs.copyFileSync(path.join(ROOT, 'extras', 'plugins', 'xeneon-edge.js'), target);
+
+  discoverPlugins();
+  const config = pluginConfig();
+  config.enabled = config.enabled.filter((id) => id !== 'xeneon-edge').concat('xeneon-edge');
+  savePluginConfig(config);
+  const plugin = plugins.get('xeneon-edge');
+  await loadPlugin(plugin);
+
+  const js = (code) => mainWindow.webContents.executeJavaScript(code);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const call = (method, pathname, options = {}) =>
+    new Promise((resolve) => {
+      const headers = Object.assign({}, options.headers || {});
+      if (options.token) headers['X-CM-Token'] = options.token;
+      let body = null;
+      if (options.body) {
+        body = JSON.stringify(options.body);
+        headers['Content-Type'] = 'application/json';
+        headers['Content-Length'] = Buffer.byteLength(body);
+      }
+      const req = http.request({ host: '127.0.0.1', port, path: pathname, method, headers }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let json = null;
+          try {
+            json = JSON.parse(text);
+          } catch {
+            /* not JSON */
+          }
+          resolve({ status: res.statusCode, text, json });
+        });
+      });
+      req.on('error', (error) => resolve({ status: 0, text: error.message, json: null }));
+      if (body) req.write(body);
+      req.end();
+    });
+
+  if (plugin.error) throw new Error(plugin.error);
+  const mod = plugin.module;
+  const pair = await call('POST', '/api/pair');
+  const allowed = await mod.runAction('allow-pair');
+  const pairStatus = pair.json ? await call('GET', `/api/pair/${pair.json.pairId}`) : { json: null };
+  const token = pairStatus.json && pairStatus.json.token;
+
+  if (!token) throw new Error('Kopplung lieferte keinen Schlüssel');
+
+  // Let the player state arrive, then drive it through the widget endpoints.
+  await js("window.CleanMusic.setVolume(0.7); true");
+  await wait(600);
+  const state = await call('GET', '/api/state', { token });
+  const track = state.json && state.json.track ? state.json.track : null;
+
+  const events = await new Promise((resolve) => {
+    let body = '';
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: `/api/events?k=${encodeURIComponent(token)}&spectrum=1`,
+        headers: { Accept: 'text/event-stream' },
+      },
+      (res) => {
+        res.on('data', (chunk) => {
+          body += chunk;
+          if (body.includes('event: state') && body.includes('data: {')) {
+            req.destroy();
+            resolve({ status: res.statusCode, body });
+          }
+        });
+      }
+    );
+    req.on('error', (error) => resolve({ status: 0, body: error.message }));
+    req.setTimeout(3000, () => {
+      req.destroy();
+      resolve({ status: 0, body });
+    });
+    req.end();
+  });
+
+  await call('POST', '/api/cmd', { token, body: { command: 'pause' } });
+  await wait(700);
+  const paused = await js("document.querySelector('#audio').paused");
+  await call('POST', '/api/cmd', { token, body: { command: 'play' } });
+  await wait(1200);
+  const playing = await js("!document.querySelector('#audio').paused");
+
+  await call('POST', '/api/cmd', { token, body: { command: 'volume', value: 0.42 } });
+  await wait(350);
+  const volume = await js('window.CleanMusic.playerSnapshot().volume');
+  await call('POST', '/api/cmd', { token, body: { command: 'mute', value: true } });
+  await wait(350);
+  const muted = await js('window.CleanMusic.playerSnapshot().muted');
+  await call('POST', '/api/cmd', { token, body: { command: 'mute', value: false } });
+
+  const next = await call('POST', '/api/cmd', { token, body: { command: 'next' } });
+  await wait(1500);
+  const previous = await call('POST', '/api/cmd', { token, body: { command: 'previous' } });
+  await wait(800);
+
+  const seek = await call('POST', '/api/cmd', { token, body: { command: 'seek', value: 5 } });
+  const like = await call('POST', '/api/cmd', { token, body: { command: 'like' } });
+  const foreign = await call('GET', '/api/state', {
+    token,
+    headers: { Host: 'evil.example' },
+  });
+
+  const status = mod.status();
+  const fields = Array.isArray(mod.settings) ? mod.settings.length : 0;
+
+  // Switch off, remove the copy, port must be free again.
+  const cleanup = pluginConfig();
+  cleanup.enabled = cleanup.enabled.filter((id) => id !== 'xeneon-edge');
+  savePluginConfig(cleanup);
+  unloadPlugin(plugin);
+  plugins.delete('xeneon-edge');
+  fs.rmSync(target, { force: true });
+  discoverPlugins();
+  await wait(300);
+  const closed = await call('GET', '/api/state', { token });
+
+  return {
+    loaded: !plugin.error,
+    status: status.text,
+    fields,
+    pairCode: Boolean(pair.json && /^\d{4}$/.test(pair.json.code)),
+    allowed: Boolean(allowed && allowed.message),
+    token: typeof token === 'string' && token.length >= 40,
+    title: track ? track.title : null,
+    artist: track ? track.artist : null,
+    privateState: Boolean(
+      state.json && !JSON.stringify(state.json).includes('dzcdn.net') && !JSON.stringify(state.json).includes('deezer.com')
+    ),
+    coverPath: Boolean(track && /^\/api\/cover\?v=[a-f0-9]{20}$/.test(track.cover || '')),
+    paused,
+    playing,
+    volume,
+    muted,
+    next: next.status === 200,
+    previous: previous.status === 200,
+    // 501 until Plugin-API 2.2 (Part C) exposes seek/toggleFavorite.
+    seekStatus: seek.status,
+    likeStatus: like.status,
+    foreignHost: foreign.status,
+    events: events.body.includes('event: state') && events.body.startsWith('retry:'),
     closedAfterUnload: closed.status === 0,
   };
 }

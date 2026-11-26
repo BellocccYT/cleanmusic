@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>CleanMusic asset renderer</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #f4f7ff; }
+  .fill { position: absolute; inset: 0; }
+  .icon-wrap { display: grid; place-items: center; width: 100%; height: 100%; }
+  .icon-wrap svg { width: 82%; height: 82%; display: block; }
+
+  .mini {
+    display: flex; align-items: center; gap: 7px; height: 100%; padding: 6px;
+    background: linear-gradient(120deg, #16233b, #090d17);
+  }
+  .mini-cover {
+    width: 44px; height: 44px; border-radius: 7px; flex: 0 0 auto;
+    background: linear-gradient(145deg, #5b8cff, #35e0c0 70%, #122036);
+    box-shadow: 0 4px 10px rgba(0,0,0,.4);
+  }
+  .mini-mid { flex: 1; min-width: 0; }
+  .mini-title { font-size: 9px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-artist { font-size: 6.5px; color: rgba(244,247,255,.65); margin-top: 1px; }
+  .mini-bar { margin-top: 5px; height: 3px; border-radius: 9px; background: rgba(244,247,255,.16); }
+  .mini-bar i { display: block; width: 46%; height: 100%; border-radius: 9px; background: #5b8cff; }
+  .mini-play {
+    width: 22px; height: 22px; border-radius: 50%; background: #5b8cff; flex: 0 0 auto;
+    display: grid; place-items: center;
+  }
+  .mini-play::after {
+    content: ""; width: 0; height: 0; margin-left: 1.5px;
+    border-left: 6px solid #071019; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  }
+
+  .thumb { position: absolute; inset: 0; padding: 22px; overflow: hidden; background: linear-gradient(125deg, #101d33 0%, #071019 55%, #0b1a2c 100%); }
+  .thumb::before {
+    content: ""; position: absolute; width: 340px; height: 340px; right: -110px; top: -130px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(91,140,255,.36), transparent 68%);
+  }
+  .thumb-row { position: relative; display: flex; align-items: center; gap: 22px; height: 100%; }
+  .thumb-cover {
+    width: 168px; height: 168px; border-radius: 18px; flex: 0 0 auto;
+    background:
+      radial-gradient(circle at 70% 28%, rgba(255,255,255,.3), transparent 26%),
+      linear-gradient(145deg, #5b8cff, #35e0c0 62%, #101d33 100%);
+    box-shadow: 0 18px 34px rgba(0,0,0,.45);
+    display: grid; place-items: center; font-size: 46px; font-weight: 800; color: rgba(8,12,20,.72);
+  }
+  .thumb-mid { flex: 1; min-width: 0; }
+  .thumb-kicker { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: #7fa4ff; font-weight: 700; }
+  .thumb-title { font-size: 38px; font-weight: 750; letter-spacing: -.02em; margin-top: 4px; }
+  .thumb-artist { font-size: 17px; color: rgba(244,247,255,.7); margin-top: 2px; }
+  .thumb-lyric { font-size: 14px; color: rgba(244,247,255,.55); margin-top: 12px; }
+  .thumb-bar { margin-top: 16px; height: 6px; border-radius: 9px; background: rgba(244,247,255,.16); max-width: 250px; }
+  .thumb-bar i { display: block; width: 44%; height: 100%; border-radius: 9px; background: #5b8cff; }
+  .thumb-controls { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .thumb-btn { width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(244,247,255,.18); background: rgba(244,247,255,.06); }
+  .thumb-play { width: 56px; height: 56px; border-radius: 50%; background: #5b8cff; display: grid; place-items: center; }
+  .thumb-play::after {
+    content: ""; width: 0; height: 0; margin-left: 3px;
+    border-left: 15px solid #071019; border-top: 10px solid transparent; border-bottom: 10px solid transparent;
+  }
+  .thumb-brand { position: absolute; right: 22px; bottom: 14px; font-size: 11px; letter-spacing: .12em; color: rgba(244,247,255,.45); text-transform: uppercase; }
+
+  .cover { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(145deg, #203a72 0%, #5b8cff 48%, #35e0c0 100%); }
+  .cover::before {
+    content: ""; position: absolute; width: 300px; height: 300px; left: -80px; top: -100px; border-radius: 50%;
+    background: rgba(255,255,255,.16); filter: blur(2px);
+  }
+  .cover::after {
+    content: ""; position: absolute; width: 330px; height: 330px; right: -120px; bottom: -150px; border-radius: 50%;
+    border: 36px solid rgba(8,12,20,.22);
+  }
+  .cover-ring {
+    position: absolute; width: 180px; height: 180px; left: 110px; top: 110px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.45);
+  }
+  .cover-ring.two { width: 120px; height: 120px; left: 140px; top: 140px; border-color: rgba(255,255,255,.24); }
+  .cover-text { position: absolute; left: 30px; bottom: 28px; z-index: 2; text-shadow: 0 4px 20px rgba(0,0,0,.35); }
+  .cover-name { font-size: 34px; font-weight: 800; letter-spacing: -.01em; }
+  .cover-artist { font-size: 15px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="root" class="fill"></div>
+<script>
+  var kind = new URLSearchParams(location.search).get('kind') || 'icon';
+  var root = document.getElementById('root');
+
+  var iconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+    '<g fill="#ffffff">' +
+    '<path d="M32 4a28 28 0 1 0 0 56 28 28 0 0 0 0-56zm0 5.6a22.4 22.4 0 1 1 0 44.8 22.4 22.4 0 0 1 0-44.8z"/>' +
+    '<path d="M26.5 20.6a1.6 1.6 0 0 1 2.4-1.4l16 10.6a1.6 1.6 0 0 1 0 2.7l-16 10.6a1.6 1.6 0 0 1-2.4-1.4z"/>' +
+    '<rect x="47" y="44" width="4" height="7" rx="1.4"/>' +
+    '<rect x="53" y="40" width="4" height="11" rx="1.4"/>' +
+    '</g></svg>';
+
+  if (kind === 'icon') {
+    document.body.style.background = 'transparent';
+    root.className = 'fill icon-wrap';
+    root.innerHTML = iconSvg;
+  } else if (kind === 'preview') {
+    root.innerHTML =
+      '<div class="mini">' +
+      '<div class="mini-cover"></div>' +
+      '<div class="mini-mid"><div class="mini-title">Nachtfahrt</div><div class="mini-artist">Lena Morgen</div>' +
+      '<div class="mini-bar"><i></i></div></div>' +
+      '<div class="mini-play"></div>' +
+      '</div>';
+  } else if (kind === 'thumb') {
+    root.innerHTML =
+      '<div class="thumb"><div class="thumb-row">' +
+      '<div class="thumb-cover">♪</div>' +
+      '<div class="thumb-mid">' +
+      '<div class="thumb-kicker">CleanMusic · Touch-Player</div>' +
+      '<div class="thumb-title">Nachtfahrt</div>' +
+      '<div class="thumb-artist">Lena Morgen</div>' +
+      '<div class="thumb-lyric">Wir fahren durch die Nacht</div>' +
+      '<div class="thumb-bar"><i></i></div>' +
+      '<div class="thumb-controls"><span class="thumb-btn"></span><span class="thumb-play"></span><span class="thumb-btn"></span></div>' +
+      '</div></div><div class="thumb-brand">für CORSAIR XENEON EDGE</div></div>';
+  } else if (kind === 'cover') {
+    root.innerHTML =
+      '<div class="cover"><div class="cover-ring"></div><div class="cover-ring two"></div>' +
+      '<div class="cover-text"><div class="cover-name">Nachtfahrt</div><div class="cover-artist">Lena Morgen</div></div>' +
+      '</div>';
+  }
+</script>
+</body>
+</html>
