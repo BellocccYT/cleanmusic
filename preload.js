@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('cm', {
   shortcutsSet: (patch) => ipcRenderer.invoke('shortcuts-set', patch),
   loginGet: () => ipcRenderer.invoke('login-get'),
   loginSet: (patch) => ipcRenderer.invoke('login-set', patch),
+  startMenu: (action) => ipcRenderer.invoke('start-menu', String(action || 'status')),
   remoteGet: () => ipcRenderer.invoke('remote-get'),
   remoteSet: (patch) => ipcRenderer.invoke('remote-set', patch),
   remoteRotate: () => ipcRenderer.invoke('remote-rotate'),
@@ -94,6 +95,11 @@ contextBridge.exposeInMainWorld('cm', {
   },
   onPluginsChanged: (listener) => {
     ipcRenderer.on('plugins-changed', (_event, info) => listener(info));
+  },
+  // Plugin-API v3, "stage": figures behind the motion lyrics.
+  stageGet: () => ipcRenderer.invoke('stage-get'),
+  onStageScene: (listener) => {
+    ipcRenderer.on('stage-scene', (_event, scene) => listener(scene || null));
   },
   onDiscordStatus: (listener) => {
     ipcRenderer.on('discord-status', (_event, status) => listener(status));

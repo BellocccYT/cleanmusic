@@ -433,7 +433,7 @@
   }
 
   function fullMode() {
-    return Boolean(matchPlugin()) && state.settings.fullTracks !== false;
+    return !roomPreviewOnly() && Boolean(matchPlugin()) && state.settings.fullTracks !== false;
   }
 
   function currentItem() {
@@ -4598,8 +4598,21 @@
     }
 
     if (item.kind === 'plugin') {
+      // In a room with "only previews" the host deliberately uses the catalogue
+      // preview, so guests without a plugin hear the same thing.
+      if (roomPreviewOnly() && (item.title || item.artist)) {
+        const found = await findRequestTrack(`${item.artist || ''} ${item.title || ''}`.trim(), 'preview', 0).catch(() => null);
+        const preview = found ? await freshPreview(found, force).catch(() => null) : null;
+        if (preview) return { url: preview, mode: 'preview', notice: 'Raum: 30-s-Vorschau (ohne Plugin).' };
+      }
       const plugin = pluginById(item.pluginId);
       if (!isPluginReady(plugin) || !plugin.capabilities.resolve) {
+        // Without the plugin the catalogue preview is still better than silence.
+        const preview = await findRequestTrack(`${item.artist || ''} ${item.title || ''}`.trim(), 'preview', 0).catch(() => null);
+        const url = preview ? await freshPreview(preview, force).catch(() => null) : null;
+        if (url) {
+          return { url, mode: 'preview', notice: `Plugin „${plugin ? plugin.name : item.pluginId}“ nicht aktiv – 30-s-Vorschau läuft.` };
+        }
         throw new Error(
           `Für diesen Titel braucht es das Plugin „${plugin ? plugin.name : item.pluginId}“ – Einstellungen → Plugins.`
         );
@@ -4646,6 +4659,7 @@
 
   function prefetchPluginEntry(entry) {
     if (entry.kind === 'plugin') {
+      if (roomPreviewOnly()) return null;
       const plugin = pluginById(entry.pluginId);
       if (!isPluginReady(plugin) || !plugin.capabilities.resolve) return null;
       return Promise.resolve(bridge.pluginResolve(plugin.id, entry.refId, false));
@@ -5509,6 +5523,7 @@
       'Alle fünfzehn Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
       'Die neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
       'Neu als optionales Plugin: CleanMusic auf dem CORSAIR XENEON EDGE (inoffiziell). Das iCUE-Widget zeigt Cover, Titel, Songtext und große Touch-Knöpfe; gekoppelt wird mit einem 4-stelligen Code unter Einstellungen → Plugins. Widget und Plugin-Datei liegen beim Release auf GitHub.',
+      'Unter Windows lässt sich CleanMusic jetzt zuverlässig an Start und Taskleiste anheften: Einstellungen → System → „Im Startmenü anlegen“ schreibt die Verknüpfung (auch bei der portablen EXE, die sonst gar nicht im Startmenü steht) und zeigt sie im Explorer – dort Rechtsklick → „An Start anheften“.',
     ],
     '2.1.1': [
       'Freunde, die gerade hören, erscheinen jetzt als große Karten mit Cover – mit „Mithören“ und den Emoji-Reaktionen direkt auf der Karte, dazu kleine Live-Effekte (bei „Bewegung reduzieren“ und im Sparmodus ohne Bewegung).',
@@ -6248,6 +6263,13 @@
 
   // shownSynced: which view renderLyrics drew last (running list or static preview text).
   const lyricsState = { key: '', lines: [], plain: '', loading: false, error: null, index: -1, shownSynced: null };
+  // Plugin-API v3, "stage": figures from a plugin (only in memory, never saved).
+  let stageScene = null;
+
+  function applyStageScene(scene) {
+    stageScene = scene && Array.isArray(scene.characters) && scene.characters.length ? scene : null;
+    if (window.CMLyricStage && window.CMLyricStage.setScene) window.CMLyricStage.setScene(stageScene);
+  }
   let lyricsHold = false; // smoke test only: keep injected lines
 
   function lyricsOn() {
@@ -6602,6 +6624,7 @@
       artwork: item && item.artwork ? item.artwork : '',
       title: item ? item.title || '' : '',
       size: state.settings.lyricsSize,
+      scene: stageScene,
     });
   }
 
@@ -7241,22 +7264,29 @@
   }
 
   // Find a shared title again: Deezer/Apple by id, YouTube via plugin, else by name.
-  async function findSharedEntry(link) {
+  // `preview` keeps a guest on the catalogue preview when the host plays one.
+  async function findSharedEntry(link, options = {}) {
+    const previewOnly = options && options.preview === true;
     let entry = null;
     try {
       if ((link.src === 'deezer' || link.src === 'apple') && bridge.requestLink) {
         const url = link.src === 'deezer' ? `https://www.deezer.com/track/${link.id}` : `https://music.apple.com/song/${link.id}`;
         const result = await bridge.requestLink(url);
         if (result && result.track) entry = previewEntry(result.track);
-      } else if (link.src === 'youtube') {
+      } else if (link.src === 'youtube' && !previewOnly) {
         const plugin = readyPlugins('lookup')[0];
         if (plugin && bridge.pluginLookup) {
           const result = await bridge.pluginLookup(plugin.id, `https://www.youtube.com/watch?v=${link.id}`);
           if (result && result.item) entry = pluginEntry(plugin, result.item);
         }
+        // A plugin may be able to play the video id without implementing lookup.
+        if (!entry) {
+          const resolver = readyPlugins('resolve')[0];
+          if (resolver) entry = pluginEntry(resolver, { id: link.id, title: link.title, artist: link.artist });
+        }
       }
       if (!entry && link.title) {
-        const found = await findRequestTrack(`${link.artist || ''} ${link.title}`.trim(), 'auto', 0);
+        const found = await findRequestTrack(`${link.artist || ''} ${link.title}`.trim(), previewOnly ? 'preview' : 'auto', 0);
         if (found && !found.tooLong) entry = found;
       }
     } catch {
@@ -7843,10 +7873,24 @@
     return plan.action;
   }
 
+  // Relative times ("vor 2 Min.") stay fresh between polls – no extra request.
+  function socialAgoTick() {
+    if (!socialLocal.enabled || !SOC) return;
+    const now = Date.now() + socialRt.skew;
+    document.querySelectorAll('[data-ago]').forEach((node) => {
+      const at = Number(node.dataset.ago) || 0;
+      const text = SOC.ago(at, now);
+      if (node.textContent !== text) node.textContent = text;
+    });
+  }
+
   function startSocialTimers() {
     stopSocialTimers();
-    socialRt.tick = setInterval(socialTick, 15000);
-    socialRt.poll = setInterval(socialPoll, 30000);
+    socialRt.tick = setInterval(() => {
+      socialTick();
+      socialAgoTick();
+    }, 15000);
+    socialRt.poll = setInterval(socialPoll, 10000);
     setTimeout(socialTick, 3000);
   }
 
@@ -8454,7 +8498,7 @@
           <span class="social-listen-text">
             <span class="social-who">${esc(friend.name)} <span class="social-tag">· ${esc(friend.tag)}</span>${act.playing ? SOCIAL_EQ : ''}</span>
             <strong>${esc(act.ref.title)}</strong>
-            <small>${act.ref.artist ? `${esc(act.ref.artist)} · ` : ''}${esc(ago)}</small>
+            <small>${act.ref.artist ? `${esc(act.ref.artist)} · ` : ''}<span data-ago="${act.at}">${esc(ago)}</span></small>
           </span>
         </button>
         <div class="social-emojis">${emojis}</div>
@@ -8469,7 +8513,7 @@
         <div class="social-card-body">
           <div class="social-card-who">
             ${socialAvatar(friend, 'listening')}
-            <span class="social-card-name"><strong>${esc(friend.name)}</strong> <span class="social-tag">· ${esc(friend.tag)}</span><small title="Zuletzt gemeldet">${esc(ago)}</small></span>
+            <span class="social-card-name"><strong>${esc(friend.name)}</strong> <span class="social-tag">· ${esc(friend.tag)}</span><small title="Zuletzt gemeldet" data-ago="${act.at}">${esc(ago)}</small></span>
             <button class="icon-btn small social-more" data-social="menu" data-kind="friend" data-id="${esc(friend.id)}" title="Mehr" aria-label="Mehr zu ${esc(friend.name)}">⋯</button>
           </div>
           <strong class="social-card-title" title="${esc(act.ref.title)}">${esc(act.ref.title)}</strong>
@@ -8500,7 +8544,7 @@
     const host = $('#view-friends');
     if (!host) return;
     const keep = {};
-    ['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code', 'social-room-code'].forEach((id) => {
+    ['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code', 'social-room-code', 'social-room-add'].forEach((id) => {
       const field = document.getElementById(id);
       if (field && field.dataset.touched) keep[id] = field.value;
     });
@@ -8585,7 +8629,7 @@
     const requestRows = socialRt.requests.map((request) => `<li class="social-friend social-request${freshRequests.has(request.from.id) ? ' is-new' : ''}">
         ${socialAvatar(request.from)}
         <span class="social-friend-name"><strong>${esc(request.from.name)}</strong> ${tag(request.from)}
-          <small>möchte mit dir befreundet sein · ${esc(SOC.ago(request.at, now))}</small></span>
+          <small>möchte mit dir befreundet sein · <span data-ago="${request.at}">${esc(SOC.ago(request.at, now))}</span></small></span>
         <span class="social-friend-actions">
           <button class="btn primary small" data-social="accept" data-id="${esc(request.from.id)}">Annehmen</button>
           <button class="btn ghost small" data-social="decline" data-id="${esc(request.from.id)}">Ablehnen</button>
@@ -8630,7 +8674,7 @@
     const sentRows = socialRt.sent.map((row) => `<li class="social-friend compact">${socialAvatar(row.to)}
         <span class="social-friend-name"><strong>${esc(row.to.name)}</strong> ${tag(row.to)}<small>wartet auf Bestätigung · ${esc(SOC.expiresIn(row.expires, now))}</small></span>
         <span class="social-friend-actions"><button class="btn ghost small" data-social="withdraw" data-id="${esc(row.to.id)}">Zurückziehen</button></span></li>`).join('');
-    const reactions = socialRt.reactions.slice(0, 12).map((reaction) => `<li class="social-reaction${socialFx.reactionsAt >= 0 && reaction.at > socialFx.reactionsAt ? ' is-new' : ''}"><span class="social-big-emoji">${reaction.emoji}</span> <strong>${esc(reaction.from.name)}</strong> ${tag(reaction.from)}${reaction.title ? ` zu „${esc(reaction.title)}“` : ''} <small class="muted">${esc(SOC.ago(reaction.at, now))}</small></li>`).join('');
+    const reactions = socialRt.reactions.slice(0, 12).map((reaction) => `<li class="social-reaction${socialFx.reactionsAt >= 0 && reaction.at > socialFx.reactionsAt ? ' is-new' : ''}"><span class="social-big-emoji">${reaction.emoji}</span> <strong>${esc(reaction.from.name)}</strong> ${tag(reaction.from)}${reaction.title ? ` zu „${esc(reaction.title)}“` : ''} <small class="muted" data-ago="${reaction.at}">${esc(SOC.ago(reaction.at, now))}</small></li>`).join('');
     const blocked = socialRt.blocked.map((person) => `<li class="social-friend"><span class="social-friend-name"><strong>${esc(person.name)}</strong> ${tag(person)}</span>
         <span class="social-friend-actions"><button class="btn ghost small" data-social="unblock" data-id="${esc(person.id)}">Freigeben</button></span></li>`).join('');
     const chip = (on, yes, no) => `<span class="chip social-chip${on ? ' on' : ''}">${on ? yes : no}</span>`;
@@ -8875,6 +8919,26 @@
         case 'room-follow':
           followRoomAgain();
           break;
+        case 'room-retry':
+          retryRoomTitle();
+          break;
+        case 'room-jam':
+          toggleRoomJam(button.dataset.on === '1');
+          break;
+        case 'room-add': {
+          const field = $('#social-room-add');
+          addRoomQueue(field ? field.value : '');
+          break;
+        }
+        case 'room-add-current':
+          addRoomQueue('');
+          break;
+        case 'room-unqueue':
+          removeRoomQueue(button.dataset.rid);
+          break;
+        case 'room-jam-clear':
+          bridge.socialRoom('send', { t: 'queue-clear' });
+          break;
         case 'room-connect':
           if (roomRt.room) roomEnter({ id: roomRt.room.id, host: roomRt.room.host, members: roomRt.room.members, state: roomRt.state });
           break;
@@ -8884,7 +8948,7 @@
     });
     document.addEventListener('input', (event) => {
       const field = event.target;
-      if (!field || !['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code', 'social-room-code'].includes(field.id)) return;
+      if (!field || !['social-name', 'social-redeem', 'social-server', 'social-group-name', 'social-group-code', 'social-room-code', 'social-room-add'].includes(field.id)) return;
       field.dataset.touched = '1';
       if (field.id !== 'social-name' || !bridge.socialNameCheck) return;
       clearTimeout(socialNameTimer);
@@ -8899,10 +8963,13 @@
       if (event.target && event.target.id === 'social-show-activity') setShowActivity(event.target.checked);
       if (event.target && event.target.id === 'social-show-online') setShowOnline(event.target.checked);
       if (event.target && event.target.id === 'social-online-toasts') setOnlineToasts(event.target.checked);
+      if (event.target && event.target.id === 'social-room-noauto') setRoomNoAuto(event.target.checked);
+      if (event.target && event.target.id === 'social-room-preview') setRoomPreviewOnly(event.target.checked);
     });
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' || !event.target) return;
       if (event.target.id === 'social-redeem') redeemFriendCode(event.target.value);
+      if (event.target.id === 'social-room-add') addRoomQueue(event.target.value);
       if (event.target.id === 'social-name') saveSocialName();
       if (event.target.id === 'social-group-code') joinGroupCode(event.target.value);
       if (event.target.id === 'social-group-name') createSocialGroup();
@@ -8934,7 +9001,7 @@
     renderFriends();
     refreshSocialInfo().then(() => {
       if (state.view !== 'friends') return;
-      if (socialLocal.enabled && Date.now() - socialRt.loaded > 15000) refreshFriends({ quiet: true });
+      if (socialLocal.enabled) refreshFriends({ quiet: true });
       else renderFriends();
       if (socialLocal.enabled && roomRt.status === 'off') refreshRoom();
     });
@@ -8948,7 +9015,7 @@
    * Own pause/seek/song as a guest = "du hörst selbst" until "Wieder synchron".
    * The socket lives in the main process (social-main.js); rules in
    * core/social.js (roomSyncPlan, roomHostPlan, roomDeviation). */
-  let roomLocal = SOC ? SOC.normalizeRoomLocal(readJSON(STORAGE.room, {})) : { code: '', room: '', at: 0 };
+  let roomLocal = SOC ? SOC.normalizeRoomLocal(readJSON(STORAGE.room, {})) : { code: '', room: '', at: 0, noAuto: false };
   const roomRt = {
     supported: true,
     room: null,
@@ -8963,8 +9030,19 @@
     loadedKey: '',
     loadedEntryId: '',
     missingKey: '',
+    missingAt: 0,
     reason: '',
     reactions: [],
+    // 2.2 Jam: shared queue from the server, applied on the host's player.
+    jam: false,
+    queue: [],
+    jamApplied: new Set(),
+    jamApplying: new Set(),
+    jamMissing: new Set(),
+    jamStarted: new Set(),
+    jamRetryAt: 0,
+    jamChain: Promise.resolve(),
+    addError: '',
     entries: new Map(),
     timer: 0,
     wired: false,
@@ -9025,6 +9103,25 @@
     }
   }
 
+  // 2.2: "Algorithmus aus" – no autoplay while in a room (per account).
+  function roomAutoBlocked() {
+    try {
+      return Boolean(roomRt.room && roomLocal.noAuto);
+    } catch {
+      return false;
+    }
+  }
+
+  // 2.2: "Nur Vorschauen im Raum" – the host intentionally plays the 30-second
+  // catalogue preview, so every guest can join without a plugin.
+  function roomPreviewOnly() {
+    try {
+      return Boolean(roomRt.room && roomLocal.previewOnly);
+    } catch {
+      return false;
+    }
+  }
+
   function roomApply(run) {
     roomRt.applyUntil = Date.now() + 1500;
     try {
@@ -9036,11 +9133,13 @@
 
   async function roomLoad(ref, key) {
     roomRt.loading = key;
-    let entry = roomRt.entries.get(key) || null;
+    const preview = Boolean(roomRt.state && roomRt.state.ref && SOC.refKey(roomRt.state.ref) === key && roomRt.state.full === false);
+    const cacheKey = `${key}|${preview ? 'p' : 'f'}`;
+    let entry = roomRt.entries.get(cacheKey) || null;
     if (!entry) {
-      entry = await findSharedEntry(ref);
+      entry = await findSharedEntry(ref, { preview });
       if (entry) {
-        roomRt.entries.set(key, entry);
+        roomRt.entries.set(cacheKey, entry);
         if (roomRt.entries.size > 40) roomRt.entries.delete(roomRt.entries.keys().next().value);
       }
     }
@@ -9048,10 +9147,17 @@
     roomRt.loading = '';
     if (!entry) {
       roomRt.missingKey = key;
-      toast(`„${ref.title}“ wurde bei dir nicht gefunden – der Raum läuft weiter.`);
+      roomRt.missingAt = Date.now();
+      if (roomRt.missingToast !== key) {
+        roomRt.missingToast = key;
+        toast(`„${ref.title}“ wurde bei dir nicht gefunden – der Raum läuft weiter.`);
+      }
       renderRoomViews();
       return false;
     }
+    roomRt.missingKey = '';
+    roomRt.missingAt = 0;
+    roomRt.missingToast = '';
     roomRt.applyUntil = Date.now() + 4000;
     roomRt.loadedKey = key;
     roomRt.loadedEntryId = entry.id;
@@ -9060,6 +9166,169 @@
     playList('shared', 0);
     renderRoomViews();
     return true;
+  }
+
+  /* --- 2.2 Jam: everyone may add titles to the shared queue ---------------- *
+   * The server keeps the queue (refs only, never audio). The host resolves each
+   * entry and appends it to its own queue; when it starts, the host removes it
+   * from the shared queue. Guests only see the list and add titles. */
+  function removeJamEntry(rid) {
+    const q = state.queue;
+    const current = currentItem();
+    if (current && current.jamRid === rid) return;
+    for (let index = q.index + 1; index < q.items.length; index += 1) {
+      if (q.items[index] && q.items[index].jamRid === rid) {
+        queueSlice.remove(index);
+        planUpcoming();
+        schedulePrefetch();
+        renderQueuePanel();
+        return;
+      }
+    }
+  }
+
+  // Entries someone removed from the shared queue disappear from the host's queue too.
+  function pruneJamQueue() {
+    const live = new Set(roomRt.queue.map((item) => item.rid));
+    Array.from(roomRt.jamApplied).forEach((rid) => {
+      if (live.has(rid)) return;
+      removeJamEntry(rid);
+      roomRt.jamApplied.delete(rid);
+    });
+  }
+
+  function applyRoomQueue() {
+    if (!roomRt.room || !roomRt.room.isHost || !SOC) return;
+    roomRt.queue.forEach((item) => {
+      if (roomRt.jamApplied.has(item.rid) || roomRt.jamApplying.has(item.rid) || roomRt.jamMissing.has(item.rid)) return;
+      roomRt.jamApplying.add(item.rid);
+      const key = SOC.refKey(item.ref);
+      // One after another: the shared queue keeps its order, even when a
+      // plugin needs longer for one title than for the next.
+      const run = async () => {
+        try {
+          let entry = roomRt.entries.get(key) || null;
+          if (!entry) {
+            entry = await findSharedEntry(item.ref);
+            if (entry) {
+              roomRt.entries.set(key, entry);
+              if (roomRt.entries.size > 40) roomRt.entries.delete(roomRt.entries.keys().next().value);
+            }
+          }
+          if (!roomRt.room || !roomRt.room.isHost || !roomRt.queue.some((row) => row.rid === item.rid)) return;
+          if (!entry) {
+            roomRt.jamMissing.add(item.rid);
+            renderRoomViews();
+            return;
+          }
+          roomRt.jamApplied.add(item.rid);
+          roomRt.jamMissing.delete(item.rid);
+          enqueue([Object.assign({}, entry, { jamRid: item.rid })], 'end', { jam: true, quiet: true });
+          renderRoomViews();
+        } finally {
+          roomRt.jamApplying.delete(item.rid);
+        }
+      };
+      roomRt.jamChain = roomRt.jamChain.then(run, run);
+    });
+  }
+
+  // The host just started a shared title: it leaves the server queue. If the
+  // message got lost (reconnect), retry while the entry is still listed.
+  function roomJamStarted(entry) {
+    try {
+      const rid = entry && entry.jamRid;
+      if (!rid || !roomRt.room || !roomRt.room.isHost) return;
+      if (!roomRt.jamStarted.has(rid)) {
+        roomRt.jamStarted.add(rid);
+        bridge.socialRoom('send', { t: 'unqueue', rid });
+        return;
+      }
+      if (!roomRt.queue.some((item) => item.rid === rid)) return;
+      if (Date.now() - (roomRt.jamRetryAt || 0) < 5000) return;
+      roomRt.jamRetryAt = Date.now();
+      bridge.socialRoom('send', { t: 'unqueue', rid });
+    } catch {
+      /* called before the section was ready */
+    }
+  }
+
+  function setRoomNoAuto(on) {
+    roomLocal.noAuto = Boolean(on);
+    persistRoomLocal();
+    if (roomLocal.noAuto) toast('Algorithmus im Raum aus – nach der Warteschlange ist Schluss.');
+    renderRoomViews();
+  }
+
+  function setRoomPreviewOnly(on) {
+    roomLocal.previewOnly = Boolean(on);
+    persistRoomLocal();
+    toast(roomLocal.previewOnly
+      ? 'Im Raum laufen nur 30-s-Vorschauen – alle können ohne Plugin mithören. Gilt ab dem nächsten Titel.'
+      : 'Im Raum sind wieder volle Titel über dein Plugin möglich.');
+    renderRoomViews();
+  }
+
+  async function toggleRoomJam(on) {
+    if (!roomRt.room || !roomRt.room.isHost) return false;
+    const result = await bridge.socialRoom('send', { t: 'jam', on: Boolean(on) });
+    if (!result || !result.ok) {
+      toast((result && result.message) || 'Der Social-Server kennt den Jam noch nicht – bitte aktualisieren.');
+      return false;
+    }
+    return true;
+  }
+
+  async function addRoomQueue(text) {
+    if (!roomRt.room) return false;
+    if (!roomRt.jam) {
+      roomRt.addError = 'kein-jam';
+      toast('Der Host hat keinen Jam gestartet.');
+      return false;
+    }
+    const query = String(text || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 200);
+    let ref = null;
+    let title = '';
+    if (query) {
+      const entry = await findRequestTrack(query, 'auto', 0);
+      if (!entry || entry.tooLong) {
+        roomRt.addError = 'nicht-gefunden';
+        toast(`„${query}“ wurde nicht gefunden.`);
+        return false;
+      }
+      ref = window.CMShare ? window.CMShare.refOf(entry) : null;
+      title = entry.title;
+    } else {
+      const entry = currentItem();
+      ref = entry && window.CMShare ? window.CMShare.refOf(entry) : null;
+      title = entry ? entry.title : '';
+    }
+    if (!ref) {
+      roomRt.addError = 'nicht-teilbar';
+      toast('Dieser Titel lässt sich nicht teilen (lokale Datei oder Radio).');
+      return false;
+    }
+    const result = await bridge.socialRoom('send', { t: 'add', ref });
+    if (!result || !result.ok) {
+      roomRt.addError = `senden:${(result && result.error) || 'offline'}`;
+      toast((result && result.message) || 'Der Titel kam nicht in die Warteschlange.');
+      return false;
+    }
+    roomRt.addError = '';
+    toast(`„${title || ref.title}“ steht in der Warteschlange.`);
+    const field = $('#social-room-add');
+    if (field && query) {
+      field.value = '';
+      delete field.dataset.touched;
+    }
+    return true;
+  }
+
+  async function removeRoomQueue(rid) {
+    if (!rid) return false;
+    const result = await bridge.socialRoom('send', { t: 'unqueue', rid });
+    if (!result || !result.ok) toast((result && result.message) || 'Das hat nicht geklappt.');
+    return Boolean(result && result.ok);
   }
 
   // Guest: bring the own player to the host's state.
@@ -9076,7 +9345,8 @@
     roomRt.reason = plan.reason;
     const key = roomRt.state.ref ? SOC.refKey(roomRt.state.ref) : '';
     if (plan.action === 'load') {
-      if (roomRt.missingKey !== key) roomLoad(roomRt.state.ref, key);
+      const retry = roomRt.missingKey === key && Date.now() - (roomRt.missingAt || 0) > 30000;
+      if (roomRt.missingKey !== key || retry) roomLoad(roomRt.state.ref, key);
     } else if (plan.action === 'seek') {
       roomRt.lastSeekAt = Date.now();
       roomApply(() => {
@@ -9103,6 +9373,7 @@
   async function roomHostTick(force) {
     if (!roomRt.room || !roomRt.room.isHost || roomRt.status !== 'open' || state.nowMode === 'loading') return false;
     const entry = currentItem();
+    if (entry) roomJamStarted(entry);
     const ref = entry && window.CMShare ? window.CMShare.refOf(entry) : null;
     const key = SOC.refKey(ref);
     const playing = Boolean(ref) && !audio.paused;
@@ -9140,6 +9411,18 @@
     roomRt.following = true;
     roomRt.lastSeekAt = 0;
     roomRt.missingKey = '';
+    roomRt.missingAt = 0;
+    roomRt.loadedEntryId = '';
+    roomRt.loadedKey = '';
+    roomFollow();
+    renderRoomViews();
+    return true;
+  }
+
+  function retryRoomTitle() {
+    roomRt.missingKey = '';
+    roomRt.missingAt = 0;
+    roomRt.missingToast = '';
     roomRt.loadedEntryId = '';
     roomRt.loadedKey = '';
     roomFollow();
@@ -9162,13 +9445,26 @@
     const room = SOC.normalizeRoom(raw, socialMyId());
     if (!room) return null;
     const same = roomRt.room && roomRt.room.id === room.id;
-    Object.assign(roomRt, { room, state: room.state, following: same ? roomRt.following : true, lastSent: null, missingKey: '', reactions: same ? roomRt.reactions : [] });
-    if (!same) Object.assign(roomRt, { loadedKey: '', loadedEntryId: '', lastSeekAt: 0 });
-    if (code) roomLocal = { code, room: room.id, at: Date.now() };
-    else if (roomLocal.room !== room.id) roomLocal = { code: '', room: room.id, at: Date.now() };
+    Object.assign(roomRt, {
+      room,
+      state: room.state,
+      following: same ? roomRt.following : true,
+      lastSent: null,
+      missingKey: '',
+      reactions: same ? roomRt.reactions : [],
+      jam: room.jam,
+      queue: room.queue,
+    });
+    if (!same) {
+      Object.assign(roomRt, { loadedKey: '', loadedEntryId: '', lastSeekAt: 0, jamApplied: new Set(), jamApplying: new Set(), jamMissing: new Set(), jamStarted: new Set(), jamRetryAt: 0, jamChain: Promise.resolve() });
+    }
+    if (code) roomLocal = { code, room: room.id, at: Date.now(), noAuto: roomLocal.noAuto };
+    else if (roomLocal.room !== room.id) roomLocal = { code: '', room: room.id, at: Date.now(), noAuto: roomLocal.noAuto };
     persistRoomLocal();
     startRoomTimer();
     bridge.socialRoom('connect');
+    if (room.isHost) applyRoomQueue();
+    else pruneJamQueue();
     renderRoomViews();
     return room;
   }
@@ -9177,8 +9473,27 @@
     clearInterval(roomRt.timer);
     roomRt.timer = 0;
     if (bridge.socialRoom) bridge.socialRoom('disconnect');
-    Object.assign(roomRt, { room: null, state: null, status: 'off', following: true, lastSent: null, loading: '', loadedKey: '', loadedEntryId: '', missingKey: '', reactions: [] });
-    roomLocal = { code: '', room: '', at: 0 };
+    Object.assign(roomRt, {
+      room: null,
+      state: null,
+      status: 'off',
+      following: true,
+      lastSent: null,
+      loading: '',
+      loadedKey: '',
+      loadedEntryId: '',
+      missingKey: '',
+      reactions: [],
+      jam: false,
+      queue: [],
+      jamApplied: new Set(),
+      jamApplying: new Set(),
+      jamMissing: new Set(),
+      jamStarted: new Set(),
+      jamRetryAt: 0,
+      jamChain: Promise.resolve(),
+    });
+    roomLocal = { code: '', room: '', at: 0, noAuto: roomLocal.noAuto };
     persistRoomLocal();
     if (message) toast(message);
     renderRoomViews();
@@ -9342,9 +9657,16 @@
       const was = roomRt.room;
       roomRt.room = room;
       roomRt.state = room.state;
+      roomRt.jam = room.jam;
+      roomRt.queue = room.queue;
       if (!was || was.id !== room.id) roomRt.following = true;
-      if (room.isHost) roomHostTick(true);
-      else roomFollow();
+      if (room.isHost) {
+        applyRoomQueue();
+        roomHostTick(true);
+      } else {
+        pruneJamQueue();
+        roomFollow();
+      }
       renderRoomViews();
     } else if (data.t === 'state') {
       roomRt.state = SOC.roomState(data.state);
@@ -9359,7 +9681,23 @@
       if (roomRt.room.isHost && !wasHost) {
         toast('Du bist jetzt Host – was du abspielst, läuft bei allen.');
         roomRt.lastSent = null;
+        applyRoomQueue();
         roomHostTick(true);
+      }
+      renderRoomViews();
+    } else if (data.t === 'jam') {
+      roomRt.jam = data.jam === true;
+      roomRt.queue = SOC.normalizeRoomQueue(data.queue);
+      if (roomRt.room) roomRt.room.jam = roomRt.jam;
+      if (roomRt.room) roomRt.room.queue = roomRt.queue;
+      if (roomRt.room && roomRt.room.isHost) applyRoomQueue();
+      renderRoomViews();
+    } else if (data.t === 'queue') {
+      roomRt.queue = SOC.normalizeRoomQueue(data.queue);
+      if (roomRt.room) roomRt.room.queue = roomRt.queue;
+      if (roomRt.room && roomRt.room.isHost) {
+        pruneJamQueue();
+        applyRoomQueue();
       }
       renderRoomViews();
     } else if (data.t === 'react') {
@@ -9371,8 +9709,10 @@
     } else if (data.t === 'closed') {
       const message = roomCloseMessage(data.reason);
       if (message) roomForget(message);
-    } else if (data.t === 'error' && data.error === 'zu-oft') {
-      toast(String(data.message || 'Zu viele Nachrichten – bitte kurz warten.'));
+    } else if (data.t === 'error') {
+      if (['zu-oft', 'kein-jam', 'voll', 'doppelt'].includes(data.error)) {
+        toast(String(data.message || 'Zu viele Nachrichten – bitte kurz warten.'));
+      }
     }
   }
 
@@ -9387,7 +9727,7 @@
     if (!room) {
       return `<div class="panel social-room">
           <h3>Gemeinsam hören</h3>
-          <p class="muted small">Starte einen Raum und schick den Code an bis zu 19 Leute. Du bestimmst, was läuft – jedes Gerät sucht die Songs und spielt sie selbst ab (volle Titel sekundengenau, Vorschauen ungefähr). Kein Chat, nur Emoji-Reaktionen; lokale Dateien und Radio werden nie geteilt.</p>
+          <p class="muted small">Starte einen Raum und schick den Code an bis zu 19 Leute. Du bestimmst, was läuft – jedes Gerät sucht die Songs und spielt sie selbst ab (volle Titel sekundengenau, Vorschauen ungefähr). Volle Titel brauchen auf jedem Gerät ein Quellen-Plugin; ohne Plugin läuft die 30-s-Vorschau. Kein Chat, nur Emoji-Reaktionen; lokale Dateien und Radio werden nie geteilt.</p>
           <div class="row"><button class="btn primary small" data-social="room-create">Raum starten</button></div>
           <div class="rv-group-row" style="margin-top:10px">
             <input id="social-room-code" type="text" placeholder="Raumcode oder Link (R1-…)" spellcheck="false" />
@@ -9403,8 +9743,11 @@
         ? `Du hörst mit ${esc(roomHostName())}.`
         : 'Du hörst gerade selbst.';
     const now = st && st.ref
-      ? `<p class="social-room-now">${st.playing ? '▶' : '❚❚'} <strong>${esc(st.ref.title)}</strong>${st.ref.artist ? ` <span class="muted">· ${esc(st.ref.artist)}</span>` : ''}${roomRt.missingKey && roomRt.missingKey === SOC.refKey(st.ref) ? ' <span class="muted small">(bei dir nicht gefunden)</span>' : ''}</p>`
+      ? `<p class="social-room-now">${st.playing ? '▶' : '❚❚'} <strong>${esc(st.ref.title)}</strong>${st.ref.artist ? ` <span class="muted">· ${esc(st.ref.artist)}</span>` : ''}${roomRt.missingKey && roomRt.missingKey === SOC.refKey(st.ref) ? ' <span class="muted small">(bei dir nicht gefunden)</span> <button class="btn ghost small" data-social="room-retry">Erneut suchen</button>' : ''}</p>`
       : `<p class="muted small">${st ? 'Der Host spielt gerade etwas, das sich nicht teilen lässt (lokale Datei oder Radio).' : 'Noch läuft nichts im Raum.'}</p>`;
+    const previewHint = !room.isHost && st && st.full && !roomPlayer().full
+      ? '<p class="muted small">Du hörst die 30-s-Vorschau – für den vollen Titel braucht dein CleanMusic ein passendes Quellen-Plugin.</p>'
+      : '';
     const members = room.members
       .map((member) => `<li class="social-friend${member.online ? '' : ' offline'}">
           <span class="social-friend-name"><strong>${esc(member.name)}${member.self ? ' (du)' : ''}</strong> <span class="social-tag">· ${esc(member.tag)}</span>${member.host ? ' <span class="chip">Host</span>' : ''}
@@ -9415,11 +9758,47 @@
     const emojis = SOC.EMOJIS.map((emoji) => `<button class="social-emoji" data-social="room-react" data-emoji="${esc(emoji)}" title="An alle im Raum: ${esc(emoji)}" aria-label="Reaktion ${esc(emoji)}">${emoji}</button>`).join('');
     const reactions = roomRt.reactions.map((reaction) => `<span class="social-room-react" title="${esc(reaction.from.name)}">${reaction.emoji} <small>${esc(reaction.from.name)}</small></span>`).join('');
     const code = roomLocal.room === room.id ? roomLocal.code : '';
+    const jamRows = roomRt.queue
+      .map((item) => {
+        const mine = item.by.id === socialMyId();
+        const note = room.isHost
+          ? roomRt.jamMissing.has(item.rid)
+            ? ' · bei dir nicht gefunden'
+            : roomRt.jamApplied.has(item.rid)
+              ? ' · kommt als Nächstes'
+              : ' · wird geladen …'
+          : ' · vom Host gleich gespielt';
+        return `<li class="social-room-queue-item">
+            <span class="social-friend-name"><strong>${esc(item.ref.title)}</strong>${item.ref.artist ? ` <span class="social-tag">· ${esc(item.ref.artist)}</span>` : ''}
+              <small>von ${esc(SOC.display(item.by))}${note}</small></span>
+            ${room.isHost || mine ? `<span class="social-friend-actions"><button class="icon-btn small" data-social="room-unqueue" data-rid="${esc(item.rid)}" title="Aus der Warteschlange entfernen" aria-label="Aus der Warteschlange entfernen">×</button></span>` : ''}
+          </li>`;
+      })
+      .join('');
+    const jamPanel = room.supportsJam
+      ? `<div class="social-room-jam">
+          <div class="home-section-head"><h4>Jam <span class="muted small">· ${roomRt.queue.length}/${SOC.ROOM_MAX_QUEUE}</span></h4>
+            ${room.isHost ? `<button class="btn ${roomRt.jam ? 'ghost' : 'primary'} small" data-social="room-jam" data-on="${roomRt.jam ? '0' : '1'}">${roomRt.jam ? 'Jam beenden' : 'Jam starten'}</button>` : ''}</div>
+          ${roomRt.jam
+            ? `<p class="muted small">${room.isHost ? 'Alle im Raum können Titel in die gemeinsame Warteschlange legen. Du spielst sie wie gewohnt ab.' : 'Du kannst Titel in die gemeinsame Warteschlange legen – der Host spielt sie ab.'}</p>
+              <div class="rv-group-row">
+                <input id="social-room-add" type="text" maxlength="200" placeholder="Titel suchen und hinzufügen" spellcheck="false" />
+                <button class="btn ghost small" data-social="room-add">Hinzufügen</button>
+              </div>
+              <div class="row" style="margin-top:6px"><button class="btn ghost small" data-social="room-add-current">Aktuellen Song hinzufügen</button>${room.isHost && roomRt.queue.length ? '<button class="btn ghost small danger" data-social="room-jam-clear">Warteschlange leeren</button>' : ''}</div>
+              ${jamRows ? `<ul class="social-list social-room-queue">${jamRows}</ul>` : '<p class="muted small">Noch nichts in der Warteschlange.</p>'}`
+            : `<p class="muted small">${room.isHost ? 'Starte den Jam, damit alle im Raum Titel in die Warteschlange legen können.' : 'Der Host kann einen Jam starten – dann darfst du Titel hinzufügen.'}</p>`}
+        </div>`
+      : '';
     return `<div class="panel social-room active">
         <div class="home-section-head"><h3>Gemeinsam hören <span class="muted small">· ${room.members.length}/${SOC.ROOM_MAX}</span></h3><span class="chip social-room-status ${esc(roomRt.status)}">${esc(statusText)}</span></div>
         <p>${role}${!room.isHost && !roomRt.following ? ' <button class="btn primary small" data-social="room-follow">Wieder synchron</button>' : ''}</p>
         ${now}
+        ${previewHint}
+        <label class="social-room-auto"><input type="checkbox" id="social-room-noauto" ${roomLocal.noAuto ? 'checked' : ''} /> Algorithmus aus – im Raum kein Autoplay</label>
+        <label class="social-room-auto"><input type="checkbox" id="social-room-preview" ${roomLocal.previewOnly ? 'checked' : ''} /> Im Raum nur Vorschauen (30 s, gilt wenn du Host bist)</label>
         ${code ? `<p class="small">Raumcode <strong class="social-code-text">${esc(code)}</strong> · <a href="${esc(SOC.friendLink(code))}" target="_blank" rel="noreferrer">Link</a> <button class="btn ghost small" data-social="room-copy">Einladung kopieren</button></p>` : ''}
+        ${jamPanel}
         <div class="social-emojis">${emojis}</div>
         ${reactions ? `<div class="social-room-reactions">${reactions}</div>` : ''}
         <ul class="social-list">${members}</ul>
@@ -11142,7 +11521,7 @@
     if (q.index < 0 || !q.items[q.index]) {
       queueSlice.replace(copies, 0, 'queue');
       playFromQueue(0);
-      toast(by + (copies.length === 1 ? `„${copies[0].title}“ wird abgespielt` : `${copies.length} Titel werden abgespielt`));
+      if (!flags.quiet) toast(by + (copies.length === 1 ? `„${copies[0].title}“ wird abgespielt` : `${copies.length} Titel werden abgespielt`));
       return;
     }
 
@@ -11152,13 +11531,14 @@
     schedulePrefetch();
     renderQueuePanel();
     const name = copies.length === 1 ? `„${copies[0].title}“` : `${copies.length} Titel`;
-    toast(by + (mode === 'next' ? `${name} kommt als Nächstes` : `${name} in der Warteschlange`));
+    if (!flags.quiet) toast(by + (mode === 'next' ? `${name} kommt als Nächstes` : `${name} in der Warteschlange`));
   }
 
   function autoplayEligible() {
     const { items, index } = state.queue;
     if (!autoplayOn()) return false;
     if (roomHolds()) return false;
+    if (roomAutoBlocked()) return false;
     if (CMPlayback.blocksAutoplay(state.playback.repeat)) return false;
     if (index < 0 || index < items.length - 1) return false;
     return Boolean(autoplaySeed());
@@ -15008,10 +15388,38 @@
     return SETTINGS_TABS.find((tab) => tab.id === settingsTab) || SETTINGS_TABS[0];
   }
 
+  // Windows: the Start menu shortcut is the only entry Windows lets you pin.
+  // Portable copies have none, so the app creates one on request.
+  let startMenuState = null;
+
+  function startMenuText() {
+    if (!startMenuState) return 'Verknüpfung wird geprüft …';
+    if (startMenuState.error) return 'Der Startmenü-Eintrag konnte nicht geprüft werden.';
+    if (!startMenuState.supported) return 'Nur unter Windows verfügbar.';
+    if (!startMenuState.exists) {
+      return 'Noch keine Verknüpfung im Startmenü. Ohne sie kennt Windows CleanMusic nicht als App – und bietet kein „An Start anheften“ an.';
+    }
+    if (!startMenuState.current) {
+      return `Im Startmenü liegt eine Verknüpfung auf ${startMenuState.target}. „Anlegen“ ersetzt sie durch diese Kopie.`;
+    }
+    return `Verknüpfung vorhanden (${startMenuState.installType}). Windows bietet das Anheften nur an dieser Verknüpfung an, nicht an der portablen EXE.`;
+  }
+
+  async function refreshStartMenu() {
+    if (!bridge.startMenu) return;
+    try {
+      startMenuState = await bridge.startMenu('status');
+    } catch {
+      startMenuState = { supported: false, exists: false, error: true };
+    }
+    if (state.view === 'settings' && settingsTab === 'system') renderSettings();
+  }
+
   function openSettings(tab) {
     if (tab && SETTINGS_TABS.some((entry) => entry.id === tab)) settingsTab = tab;
     showView('settings');
     renderSettings();
+    refreshStartMenu();
   }
 
   function renderSettings() {
@@ -15225,6 +15633,32 @@
             <span class="row"><button class="btn ghost small" data-diagnostic="copy">Diagnose kopieren</button><button class="btn ghost small" data-diagnostic="issue">Fehler melden</button></span>
           </label>
         </div>
+
+        ${info.platform === 'win32' ? `
+        <div class="panel" id="startmenu-panel">
+          <h3>Startmenü &amp; Taskleiste</h3>
+          <p class="muted small" id="startmenu-status">${esc(startMenuText())}</p>
+          <div class="row">
+            <button class="btn primary small" data-startmenu="${
+              startMenuState && startMenuState.exists && startMenuState.current ? 'reveal' : 'create'
+            }">${
+              startMenuState && startMenuState.exists && startMenuState.current
+                ? 'An Start anheften …'
+                : 'Im Startmenü anlegen'
+            }</button>
+            ${
+              startMenuState && startMenuState.exists
+                ? '<button class="btn ghost small" data-startmenu="create">Verknüpfung reparieren</button><button class="btn ghost small" data-startmenu="remove">Entfernen</button>'
+                : ''
+            }
+          </div>
+          <p class="muted small" style="margin-top:10px">
+            Windows bietet „An Start anheften“ und „An Taskleiste anheften“ nur am
+            Startmenü-Eintrag an – eine portable EXE kennt es nicht. CleanMusic legt die
+            Verknüpfung an und zeigt sie im Explorer: dort Rechtsklick →
+            „An Start anheften“.
+          </p>
+        </div>` : ''}
 
         <div class="panel" id="support-panel">
           <h3>CleanMusic unterstützen</h3>
@@ -16060,6 +16494,27 @@ ${updatePanel()}
           const copied = await bridge.copyText(text);
           toast(copied ? 'Diagnose in die Zwischenablage kopiert.' : 'Kopieren fehlgeschlagen.');
         }
+        return;
+      }
+
+      const startMenu = event.target.closest('[data-startmenu]');
+      if (startMenu) {
+        const action = startMenu.dataset.startmenu;
+        try {
+          startMenuState = await bridge.startMenu(action);
+          if (action === 'create') {
+            toast('Verknüpfung im Startmenü angelegt. Rechtsklick dort → „An Start anheften“.');
+            // Windows only pins real entries, so show the file the shell accepts.
+            startMenuState = (await bridge.startMenu('reveal')) || startMenuState;
+          } else if (action === 'reveal') {
+            toast('Rechtsklick auf die Verknüpfung → „An Start anheften“ oder „An Taskleiste anheften“.');
+          } else if (action === 'remove') {
+            toast('Verknüpfung aus dem Startmenü entfernt.');
+          }
+        } catch {
+          toast('Startmenü-Verknüpfung ließ sich nicht ändern.');
+        }
+        renderSettings();
         return;
       }
 
@@ -16982,6 +17437,8 @@ ${updatePanel()}
       });
     }
     if (bridge.onPluginsChanged) bridge.onPluginsChanged(() => refreshPlugins(false));
+    if (bridge.onStageScene) bridge.onStageScene(applyStageScene);
+    if (bridge.stageGet) bridge.stageGet().then(applyStageScene).catch(() => {});
 
     if (bridge.onUpdateState) bridge.onUpdateState(onUpdateState);
     if (bridge.updateGet) bridge.updateGet().then(onUpdateState).catch(() => {});
@@ -17196,6 +17653,11 @@ ${updatePanel()}
     socialRoomReact: (emoji) => reactInRoom(emoji),
     socialRoomFollow: () => followRoomAgain(),
     socialRoomTick: () => roomTick(),
+    socialRoomJam: (on) => toggleRoomJam(on),
+    socialRoomAdd: (query) => addRoomQueue(query),
+    socialRoomUnqueue: (rid) => removeRoomQueue(rid),
+    socialRoomNoAuto: (on) => setRoomNoAuto(on),
+    socialRoomPreviewOnly: (on) => setRoomPreviewOnly(on),
     socialRoomState: () => JSON.parse(JSON.stringify({
       room: roomRt.room,
       state: roomRt.state,
@@ -17203,8 +17665,16 @@ ${updatePanel()}
       following: roomRt.following,
       skew: roomRt.skew,
       loadedKey: roomRt.loadedKey,
+      loadedEntryId: roomRt.loadedEntryId,
+      missingKey: roomRt.missingKey,
+      loading: roomRt.loading,
       reason: roomRt.reason,
       reactions: roomRt.reactions,
+      jam: roomRt.jam,
+      queue: roomRt.queue,
+      applied: Array.from(roomRt.jamApplied),
+      queueJamRids: state.queue.items.map((entry) => entry.jamRid).filter(Boolean),
+      addError: roomRt.addError,
       local: roomLocal,
       player: { key: roomLocalKey(), position: audio.currentTime || 0, playing: !audio.paused, full: roomFull() },
     })),
@@ -17573,6 +18043,17 @@ ${updatePanel()}
         if (!state.fullscreen) openFullscreen();
         if (document.fonts && document.fonts.ready) await document.fonts.ready;
         await wait(450); // the player fades in with scale(1.03) for 0.35 s
+        // Plugin-API v3, "stage": two local test figures behind the words.
+        applyStageScene({
+          game: 'Smoke',
+          label: true,
+          accent: '#ff2d78',
+          size: 1,
+          characters: [
+            { src: 'assets/icon.png', name: 'Links', anchor: 'left', motion: 'bounce', scale: 1 },
+            { src: 'assets/icon.png', name: 'Rechts', anchor: 'right', motion: 'sway', scale: 1 },
+          ],
+        });
         for (const style of MOTION_EFFECTS) {
           state.settings.lyricsEffect = style;
           renderLyrics();
@@ -17603,6 +18084,27 @@ ${updatePanel()}
             spectrum: Boolean(stage && stage.querySelector('.lc-spectrum')),
           };
         }
+        const castStage = root.querySelector('#fs-lyrics .ly-kinetic');
+        const cast = castStage ? Array.from(castStage.querySelectorAll('.ls-cast-char')) : [];
+        const castSlot = castStage ? castStage.querySelector('.ls-cast') : null;
+        const castFrames = castStage ? castStage.querySelector('.ls-frames') : null;
+        const castImage = cast[0] ? cast[0].querySelector('img') : null;
+        // Read the beat transform in one task: no 70 ms transition, and before
+        // the render loop writes the live beat back to the stage.
+        if (castImage) castImage.style.transition = 'none';
+        if (castStage) castStage.style.setProperty('--ls-beat', '1');
+        const beatOn = castImage ? getComputedStyle(castImage).transform : '';
+        if (castStage) castStage.style.setProperty('--ls-beat', '0');
+        const beatOff = castImage ? getComputedStyle(castImage).transform : '';
+        if (castImage) castImage.style.transition = '';
+        out.cast = {
+          count: cast.length,
+          images: cast.filter((element) => element.querySelector('img')).length,
+          behind: Boolean(
+            castSlot && castFrames && castSlot.compareDocumentPosition(castFrames) & Node.DOCUMENT_POSITION_FOLLOWING
+          ),
+          motion: Boolean(beatOn && beatOn !== beatOff),
+        };
         const controls = root.querySelector('.fs-controls');
         root.classList.add('idle');
         await wait(700);
@@ -17615,6 +18117,7 @@ ${updatePanel()}
         out.plainEffectStage = root.classList.contains('lyrics-stage');
         return out;
       } finally {
+        applyStageScene(null);
         lyricsHold = saved.hold;
         state.settings.lyrics = saved.lyrics;
         state.settings.lyricsEffect = saved.effect;

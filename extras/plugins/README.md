@@ -271,6 +271,35 @@ die Plugin-API `seek`/`toggleFavorite` liefert (geplant für CleanMusic 2.2,
 Teil C); bis dahin werden sie ausgeblendet. Inoffiziell – nicht von CORSAIR,
 Markennamen nur beschreibend.
 
+## Game Motion (`game-motion.js`)
+
+Figuren aus deinem eigenen Ordner hinter den Motion-Songtexten. Das Plugin
+erkennt das Spiel am Titel/Artist/Album und setzt die Bilder im Takt der Musik
+hinter alle Motion-Stile im Vollbild-Player.
+
+1. Plugin wie oben hinzufügen und einschalten.
+2. Einen **Charakter-Ordner** anlegen, pro Spiel ein Unterordner:
+   ```
+   C:\Bilder\GameMotion\Undertale\sans.png
+   C:\Bilder\GameMotion\Undertale\papyrus.webp
+   C:\Bilder\GameMotion\hollow-knight\knight.png
+   ```
+   PNG/WebP/GIF mit Transparenz funktioniert am besten; höchstens vier Figuren
+   pro Titel.
+3. In der Plugin-Karte den Ordner wählen. Die Erkennung steht in `games.json`
+   im Plugin-Datenordner (Aktion **Spiel-Regeln öffnen**) und lässt sich dort
+   erweitern; **Spiel erzwingen** überschreibt sie für alle Titel.
+4. Songtext-Effekt auf einen Motion-Stil stellen und den Vollbild-Player öffnen.
+
+Einstellungen: Figuren an/aus, Anzahl (1–4), Bewegung (automatisch, Hüpfen,
+Schwingen, Pulsieren, Schweben, Stampfen), Größe und Namen einblenden.
+
+**Nur privat:** Das Plugin enthält keine Spiel-Assets und lädt keine herunter.
+Es liest ausschließlich die Bilder aus deinem Ordner. Die Rechte an Charakteren
+und Bildern liegen bei den Rechteinhabern – nicht veröffentlichen oder streamen,
+wenn du keine Erlaubnis hast. Keine Änderung an Audio-Kette, Downloads oder
+Nutzerdaten.
+
 ## Berechtigungen (Plugin-API v3)
 
 Ab CleanMusic 1.25.0 kann ein Plugin am Dateianfang ein Manifest tragen

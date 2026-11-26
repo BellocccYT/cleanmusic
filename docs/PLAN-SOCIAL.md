@@ -169,7 +169,20 @@ App: `lib/social-ws.js` (minimaler WebSocket, Electron 33 hat im Hauptprozess ke
 (Verbindung, Ping 25 s, Neuaufbau 2–30 s, IPC `social-room` nur `connect`/`send`/`disconnect`/`status`,
 Nachrichten werden geprüft), reine Regeln in `renderer/core/social.js` (`roomSyncPlan`, `roomHostPlan`,
 `roomDeviation`), UI „Gemeinsam hören“ in der Ansicht „Freunde“. Wer als Gast selbst pausiert/spult/einen
-anderen Song wählt, hört selbst weiter („Wieder synchron“).
+anderen Song wählt, hört selbst weiter („Wieder synchron“). Volle Titel brauchen auf jedem Gerät ein
+Quellen-Plugin; ohne Plugin fällt der Gast auf die 30-Sekunden-Vorschau zurück (die App sucht sie über
+Titel/Artist im Katalog, auch für YouTube-Referenzen). Mit „Im Raum nur Vorschauen“ (`previewOnly`)
+spielt auch der Host die Vorschau, damit alle ohne Plugin dasselbe hören.
+
+2.2 – Jam und Algorithmus-Schalter: Raum-Snapshots tragen zusätzlich `jam` und `queue` (bis 50
+Einträge, nur `ref` + wer hinzugefügt hat, keine Audiodaten). Nachrichten: `jam` (nur Host schaltet
+an/aus), `add` (alle bei aktivem Jam, Host immer), `unqueue` (Host oder wer den Titel hinzugefügt hat)
+und `queue-clear` (Host). Der Host löst jeden Eintrag auf, hängt ihn an seine eigene Warteschlange
+und entfernt ihn beim Start aus der geteilten Liste; Gäste sehen die Liste nur. „Algorithmus aus“
+(`noAuto` in `cleanmusic.room.v1`) schaltet Autoplay im Raum ab. Der Freunde-Tab fragt im offenen
+Fenster alle 10 s, relative Zeiten werden alle 15 s ohne Anfrage neu gezeichnet. Ältere Server ohne
+`jam`/`queue` blenden den Jam aus. Tests: `test/social.test.js`, `test/social-protocol.test.js`,
+`server/social/test/worker.test.js`, Smoke `SMOKE_SOCIAL_SERVER`.
 
 - Raum per Code, höchstens 20 Leute. Der Host steuert, der Server verteilt nur
   `{ ref, position, at, playing }` über WebSocket (Durable Object, Hibernation).

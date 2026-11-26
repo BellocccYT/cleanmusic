@@ -532,6 +532,34 @@ test('S3 rooms: code, live sockets, host steers, reactions, time, kick, host han
   // The stored state comes with the snapshot (late joiners start there).
   assert.equal((await call(guest, 'GET', '/v1/room')).data.room.state.pos, 42.5);
 
+  // 2.2 Jam: the host opens the shared queue, guests add/remove titles.
+  hs.send({ t: 'jam', on: true });
+  assert.equal((await gs.next('jam')).jam, true);
+  gs.send({ t: 'add', ref });
+  const queued = await gs.next('queue');
+  assert.equal(queued.queue.length, 1);
+  assert.equal(queued.queue[0].ref.title, ref.title);
+  assert.equal(queued.queue[0].by.id, guest.id);
+  gs.send({ t: 'add', ref });
+  assert.equal((await gs.next('error')).error, 'doppelt');
+  const rid = queued.queue[0].rid;
+  gs.send({ t: 'unqueue', rid });
+  assert.equal((await gs.next('queue')).queue.length, 0);
+  gs.send({ t: 'queue-clear' });
+  assert.equal((await gs.next('error')).error, 'nur-host');
+  hs.send({ t: 'jam', on: false });
+  assert.equal((await gs.next('jam')).jam, false);
+  gs.send({ t: 'add', ref });
+  assert.equal((await gs.next('error')).error, 'kein-jam');
+  hs.send({ t: 'add', ref });
+  const hostQueue = await hs.next('queue');
+  assert.equal(hostQueue.queue.length, 1, 'Host darf auch ohne Jam');
+  const snapshot = (await call(guest, 'GET', '/v1/room')).data.room;
+  assert.equal(snapshot.jam, false);
+  assert.equal(snapshot.queue.length, 1);
+  hs.send({ t: 'queue-clear' });
+  assert.equal((await hs.next('queue')).queue.length, 0);
+
   // Kick: socket closed, no way back in with the code.
   assert.equal((await call(third, 'POST', '/v1/room/join', { code: made.data.code })).status, 201);
   const ts = await live(third);

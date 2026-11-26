@@ -147,13 +147,13 @@ check('S2 groups: payload cleaned, rights, ranking with shared places, week card
   assert.equal(plan({ last: { week: '2026-W48', secs: 0, at: now - 60000 } }), false, 'höchstens alle 10 Minuten');
 });
 
-check('poll plan: fewer requests (visible only, friends every 30 s/3 min, groups only in a group or every 10 min)', () => {
+check('poll plan: fewer requests (visible only, friends every 10 s/3 min, groups only in a group or every 10 min)', () => {
   const now = 1795500000000;
   const plan = (input) => plain(S.pollPlan(Object.assign({ now, hidden: false, friendsOpen: false, lastFriends: 0, lastGroups: 0, groupCount: 0 }, input)));
   // Never while hidden.
   assert.deepEqual(plan({ hidden: true }), { friends: false, groups: false });
-  // Friends view open: at most every 30 s.
-  assert.deepEqual(plan({ friendsOpen: true, lastFriends: now - 10000, lastGroups: now, groupCount: 0 }), { friends: false, groups: false });
+  // Friends view open: at most every 10 s.
+  assert.deepEqual(plan({ friendsOpen: true, lastFriends: now - 5000, lastGroups: now, groupCount: 0 }), { friends: false, groups: false });
   assert.deepEqual(plan({ friendsOpen: true, lastFriends: now - S.FRIENDS_OPEN_GAP, lastGroups: now - S.GROUPS_GAP, groupCount: 0 }), { friends: true, groups: true });
   // Otherwise: at most every 3 min.
   assert.deepEqual(plan({ lastFriends: now - 60000, lastGroups: now, groupCount: 0 }), { friends: false, groups: false }, 'unter 3 Minuten');
@@ -279,8 +279,34 @@ check('S3 rooms: code, snapshot, guest follows (title, pause, seek), host sends,
   assert.equal(S.roomDeviation('seeked', { state, now, local: { key, position: 120, full: true } }), true);
   assert.equal(S.roomDeviation('seeked', { state, now, local: { key, position: 62.4, full: true } }), false);
 
-  assert.deepEqual(plain(S.normalizeRoomLocal({ code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5 })), { code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5 });
-  assert.deepEqual(plain(S.normalizeRoomLocal({ code: '<x>', room: 'R' })), { code: '', room: '', at: 0 });
+  assert.deepEqual(plain(S.normalizeRoomLocal({ code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5 })), { code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5, noAuto: false, previewOnly: false });
+  assert.deepEqual(plain(S.normalizeRoomLocal({ code: '<x>', room: 'R' })), { code: '', room: '', at: 0, noAuto: false, previewOnly: false });
+  assert.deepEqual(plain(S.normalizeRoomLocal({ code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5, noAuto: true, previewOnly: true })), { code: 'R1-0123-4567-89AZ', room: 'RRRRABCDEFGHJKMNPQRSTVWX', at: 5, noAuto: true, previewOnly: true });
+});
+
+check('2.2 Jam: snapshot with queue, clean entries, older servers stay closed', () => {
+  const room = S.normalizeRoom({
+    id: 'RRRRABCDEFGHJKMNPQRSTVWX',
+    host: A,
+    members: [{ id: A, name: 'Host', online: true }, { id: B, name: 'Gast' }],
+    jam: true,
+    queue: [
+      { rid: 'abc123', ref, by: { id: B, name: 'Gast' }, at: 10 },
+      { rid: 'x', ref, by: { id: B, name: 'Gast' }, at: 10 },
+      { rid: 'def456', ref: { src: 'local', title: 'C:/x.mp3' }, by: { id: B, name: 'Gast' }, at: 11 },
+      { rid: 'ghi789', ref: { src: 'search', id: '', title: 'Numb', artist: 'Linkin Park' }, by: { id: 'kaputt' }, at: 12 },
+    ],
+  }, B);
+  assert.equal(room.jam, true);
+  assert.equal(room.supportsJam, true);
+  assert.equal(room.queue.length, 1, 'nur gültige Einträge');
+  assert.deepEqual(plain(room.queue[0].ref), ref);
+  assert.equal(room.queue[0].by.name, 'Gast');
+  const old = S.normalizeRoom({ id: 'RRRRABCDEFGHJKMNPQRSTVWX', host: A, members: [] }, B);
+  assert.equal(old.jam, false);
+  assert.deepEqual(plain(old.queue), []);
+  assert.equal(old.supportsJam, false, 'Server vor 2.2');
+  assert.deepEqual(plain(S.normalizeRoomQueue(null)), []);
 });
 
 check('2.1.1 cards: cover source without the server, safe image URLs, careful search pick, fresh keys', () => {

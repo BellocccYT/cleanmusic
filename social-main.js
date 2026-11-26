@@ -365,11 +365,21 @@ function createSocial(deps) {
     return { ok: true };
   }
 
-  // Only the two messages a member may send; the server checks them again.
+  // Only the messages a member may send; the server checks them again.
   function roomSend(message) {
     const value = message && typeof message === 'object' ? message : {};
     let out = null;
     if (value.t === 'react' && proto.EMOJIS.includes(value.emoji)) out = { t: 'react', emoji: value.emoji };
+    if (value.t === 'jam') out = { t: 'jam', on: value.on === true };
+    if (value.t === 'add') {
+      const ref = proto.cleanRef(value.ref);
+      if (ref) out = { t: 'add', ref };
+    }
+    if (value.t === 'unqueue') {
+      const rid = String(value.rid || '');
+      if (/^[A-Za-z0-9_-]{4,24}$/.test(rid)) out = { t: 'unqueue', rid };
+    }
+    if (value.t === 'queue-clear') out = { t: 'queue-clear' };
     if (value.t === 'state') {
       const state = proto.cleanRoomState(value, Number(value.at) || Date.now());
       if (state) out = Object.assign({ t: 'state' }, state);
@@ -423,7 +433,7 @@ function createFakeServer() {
   const weeks = new Map(); // account -> week card
   let trackSeq = 0;
   let enabled = true;
-  const rooms = new Map(); // id -> { id, code, host, created, members: [{ id, joined }], bans: Set, state }
+  const rooms = new Map(); // id -> { id, code, host, created, members: [{ id, joined }], bans: Set, state, jam, queue: [] }
   const roomSockets = new Set(); // { conn, a, r }
   const POW = 8;
 
@@ -472,7 +482,9 @@ function createFakeServer() {
     const live = roomOnline(room);
     return room.members.map((m) => Object.assign(person(m.id), { host: m.id === room.host, online: live.has(m.id) }));
   };
-  const roomSnap = (room) => ({ id: room.id, host: room.host, created: room.created, members: roomMembers(room), state: room.state });
+  const roomQueue = (room) => (Array.isArray(room.queue) ? room.queue : []).slice(0, proto.LIMITS.roomQueue);
+  const roomQueueView = (room) => roomQueue(room).map((row) => ({ rid: row.rid, ref: row.ref, by: person(row.by), at: row.at }));
+  const roomSnap = (room) => ({ id: room.id, host: room.host, created: room.created, members: roomMembers(room), state: room.state, jam: Boolean(room.jam), queue: roomQueueView(room) });
   const roomSend = (s, message) => s.conn.send(JSON.stringify(message));
   const roomCast = (room, message, except) => roomSockets.forEach((s) => {
     if (s.r === room.id && s !== except) roomSend(s, message);
@@ -522,6 +534,32 @@ function createFakeServer() {
     if (data.t === 'react') {
       if (!proto.EMOJIS.includes(data.emoji)) return roomSend(s, { t: 'error', error: 'emoji' });
       return roomCast(room, { t: 'react', from: person(s.a), emoji: data.emoji, at: now }, s);
+    }
+    if (data.t === 'jam') {
+      if (room.host !== s.a) return roomSend(s, { t: 'error', error: 'nur-host' });
+      room.jam = data.on === true;
+      return roomCast(room, { t: 'jam', jam: room.jam, queue: roomQueueView(room), now });
+    }
+    if (data.t === 'add') {
+      if (!room.jam && room.host !== s.a) return roomSend(s, { t: 'error', error: 'kein-jam' });
+      const ref = proto.cleanRef(data.ref);
+      if (!ref) return roomSend(s, { t: 'error', error: 'ref' });
+      if (roomQueue(room).length >= proto.LIMITS.roomQueue) return roomSend(s, { t: 'error', error: 'voll' });
+      if (roomQueue(room).some((row) => proto.refKey(row.ref) === proto.refKey(ref))) return roomSend(s, { t: 'error', error: 'doppelt' });
+      room.queue = roomQueue(room).concat({ rid: crypto.randomUUID().replace(/-/g, '').slice(0, 10), ref, by: s.a, at: now });
+      return roomCast(room, { t: 'queue', queue: roomQueueView(room), now });
+    }
+    if (data.t === 'unqueue') {
+      const index = roomQueue(room).findIndex((row) => row.rid === String(data.rid || ''));
+      if (index < 0) return roomSend(s, { t: 'error', error: 'rid' });
+      if (room.host !== s.a && roomQueue(room)[index].by !== s.a) return roomSend(s, { t: 'error', error: 'nicht-deins' });
+      room.queue = roomQueue(room).filter((row, at) => at !== index);
+      return roomCast(room, { t: 'queue', queue: roomQueueView(room), now });
+    }
+    if (data.t === 'queue-clear') {
+      if (room.host !== s.a) return roomSend(s, { t: 'error', error: 'nur-host' });
+      room.queue = [];
+      return roomCast(room, { t: 'queue', queue: [], now });
     }
     if (room.host !== s.a) return roomSend(s, { t: 'error', error: 'nur-host' });
     const state = proto.cleanRoomState(data, now);
@@ -730,7 +768,7 @@ function createFakeServer() {
         roomLeaveCurrent(auth.id);
         const id = names.accountIdFromDigest(crypto.randomBytes(15));
         const code = proto.roomCodeFrom(crypto.randomBytes(12));
-        const room = { id, code, host: auth.id, created: Date.now(), members: [{ id: auth.id, joined: Date.now() }], bans: new Set(), state: null };
+        const room = { id, code, host: auth.id, created: Date.now(), members: [{ id: auth.id, joined: Date.now() }], bans: new Set(), state: null, jam: false, queue: [] };
         rooms.set(id, room);
         return [201, { room: roomSnap(room), code, now: Date.now() }];
       }
@@ -913,7 +951,7 @@ function createFakeServer() {
       presence: Array.from(presence.keys()),
       groups: Array.from(groups.values()).map((group) => ({ id: group.id, owner: group.owner, members: group.members.length, tracks: group.tracks.length })),
       weeks: Array.from(weeks.keys()),
-      rooms: Array.from(rooms.values()).map((room) => ({ id: room.id, host: room.host, members: room.members.length, online: roomOnline(room).size, state: room.state })),
+      rooms: Array.from(rooms.values()).map((room) => ({ id: room.id, host: room.host, members: room.members.length, online: roomOnline(room).size, state: room.state, jam: Boolean(room.jam), queue: roomQueueView(room) })),
     }),
   };
 }

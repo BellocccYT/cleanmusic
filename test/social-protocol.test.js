@@ -89,6 +89,9 @@ check('song references: same rules as share links, no local files or radio', () 
   assert.equal(P.cleanRef({ src: 'search', id: 'egal', title: '' }), null);
   assert.equal(P.cleanRef({ src: 'search', id: 'egal', title: 'T\u202eX' }).id, '');
   assert.equal(P.cleanRef({ src: 'apple', id: '1', title: 'x'.repeat(200) }).title.length, 80);
+  assert.equal(P.refKey({ src: 'search', id: '', title: ' Numb ', artist: 'Linkin Park' }), P.refKey({ src: 'search', id: '', title: 'numb', artist: 'linkin park' }));
+  assert.notEqual(P.refKey({ src: 'deezer', id: '1', title: 'Numb' }), P.refKey({ src: 'apple', id: '1', title: 'Numb' }));
+  assert.equal(P.refKey(null), '');
 });
 
 check('server address: https only, http just for local tests', () => {
@@ -135,7 +138,8 @@ check('S3: room codes, shared room state, clock offset, socket address', () => {
   assert.equal(P.parseRoomCode('F1-0123-4567-89AZ G1-0123-4567-89AZ'), '');
   assert.equal(P.parseRoomCode('G1-AAAA-BBBB-CCCC R1-0123-4567-89AZ'), code);
   assert.ok(P.isEndpoint('POST', '/v1/room/join') && P.isEndpoint('GET', P.ROOM_LIVE));
-  assert.deepEqual(P.ROOM_MESSAGES, ['state', 'react', 'time']);
+  assert.deepEqual(P.ROOM_MESSAGES, ['state', 'react', 'time', 'jam', 'add', 'unqueue', 'queue-clear']);
+  assert.equal(P.LIMITS.roomQueue, 50);
 
   const now = 1795500000000;
   const ref = { src: 'deezer', id: '3135553', title: 'One More Time', artist: 'Daft Punk' };

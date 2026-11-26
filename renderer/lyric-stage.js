@@ -146,6 +146,7 @@ window.CMLyricStage = (function () {
     ensureFonts(style);
     if (style === 'lyricvideo') renderStacked(r);
     else prepareLine(r);
+    renderCast(r);
     schedule(r);
   }
 
@@ -256,10 +257,99 @@ window.CMLyricStage = (function () {
       stage.innerHTML = `<div class="lr-ground" aria-hidden="true"></div><div class="ls-frames"></div>`;
     } else if (style === 'story') {
       stage.innerHTML = `<div class="ls2-wash" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'diary') {
+      stage.innerHTML = `<div class="ldy-paper" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'news') {
+      stage.innerHTML = `<div class="lnw-paper" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'terminal') {
+      stage.innerHTML = `<div class="ltm-bg" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'tunnel') {
+      stage.innerHTML = `<div class="ltn-bg" aria-hidden="true"></div><div class="ls-frames"></div>`;
     } else {
       // cards (and any future plain stage)
       stage.innerHTML = '<div class="ls-frames"></div>';
     }
+  }
+
+  /* --- Plugin stage: figures behind the words (Plugin-API v3, "stage") -------- */
+
+  const CAST_LANDSCAPE = [
+    { x: 10, h: 62 },
+    { x: 90, h: 62 },
+    { x: 24, h: 42 },
+    { x: 76, h: 42 },
+    { x: 50, h: 34 },
+    { x: 38, h: 30 },
+  ];
+  const CAST_PORTRAIT = [
+    { x: 14, h: 40 },
+    { x: 86, h: 40 },
+    { x: 22, h: 30 },
+    { x: 78, h: 30 },
+    { x: 50, h: 24 },
+    { x: 38, h: 22 },
+  ];
+
+  function sceneKey(scene) {
+    if (!scene || !Array.isArray(scene.characters) || !scene.characters.length) return '';
+    let hash = 2166136261;
+    const value = [
+      scene.game,
+      scene.label ? '1' : '0',
+      scene.accent,
+      scene.size,
+      scene.characters.map((character) => [character.src, character.name, character.anchor, character.motion, character.scale].join('|')).join('~'),
+    ].join('~');
+    for (const char of value) hash = Math.imul(hash ^ char.codePointAt(0), 16777619);
+    return String(hash >>> 0);
+  }
+
+  function castMarkup(scene) {
+    const portrait = window.innerHeight > window.innerWidth * 1.1;
+    const rows = portrait ? CAST_PORTRAIT : CAST_LANDSCAPE;
+    const size = Math.max(0.5, Math.min(1.4, Number(scene.size) || 1));
+    return scene.characters
+      .slice(0, 6)
+      .map((character, index) => {
+        const row = rows[Math.min(index, rows.length - 1)];
+        const height = Math.max(12, Math.min(88, row.h * size * (Number(character.scale) || 1)));
+        const anchor = ['left', 'right', 'center'].includes(character.anchor) ? character.anchor : index % 2 ? 'right' : 'left';
+        const motion = ['bounce', 'sway', 'pulse', 'float', 'stomp'].includes(character.motion) ? character.motion : 'bounce';
+        const name = scene.label && character.name ? `<figcaption>${esc(character.name)}</figcaption>` : '';
+        return `<figure class="ls-cast-char ls-cast-${anchor} ls-cast-motion-${motion}" style="--x:${row.x}%;--h:${height.toFixed(1)};--delay:${(index * 0.07).toFixed(2)}s;--dim:${index > 1 ? 0.64 : 1}"><img src="${esc(character.src)}" alt="" draggable="false" />${name}</figure>`;
+      })
+      .join('');
+  }
+
+  function renderCast(r, force) {
+    const scene = r.opts && r.opts.scene;
+    const key = sceneKey(scene);
+    let cast = r.stage.querySelector('.ls-cast');
+    if (!scene) {
+      if (cast) cast.remove();
+      r.sceneKey = '';
+      return;
+    }
+    if (!force && key === r.sceneKey && cast) return;
+    const enter = key !== r.sceneKey;
+    if (!cast) {
+      cast = document.createElement('div');
+      const frames = r.stage.querySelector('.ls-frames');
+      if (frames && frames.parentNode) frames.parentNode.insertBefore(cast, frames);
+      else r.stage.insertBefore(cast, r.stage.firstChild);
+    }
+    cast.className = `ls-cast${enter ? ' ls-cast-enter' : ''}`;
+    if (scene.accent) cast.style.setProperty('--ls-cast-accent', scene.accent);
+    cast.innerHTML = castMarkup(scene);
+    r.sceneKey = key;
+  }
+
+  // app.js hands a new scene over while the lyrics are already running.
+  function setScene(scene) {
+    if (!run) return false;
+    run.opts = Object.assign({}, run.opts, { scene: scene || null });
+    renderCast(run, true);
+    return true;
   }
 
   // Minimal HUD timecode, only once a second (no flicker).
@@ -1271,6 +1361,7 @@ window.CMLyricStage = (function () {
       chunk: run.chunkIndex,
       words: stage.querySelectorAll('.ls-w, .lv-word').length,
       frames: stage.querySelectorAll('.ls-frames > :not(.lc-out)').length,
+      cast: stage.querySelectorAll('.ls-cast-char').length,
       font: (() => {
         const word = stage.querySelector('.ls-w, .lv-word');
         return word ? parseFloat(getComputedStyle(word).fontSize) || 0 : 0;
@@ -1282,6 +1373,7 @@ window.CMLyricStage = (function () {
   return {
     render,
     stop,
+    setScene,
     snapshot,
     refit: () => refit(run),
     STYLES: (window.CMLyricVideo && window.CMLyricVideo.STYLES) || ['lyricvideo', 'poster', 'brush', 'cinema'],

@@ -213,6 +213,118 @@ html[data-mobile] .fs.lyrics-stage .fs-meta {
   position: absolute;
   inset: 0;
 }
+
+/* Plugin figures behind the words (Plugin-API v3, "stage") ------------------ */
+
+.ls-cast {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+.ls-cast-char {
+  position: absolute;
+  left: var(--x, 10%);
+  bottom: -2%;
+  height: calc(var(--h, 48) * 1%);
+  margin: 0;
+  padding: 0;
+  transform: translateX(-50%);
+  transform-origin: bottom center;
+  opacity: var(--dim, 1);
+  will-change: transform;
+}
+.ls-cast-char img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 34vw;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.55));
+  transform: translateY(calc(var(--ls-beat, 0) * -2.4%)) scale(calc(1 + var(--ls-beat, 0) * 0.04));
+  transform-origin: bottom center;
+}
+.ls-cast-center {
+  z-index: 0;
+  opacity: calc(var(--dim, 1) * 0.85);
+}
+.ls-cast-left img {
+  object-position: left bottom;
+}
+.ls-cast-right img {
+  object-position: right bottom;
+}
+.ls-cast-char figcaption {
+  position: absolute;
+  left: 50%;
+  bottom: 2%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: 600 11px/1.4 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  white-space: nowrap;
+}
+.ls-cast-enter .ls-cast-char {
+  animation: ls-cast-in 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes ls-cast-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6%) scale(0.94);
+  }
+  100% {
+    opacity: var(--dim, 1);
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+.ls-cast-motion-bounce img {
+  transform: translateY(calc(var(--ls-beat, 0) * -3.6%)) scale(calc(1 + var(--ls-beat, 0) * 0.05));
+}
+.ls-cast-motion-sway img {
+  transform: rotate(calc((var(--ls-beat, 0) - 0.25) * 3.2deg)) translateY(calc(var(--ls-beat, 0) * -1.2%));
+}
+.ls-cast-motion-pulse img {
+  transform: scale(calc(1 + var(--ls-beat, 0) * 0.075));
+}
+.ls-cast-motion-float img {
+  transform: translateY(calc(var(--ls-beat, 0) * -1.6%)) rotate(calc(var(--ls-beat, 0) * 1.4deg));
+}
+.ls-cast-motion-stomp img {
+  transform: translateY(calc(var(--ls-beat, 0) * 1.8%)) scaleY(calc(1 - var(--ls-beat, 0) * 0.03));
+}
+.ls-cast .ls-cast-char img {
+  transition: transform 70ms linear;
+}
+.ls-reduced .ls-cast-enter .ls-cast-char {
+  animation: ls-fade 0.3s ease both;
+}
+.ls-reduced .ls-cast-char img {
+  transform: none;
+  transition: none;
+}
+html[data-perf='saver'] .ls-cast-char img {
+  filter: none;
+}
+@media (max-aspect-ratio: 4/5) {
+  .ls-cast-char {
+    height: calc(var(--h, 48) * 0.62 * 1%);
+  }
+  .ls-cast-char img {
+    max-width: 30vw;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ls-cast-char img {
+    transform: none;
+    transition: none;
+  }
+}
 .ls-w {
   display: inline-block;
   white-space: nowrap;

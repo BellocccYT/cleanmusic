@@ -23,12 +23,20 @@ const HOUR = 60 * MIN;
 
 export const ROOM_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, code_hash TEXT NOT NULL UNIQUE, host TEXT NOT NULL,
-    created INTEGER NOT NULL, host_away INTEGER NOT NULL DEFAULT 0, state TEXT)`,
+    created INTEGER NOT NULL, host_away INTEGER NOT NULL DEFAULT 0, state TEXT,
+    jam INTEGER NOT NULL DEFAULT 0, queue TEXT)`,
   `CREATE TABLE IF NOT EXISTS room_members (room TEXT NOT NULL, account TEXT NOT NULL, joined INTEGER NOT NULL,
     seen INTEGER NOT NULL, PRIMARY KEY (room, account))`,
   'CREATE INDEX IF NOT EXISTS room_members_account ON room_members (account)',
   'CREATE TABLE IF NOT EXISTS room_bans (room TEXT NOT NULL, account TEXT NOT NULL, PRIMARY KEY (room, account))',
 ];
+
+/** Additive columns for existing databases (2.2: Jam + shared queue). */
+export function migrateRooms(hub) {
+  const columns = hub.all('PRAGMA table_info(rooms)').map((row) => row.name);
+  if (!columns.includes('jam')) hub.run('ALTER TABLE rooms ADD COLUMN jam INTEGER NOT NULL DEFAULT 0');
+  if (!columns.includes('queue')) hub.run('ALTER TABLE rooms ADD COLUMN queue TEXT');
+}
 
 // [limit, limit for accounts younger than 24 h, window in ms]
 export const ROOM_RATE = {
@@ -40,6 +48,9 @@ export const ROOM_RATE = {
   rstate: [120, 120, MIN],
   rreact: [30, 10, MIN],
   rtime: [30, 30, MIN],
+  rjam: [30, 10, HOUR],
+  radd: [60, 20, MIN],
+  runqueue: [60, 30, MIN],
 };
 
 // Close codes the app understands (social-main.js): no reconnect for these.
@@ -105,6 +116,29 @@ function members(hub, room) {
     .map((row) => ({ id: row.id, tag: names.tagOf(row.id), name: row.name, host: row.id === room.host, online: live.has(row.id) }));
 }
 
+/** Stored Jam queue (JSON) – never trusted blindly after a schema change. */
+function queueRows(room) {
+  try {
+    const rows = JSON.parse(room.queue || '[]');
+    return Array.isArray(rows) ? rows.slice(0, proto.LIMITS.roomQueue) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Queue with names for the UI; the rows themselves only hold account ids. */
+function queueView(hub, room) {
+  return queueRows(room).map((row) => {
+    const account = hub.one('SELECT * FROM accounts WHERE id = ?', row.by);
+    return {
+      rid: String(row.rid || ''),
+      ref: row.ref,
+      by: account ? hub.person(account) : { id: String(row.by || ''), tag: '', name: 'Unbekannt' },
+      at: Number(row.at) || 0,
+    };
+  });
+}
+
 function snapshot(hub, room) {
   return {
     id: room.id,
@@ -112,6 +146,8 @@ function snapshot(hub, room) {
     created: room.created,
     members: members(hub, room),
     state: room.state ? JSON.parse(room.state) : null,
+    jam: Boolean(room.jam),
+    queue: queueView(hub, room),
   };
 }
 
@@ -275,6 +311,56 @@ export function onMessage(hub, ws, raw, now) {
     if (!proto.EMOJIS.includes(data.emoji)) return sendTo(ws, { t: 'error', error: 'emoji', message: 'Diese Reaktion gibt es nicht.' });
     if (!hub.limit(account, 'rreact', now)) return tooMany();
     return broadcast(hub, r, { t: 'react', from: hub.person(account), emoji: data.emoji, at: now }, ws);
+  }
+  // Jam (2.2): the host opens the shared queue; every member may add a title.
+  if (data.t === 'jam') {
+    if (room.host !== a) return sendTo(ws, { t: 'error', error: 'nur-host', message: 'Nur der Host startet den Jam.' });
+    if (!hub.limit(account, 'rjam', now)) return tooMany();
+    const jam = data.on === true ? 1 : 0;
+    hub.run('UPDATE rooms SET jam = ? WHERE id = ?', jam, r);
+    const fresh = hub.one('SELECT * FROM rooms WHERE id = ?', r);
+    return broadcast(hub, r, { t: 'jam', jam: Boolean(jam), queue: queueView(hub, fresh), now });
+  }
+  if (data.t === 'add') {
+    if (!room.jam && room.host !== a) {
+      return sendTo(ws, { t: 'error', error: 'kein-jam', message: 'Der Host hat keinen Jam gestartet.' });
+    }
+    if (!hub.limit(account, 'radd', now)) return tooMany();
+    const ref = proto.cleanRef(data.ref);
+    if (!ref) return sendTo(ws, { t: 'error', error: 'ref', message: 'Diesen Titel kann man nicht teilen.' });
+    const queue = queueRows(room);
+    if (queue.length >= proto.LIMITS.roomQueue) {
+      return sendTo(ws, { t: 'error', error: 'voll', message: `Die Warteschlange ist voll (höchstens ${proto.LIMITS.roomQueue} Titel).` });
+    }
+    if (queue.some((row) => proto.refKey(row.ref) === proto.refKey(ref))) {
+      return sendTo(ws, { t: 'error', error: 'doppelt', message: 'Dieser Titel steht schon in der Warteschlange.' });
+    }
+    const rid = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+    queue.push({ rid, ref, by: a, at: now });
+    hub.run('UPDATE rooms SET queue = ? WHERE id = ?', JSON.stringify(queue), r);
+    const fresh = hub.one('SELECT * FROM rooms WHERE id = ?', r);
+    return broadcast(hub, r, { t: 'queue', queue: queueView(hub, fresh), now });
+  }
+  if (data.t === 'unqueue') {
+    if (!hub.limit(account, 'runqueue', now)) return tooMany();
+    const rid = String(data.rid || '');
+    const queue = queueRows(room);
+    const index = queue.findIndex((row) => row.rid === rid);
+    if (index < 0) return sendTo(ws, { t: 'error', error: 'rid', message: 'Der Titel steht nicht mehr in der Warteschlange.' });
+    if (room.host !== a && queue[index].by !== a) {
+      return sendTo(ws, { t: 'error', error: 'nicht-deins', message: 'Nur der Host oder wer den Titel hinzugefügt hat, kann ihn entfernen.' });
+    }
+    queue.splice(index, 1);
+    hub.run('UPDATE rooms SET queue = ? WHERE id = ?', JSON.stringify(queue), r);
+    const fresh = hub.one('SELECT * FROM rooms WHERE id = ?', r);
+    return broadcast(hub, r, { t: 'queue', queue: queueView(hub, fresh), now });
+  }
+  if (data.t === 'queue-clear') {
+    if (room.host !== a) return sendTo(ws, { t: 'error', error: 'nur-host', message: 'Nur der Host leert die Warteschlange.' });
+    if (!hub.limit(account, 'rjam', now)) return tooMany();
+    hub.run('UPDATE rooms SET queue = ? WHERE id = ?', null, r);
+    const fresh = hub.one('SELECT * FROM rooms WHERE id = ?', r);
+    return broadcast(hub, r, { t: 'queue', queue: queueView(hub, fresh), now });
   }
   // state: only the host steers.
   if (room.host !== a) return sendTo(ws, { t: 'error', error: 'nur-host', message: 'Nur der Host steuert den Raum.' });

@@ -28,9 +28,10 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
-const { pathToFileURL } = require('node:url');
+const { pathToFileURL, fileURLToPath } = require('node:url');
 const { DiscordPresence } = require('./discord-rpc');
 const pluginManifest = require('./lib/plugin-manifest');
+const stageScene = require('./lib/stage-scene');
 const QRCode = require('qrcode');
 const { createSocial, createFakeServer } = require('./social-main');
 
@@ -43,7 +44,8 @@ const isSmokeVisualizer = process.argv.includes('--smoke-visualizer');
 const isSmokeXeneon = process.argv.includes('--smoke-xeneon');
 const isSmokeStreamerbot = process.argv.includes('--smoke-streamerbot');
 const isAutostart = process.argv.includes('--autostart');
-if (process.platform === 'win32') app.setAppUserModelId('de.cleanmusic.launcher');
+const APP_USER_MODEL_ID = 'de.cleanmusic.launcher';
+if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
 // Updater test: pretend to be 0.0.1 and download the latest release into a
 // throwaway folder (never replaces anything, never restarts).
 const UPDATE_TEST = isSmoke && process.argv.includes('--smoke-update');
@@ -1129,7 +1131,10 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(ROOT, 'renderer', 'index.html'));
   mainWindow.webContents.setBackgroundThrottling(false);
-  mainWindow.webContents.on('did-finish-load', () => updateTaskbar(true));
+  mainWindow.webContents.on('did-finish-load', () => {
+    updateTaskbar(true);
+    sendToRenderer('stage-scene', activePluginStage());
+  });
 
   mainWindow.once('ready-to-show', () => {
     if (bounds && bounds.maximized) mainWindow.maximize();
@@ -2594,6 +2599,37 @@ function createMainWindow() {
               out.first = st.loadedKey === keyOf(refA) && st.player.playing;
               out.skew = Number.isFinite(st.skew);
               out.panel = await js('document.querySelectorAll("#view-friends .social-room.active .social-friend").length');
+              // A plugin-only title without a ready lookup plugin: the guest must
+              // still get a catalogue preview instead of silence.
+              const youtubeRef = { src: 'youtube', id: 'dQw4w9WgXcQ', title: 'Never Gonna Give You Up', artist: 'Rick Astley' };
+              hostSock.send({ t: 'state', ref: youtubeRef, pos: 0, at: Date.now(), playing: true, full: true });
+              st = await until((now) => now.loadedKey.startsWith('youtube:') && now.player.playing, 20000);
+              out.youtubePreview = st.loadedKey.startsWith('youtube:') && st.player.playing;
+              out.youtubeState = { loadedKey: st.loadedKey, missingKey: st.missingKey, loading: st.loading, reason: st.reason, playing: st.player.playing };
+              // 2.2 Jam (the app is a guest here): host opens it, the app adds its
+              // current title, sees it in the shared queue and removes it again;
+              // "Algorithmus aus" is remembered locally.
+              hostSock.send({ t: 'jam', on: true });
+              st = await until((now) => now.jam === true, 4000);
+              out.jamOn = st.jam === true;
+              out.add = await js('window.CleanMusic.socialRoomAdd("")');
+              out.addError = (await roomState()).addError;
+              st = await until((now) => now.queue.length === 1, 10000);
+              out.queue = st.queue.length;
+              out.queueBy = st.queue[0] && st.queue[0].by.id === appId;
+              const jamRid = st.queue[0] ? st.queue[0].rid : '';
+              out.unqueue = jamRid ? await js(`window.CleanMusic.socialRoomUnqueue(${q(jamRid)})`) : false;
+              st = await until((now) => now.queue.length === 0, 6000);
+              out.queueGone = st.queue.length === 0;
+              await js('window.CleanMusic.socialRoomNoAuto(true)');
+              st = await roomState();
+              out.noAutoOn = st.local.noAuto === true;
+              await js('window.CleanMusic.socialRoomNoAuto(false)');
+              await js('window.CleanMusic.socialRoomPreviewOnly(true)');
+              st = await roomState();
+              out.previewOnly = st.local.previewOnly === true;
+              await js('window.CleanMusic.socialRoomPreviewOnly(false)');
+              hostSock.send({ t: 'jam', on: false });
               hostSock.send({ t: 'state', ref: refB, pos: 0, at: Date.now(), playing: true, full: false });
               st = await until((now) => now.loadedKey === keyOf(refB) && now.player.key === keyOf(refB) && now.player.playing);
               out.track = st.player.key === keyOf(refB) && st.player.playing;
@@ -2621,6 +2657,14 @@ function createMainWindow() {
               const guestSock = await friend.live();
               const hello = await guestSock.next('hello');
               out.hostState = hello && hello.room.state && hello.room.state.ref ? hello.room.state.ref.title : '';
+              // Host side of the Jam: the new guest adds a title, the app (now
+              // host) resolves it and puts it into its own queue.
+              await js('window.CleanMusic.socialRoomJam(true)');
+              await pause(300);
+              guestSock.send({ t: 'add', ref: refA });
+              st = await until((now) => now.applied.length === 1, 15000);
+              out.hostApply = st.applied.length === 1 && st.queueJamRids.length === 1;
+              await js('window.CleanMusic.socialRoomJam(false)');
               await pause(500);
               await js('document.querySelector("#audio").pause()');
               const paused = await guestSock.next('state');
@@ -2636,8 +2680,9 @@ function createMainWindow() {
               return out;
             })().catch((error) => ({ error: error.message }));
             const roomOk = rooms.deep && rooms.hello && rooms.joined && rooms.members === 2 && rooms.first && rooms.skew &&
-              rooms.panel === 2 && rooms.track && rooms.pause && rooms.seek > 13 && rooms.seek < 22 && rooms.react === '🔥' &&
-              rooms.takeOver && rooms.followAgain && rooms.handOver && rooms.hostState === 'One More Time' && rooms.hostPause &&
+              rooms.panel === 2 && rooms.youtubePreview && rooms.jamOn && rooms.add && rooms.queue === 1 && rooms.queueBy && rooms.unqueue && rooms.queueGone && rooms.noAutoOn && rooms.previewOnly &&
+              rooms.track && rooms.pause && rooms.seek > 13 && rooms.seek < 22 && rooms.react === '🔥' &&
+              rooms.takeOver && rooms.followAgain && rooms.handOver && rooms.hostApply && rooms.hostState === 'One More Time' && rooms.hostPause &&
               rooms.closed === 'host' && rooms.roomsAfter === 0 && rooms.left;
             fake.setEnabled(false);
             const off = await js('window.CleanMusic.socialRefresh()');
@@ -3041,14 +3086,15 @@ function createMainWindow() {
             const broken = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'].filter(
               (name) => !styleOk(name, styles[name])
             );
-            if (broken.length || !(stage.idleOpacity < 0.05 && stage.activeOpacity > 0.95) || stage.plainEffectStage) {
+            const castOk = stage.cast && stage.cast.count === 2 && stage.cast.images === 2 && stage.cast.behind && stage.cast.motion;
+            if (broken.length || !(stage.idleOpacity < 0.05 && stage.activeOpacity > 0.95) || stage.plainEffectStage || !castOk) {
               throw new Error(JSON.stringify({ broken, stage }));
             }
             const bigness = Object.fromEntries(Object.entries(styles).map(([name, s]) => [name, Math.round(s.big * 100) / 100]));
             console.log('SMOKE_LYRIC_VIDEO:', JSON.stringify({
               words: first.words, accent: first.accent, seedStable: first.html === second.html,
               styles: Object.keys(styles).length, fullscreen: true, big: bigness,
-              idle: stage.idleOpacity, active: stage.activeOpacity,
+              idle: stage.idleOpacity, active: stage.activeOpacity, cast: stage.cast,
             }));
           } catch (error) {
             console.error('SMOKE_LYRIC_VIDEO_FAIL:', error.message);
@@ -3819,6 +3865,26 @@ function createMainWindow() {
           console.log('SMOKE_DIAGNOSE:', JSON.stringify(await smokeDiagnose()));
         } catch (error) {
           console.error('SMOKE_DIAGNOSE_FAIL:', error.message);
+        }
+
+        try {
+          const startMenuSmoke = await smokeStartMenu();
+          console.log('SMOKE_STARTMENU:', JSON.stringify(startMenuSmoke));
+          const broken =
+            !startMenuSmoke.skipped &&
+            (!startMenuSmoke.supported ||
+              !startMenuSmoke.missing ||
+              !startMenuSmoke.created ||
+              !startMenuSmoke.pointsToThisCopy ||
+              startMenuSmoke.aumid !== APP_USER_MODEL_ID ||
+              !startMenuSmoke.removed ||
+              !startMenuSmoke.ui ||
+              !startMenuSmoke.ui.panel ||
+              !startMenuSmoke.ui.create ||
+              !startMenuSmoke.ui.status);
+          if (broken) console.error('SMOKE_STARTMENU_FAIL:', JSON.stringify(startMenuSmoke));
+        } catch (error) {
+          console.error('SMOKE_STARTMENU_FAIL:', error.message);
         }
 
         // Restart with stored data: the run above starts from an empty
@@ -6083,6 +6149,44 @@ function registerPluginPanel(id, def) {
   return true;
 }
 
+// Plugin-API v3: a plugin can hand a small "stage" to the motion lyrics
+// (permission "stage"). Only one scene wins – the one set most recently.
+const pluginStageScenes = new Map(); // id -> { scene, at }
+let pluginStageClock = 0;
+const STAGE_IMAGE = /\.(?:png|webp|gif|apng|avif|jpe?g|svg)$/i;
+
+function cleanPluginStage(raw) {
+  const scene = stageScene.cleanScene(raw);
+  if (!scene) return null;
+  scene.characters = scene.characters.filter((character) => {
+    if (!/^file:/i.test(character.src)) return true;
+    try {
+      const file = fileURLToPath(character.src);
+      return STAGE_IMAGE.test(path.extname(file)) && fs.existsSync(file);
+    } catch {
+      return false;
+    }
+  });
+  return scene.characters.length ? scene : null;
+}
+
+function registerPluginStage(id, raw) {
+  const clean = raw == null ? null : cleanPluginStage(raw);
+  pluginStageClock += 1;
+  if (clean) pluginStageScenes.set(id, { scene: clean, at: pluginStageClock });
+  else pluginStageScenes.delete(id);
+  sendToRenderer('stage-scene', activePluginStage());
+  return Boolean(clean);
+}
+
+function activePluginStage() {
+  let best = null;
+  for (const entry of pluginStageScenes.values()) {
+    if (!best || entry.at >= best.at) best = entry;
+  }
+  return best ? best.scene : null;
+}
+
 function pluginContext(id) {
   const owner = plugins.get(id);
   const manifest = owner ? owner.manifest : null;
@@ -6145,6 +6249,12 @@ function pluginContext(id) {
     ui: may('ui:panel')
       ? { panel: (def) => registerPluginPanel(id, def) }
       : new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : () => { throw permissionError('ui:panel'); }) }),
+    stage: may('stage')
+      ? {
+          set: (scene) => registerPluginStage(id, scene),
+          clear: () => registerPluginStage(id, null),
+        }
+      : new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : () => { throw permissionError('stage'); }) }),
     player: !may('player')
       ? new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : () => { throw permissionError('player'); }) })
       : {
@@ -6850,6 +6960,57 @@ async function smokeDiagnose() {
   }
 }
 
+// Start menu shortcut: portable copies have none, and without it Windows has
+// nothing to pin to Start or the taskbar. The smoke profile writes into its own
+// folder, so the real Start menu is never touched.
+async function smokeStartMenu() {
+  if (!isSmoke) throw new Error('Startmenü-Smoke ist nur im Smoke-Profil erlaubt.');
+  if (process.platform !== 'win32') return { supported: false, skipped: true };
+  const file = startMenuShortcutFile();
+  fs.rmSync(file, { force: true });
+  const missing = startMenuStatus();
+  const created = writeStartMenuShortcut();
+  const link = (() => {
+    try {
+      return shell.readShortcutLink(file);
+    } catch {
+      return null;
+    }
+  })();
+  const ui = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      const cm = window.CleanMusic;
+      cm.openSettings('system');
+      return new Promise((resolve) => setTimeout(() => {
+        const panel = document.querySelector('#startmenu-panel');
+        const status = document.querySelector('#startmenu-status');
+        const result = {
+          panel: Boolean(panel),
+          status: Boolean(status),
+          create: Boolean(document.querySelector('[data-startmenu="create"]')),
+          reveal: Boolean(document.querySelector('[data-startmenu="reveal"]')),
+          remove: Boolean(document.querySelector('[data-startmenu="remove"]')),
+          text: status ? status.textContent.trim().slice(0, 80) : '',
+        };
+        cm.showView('home');
+        resolve(result);
+      }, 150));
+    })()
+  `);
+  const removed = deleteStartMenuShortcut();
+  const result = {
+    supported: true,
+    missing: !missing.exists,
+    created: created.exists && created.current,
+    target: link ? link.target : '',
+    aumid: link ? link.appUserModelId || '' : '',
+    pointsToThisCopy: Boolean(link && samePath(link.target, mainPlayerPath())),
+    removed: !removed.exists,
+    ui,
+  };
+  return result;
+}
+
 async function smokeRemote() {
   if (!isSmoke) throw new Error('Fernbedienungs-Smoke ist nur im Smoke-Profil erlaubt.');
   const defaultOff = !remoteServer && !readConfig().remoteEnabled;
@@ -7360,6 +7521,7 @@ function unloadPlugin(plugin) {
   }
   plugin.module = null;
   plugin.panels = [];
+  if (pluginStageScenes.delete(plugin.id)) sendToRenderer('stage-scene', activePluginStage());
   updateVisualizerWatch();
 }
 
@@ -7742,6 +7904,7 @@ async function pluginList(refresh = false) {
 }
 
 ipcMain.handle('plugins-list', async (_event, refresh) => pluginList(Boolean(refresh)));
+ipcMain.handle('stage-get', () => activePluginStage());
 
 ipcMain.handle('plugin-set-enabled', async (_event, id, enabled) => {
   discoverPlugins();
@@ -9007,6 +9170,145 @@ ipcMain.handle('login-set', (event, patch) => {
   return { enabled, supported: app.isPackaged && process.platform === 'win32' };
 });
 
+// Windows: the Start menu shortcut is what turns CleanMusic into an "app" for
+// the shell. Windows only offers "An Start anheften"/"An Taskleiste anheften"
+// on that entry (or on the .lnk itself) - never on a bare portable EXE. The
+// installer creates it for installed copies; this repairs it and gives
+// portable copies a way to get one at all.
+function startMenuProgramsDir() {
+  // The smoke test must never touch the real Start menu.
+  if (isSmoke) return path.join(app.getPath('userData'), 'Start Menu');
+  return path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+}
+
+function startMenuShortcutFile() {
+  return path.join(startMenuProgramsDir(), 'CleanMusic.lnk');
+}
+
+// Per-machine installs put the shortcut into the shared Start menu; the user
+// folder is the one CleanMusic writes to.
+function startMenuCandidates() {
+  const files = [startMenuShortcutFile()];
+  if (!isSmoke) {
+    const allUsers = process.env.ProgramData || process.env.ALLUSERSPROFILE;
+    if (allUsers) files.push(path.join(allUsers, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'CleanMusic.lnk'));
+  }
+  return files;
+}
+
+function readStartMenuShortcut() {
+  if (process.platform !== 'win32') return null;
+  for (const file of startMenuCandidates()) {
+    try {
+      const link = shell.readShortcutLink(file);
+      if (link && link.target) return { file, link };
+    } catch {
+      /* no shortcut there */
+    }
+  }
+  return null;
+}
+
+function samePath(a, b) {
+  if (!a || !b) return false;
+  try {
+    return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function startMenuStatus() {
+  const supported = process.platform === 'win32';
+  const found = readStartMenuShortcut();
+  // Portable builds run from a temporary folder, so the shortcut has to point
+  // at the portable EXE the user keeps, not at process.execPath.
+  const target = supported ? mainPlayerPath() : '';
+  return {
+    supported,
+    file: found ? found.file : startMenuShortcutFile(),
+    owned: Boolean(found && samePath(found.file, startMenuShortcutFile())),
+    exists: Boolean(found),
+    target: found ? found.link.target : '',
+    expected: target,
+    current: Boolean(found && samePath(found.link.target, target)),
+    appUserModelId: found ? found.link.appUserModelId || '' : '',
+    installType: isInstalledCopy() ? 'installiert' : 'portable',
+  };
+}
+
+function writeStartMenuShortcut() {
+  const status = startMenuStatus();
+  if (!status.supported) return status;
+  const file = startMenuShortcutFile();
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    shell.writeShortcutLink(file, fs.existsSync(file) ? 'replace' : 'create', {
+      target: status.expected,
+      cwd: path.dirname(status.expected),
+      args: '',
+      description: 'CleanMusic - The Music Launcher',
+      icon: status.expected,
+      iconIndex: 0,
+      appUserModelId: APP_USER_MODEL_ID,
+    });
+  } catch (error) {
+    console.error('Start menu shortcut:', error.message);
+  }
+  return startMenuStatus();
+}
+
+function deleteStartMenuShortcut() {
+  const status = startMenuStatus();
+  if (!status.supported || !status.exists) return status;
+  // Only ever remove our own shortcut from the user's Start menu.
+  if (status.owned && (status.current || /cleanmusic/i.test(path.basename(status.target)))) {
+    try {
+      fs.rmSync(status.file, { force: true });
+    } catch (error) {
+      console.error('Start menu shortcut:', error.message);
+    }
+  }
+  return startMenuStatus();
+}
+
+// A portable self-update lands next to the old EXE under a new version name.
+// Keep the Start menu entry (and a pinned tile) on the file that actually runs.
+function refreshStartMenuShortcut() {
+  if (process.platform !== 'win32' || isSmoke) return false;
+  const status = startMenuStatus();
+  if (!status.owned || !status.exists || status.current) return false;
+  const oldTarget = status.target;
+  const sameFolder = (() => {
+    try {
+      return path.dirname(path.resolve(oldTarget)).toLowerCase() === path.dirname(path.resolve(status.expected)).toLowerCase();
+    } catch {
+      return false;
+    }
+  })();
+  if (!sameFolder || !/^cleanmusic-.*-portable\.exe$/i.test(path.basename(oldTarget))) return false;
+  writeStartMenuShortcut();
+  return true;
+}
+
+ipcMain.handle('start-menu', (event, action) => {
+  if (event.sender !== (mainWindow && mainWindow.webContents)) return null;
+  switch (action) {
+    case 'create':
+      return writeStartMenuShortcut();
+    case 'remove':
+      return deleteStartMenuShortcut();
+    case 'reveal': {
+      const status = startMenuStatus();
+      // The smoke run must not open Explorer windows on the developer's desktop.
+      if (status.exists && !isSmoke) shell.showItemInFolder(status.file);
+      return status;
+    }
+    default:
+      return startMenuStatus();
+  }
+});
+
 app.whenReady().then(async () => {
   if (!hasInstanceLock) return;
   Menu.setApplicationMenu(null);
@@ -9027,6 +9329,11 @@ app.whenReady().then(async () => {
   });
   pluginBoot = loadEnabledPlugins().catch((error) => console.error('Plugins:', error.message));
   updateLoginItem();
+  try {
+    refreshStartMenuShortcut();
+  } catch (error) {
+    console.error('Start menu shortcut:', error.message);
+  }
   if (readConfig().globalShortcuts) configureGlobalShortcuts(true);
   await registeredRemoteAutostart();
   createMainWindow();

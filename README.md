@@ -72,6 +72,13 @@ Temp-Ordner – für Wave Link und Windows ist sie dann jedes Mal ein „neues�
 Programm, und die Zuordnung zu einem Kanal oder Ausgabegerät geht verloren.
 Die installierte Version liegt immer am selben Ort.
 
+**An Start oder Taskleiste anheften:** Windows bietet das nur am
+Startmenü-Eintrag an, nie an einer losen EXE. Der Installer legt den Eintrag
+an; bei der portablen EXE holst du ihn unter *Einstellungen → System →
+Im Startmenü anlegen* nach. CleanMusic zeigt die Verknüpfung danach im
+Explorer – dort Rechtsklick → **An Start anheften** (oder *An Taskleiste
+anheften*).
+
 Die Dateien sind nicht code-signiert – Windows
 SmartScreen fragt beim ersten Start einmal nach (*Weitere Informationen →
 Trotzdem ausführen*).
@@ -103,6 +110,7 @@ eine kleine Karte, was neu ist.
 | **Discord Rich Presence** | ⚙️ optional – eigene Discord-Application-ID nötig; ab 1.26.0 mit Knopf „In CleanMusic anhören“ für Freunde |
 | **Freunde & Gruppen (Social, Beta, ab 2.0)** | ⚙️ optional, standardmäßig **aus** – über den CleanMusic-Social-Server (Cloudflare, Daten in der EU): Zufallsname, Freundescode statt Suche, „Freunde hören gerade“, Emoji-Reaktionen, Gruppen mit Wochenkarte und gemeinsamer Playlist, Blockieren/Melden, Konto löschen |
 | **Quellen-Plugins** | ⚙️ optional – nicht enthalten, Datei in den Plugin-Ordner legen und aktivieren; ab 1.25.0 zeigen Plugins mit Manifest ihre Berechtigungen vor dem Aktivieren, ab 2.0 auch Bibliothek lesen und eigene Panels |
+| **Game Motion (privat)** | ⚙️ optionales Plugin `extras/plugins/game-motion.js` – erkennt das Spiel am Titel und setzt eigene Charakterbilder hinter die Motion-Songtexte, im Takt; enthält keine Spiel-Assets, nur für den privaten Gebrauch |
 | **CORSAIR XENEON EDGE** | ⚙️ optional – iCUE-Widget „CleanMusic“ als Touch-Player; lokale Brücke `extras/plugins/xeneon-edge.js` (inoffiziell, nicht von CORSAIR) |
 | Apple Music | ✅ offizieller Web-Player; zusätzlich **MusicKit-Fenster** für volle Titel (Developer-Token nötig) |
 | Spotify, YouTube Music, TIDAL, Deezer, Amazon Music, SoundCloud | ✅ als offizieller Web-Player eingebettet |
@@ -476,6 +484,14 @@ und ebenfalls aus; geteilt werden nur Titel, Artist und Such-Referenz, nie lokal
 Radio, und nach 10 Minuten verfällt es. Antippen spielt den Song bei dir. **Gruppen** (per
 Gruppencode, bis 30 Leute): Die Wochenkarten aktualisieren sich von selbst zu einer Rangliste, dazu
 eine gemeinsame Gruppen-Playlist (bis 200 Titel), die du auch als eigene Playlist übernehmen kannst.
+**Gemeinsam hören** (Raumcode `R1-…`, bis 20 Leute) teilt nur den gerade laufenden Titel – jedes
+Gerät sucht ihn selbst und spielt ihn mit. Wer selbst pausiert oder spult, hört für sich weiter
+(„Wieder synchron“ holt zurück). Mit **Jam** darf jede Person Titel in eine gemeinsame
+Warteschlange legen; der Host spielt sie der Reihe nach ab. „Algorithmus aus“ hält im Raum den
+Autoplay an, und die Freundesliste aktualisiert sich im offenen Tab alle 10 Sekunden. Volle Titel
+brauchen auf jedem Gerät ein Quellen-Plugin – ohne Plugin läuft die 30-Sekunden-Vorschau. Mit
+„Im Raum nur Vorschauen“ spielt auch der Host bewusst die Vorschau, damit alle ohne Plugin
+dasselbe hören.
 
 Ab 2.0 ist der CleanMusic-Social-Server fest eingetragen (Cloudflare Worker, Daten in der EU);
 die Ansicht **Freunde** erscheint dann in der Seitenleiste. Code und Anleitung für einen eigenen

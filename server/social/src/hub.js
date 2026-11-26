@@ -123,6 +123,7 @@ export class SocialHub extends DurableObject {
     ctx.blockConcurrencyWhile(async () => {
       SCHEMA.concat(groups.GROUP_SCHEMA, requests.REQUEST_SCHEMA, presence.PRESENCE_SCHEMA, rooms.ROOM_SCHEMA).forEach((statement) => this.sql.exec(statement));
       requests.migrateRequests(this);
+      rooms.migrateRooms(this);
       if (!(await ctx.storage.getAlarm())) await ctx.storage.setAlarm(Date.now() + 10 * MIN);
     });
   }

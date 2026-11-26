@@ -272,7 +272,7 @@
   }
 
   /* --- polling (release 2.0: fewer Cloudflare requests) ------------------ */
-  const FRIENDS_OPEN_GAP = 30 * 1000; // friends view open: at most every 30 s
+  const FRIENDS_OPEN_GAP = 10 * 1000; // friends view open: at most every 10 s
   const FRIENDS_IDLE_GAP = 3 * 60 * 1000; // otherwise: at most every 3 min
   const GROUPS_GAP = 10 * 60 * 1000; // groups: only while in a group or every 10 min
 
@@ -373,6 +373,7 @@
   /* --- S3: listening rooms ("Gemeinsam hören") ---------------------------- */
   const ROOM_CODE_RE = /^R1-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
   const ROOM_MAX = 20;
+  const ROOM_MAX_QUEUE = 50;
   const SEEK_COOLDOWN = 3000; // after a correction, give the player time to settle
   const SEEK_LEAD = 0.25; // a seek costs a moment – land slightly ahead
   const HOST_GAP = 400; // the host sends at most every 0.4 s …
@@ -410,6 +411,21 @@
     };
   }
 
+  /** A clean Jam queue entry: { rid, ref, by, at } – or null. */
+  function normalizeRoomQueue(raw) {
+    return (Array.isArray(raw) ? raw : [])
+      .slice(0, ROOM_MAX_QUEUE)
+      .map((row) => {
+        if (!row || typeof row !== 'object') return null;
+        const rid = String(row.rid || '');
+        const ref = validRef(row.ref);
+        const by = person(row.by);
+        if (!/^[A-Za-z0-9_-]{4,24}$/.test(rid) || !ref || !by) return null;
+        return { rid, ref, by, at: Number(row.at) || 0 };
+      })
+      .filter(Boolean);
+  }
+
   /** Clean a room snapshot (GET /v1/room, hello) for the UI. */
   function normalizeRoom(raw, myId) {
     if (!raw || typeof raw !== 'object' || !ID_RE.test(String(raw.id || ''))) return null;
@@ -425,7 +441,17 @@
         return base;
       })
       .filter(Boolean);
-    return { id: String(raw.id), host, isHost: Boolean(myId) && host === myId, members, state: roomState(raw.state) };
+    return {
+      id: String(raw.id),
+      host,
+      isHost: Boolean(myId) && host === myId,
+      members,
+      state: roomState(raw.state),
+      jam: raw.jam === true,
+      queue: normalizeRoomQueue(raw.queue),
+      // Older servers send neither field – the Jam panel stays hidden there.
+      supportsJam: Array.isArray(raw.queue) && typeof raw.jam === 'boolean',
+    };
   }
 
   function roomMembers(raw, host, myId) {
@@ -525,7 +551,13 @@
     const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const code = ROOM_CODE_RE.test(String(value.code || '')) ? String(value.code) : '';
     const room = ID_RE.test(String(value.room || '')) ? String(value.room) : '';
-    return { code: code && room ? code : '', room: code && room ? room : '', at: Number.isFinite(value.at) ? value.at : 0 };
+    return {
+      code: code && room ? code : '',
+      room: code && room ? room : '',
+      at: Number.isFinite(value.at) ? value.at : 0,
+      noAuto: value.noAuto === true,
+      previewOnly: value.previewOnly === true,
+    };
   }
 
   /* --- 2.1.1: cards with cover, "live" effects --------------------------- */
@@ -634,9 +666,11 @@
     expiresIn,
     ROOM_CODE_RE,
     ROOM_MAX,
+    ROOM_MAX_QUEUE,
     parseRoomCode,
     roomState,
     normalizeRoom,
+    normalizeRoomQueue,
     roomMembers,
     expectedPosition,
     roomSyncPlan,

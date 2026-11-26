@@ -264,6 +264,7 @@ module.exports = { apiVersion: 3, name: 'Mein Plugin', /* … */ };
 | `external-links` | `ctx.openExternal` |
 | `ui:settings` | Einstellungsfelder (`settings`) |
 | `ui:panel` | `ctx.ui.panel({ slot, title, html })` – eigene Panels |
+| `stage` | `ctx.stage.set(scene)` / `ctx.stage.clear()` – Figuren und Farben hinter den Motion-Songtexten |
 | `library:read` | `ctx.library.*` – Favoriten, Playlists, Verlauf, Warteschlange, lokale Titel lesen |
 
 Ohne passende Berechtigung wirft die Schnittstelle einen Fehler
@@ -304,6 +305,40 @@ async setup(ctx) {
 
 Pro Plugin und Slot bleibt das zuletzt angemeldete Panel stehen (höchstens vier Insgesamt);
 HTML wird auf 20 000 Zeichen begrenzt. Panels verschwinden beim Deaktivieren des Plugins.
+
+### Figuren hinter den Motion-Songtexten (`stage`)
+
+Ein Plugin mit der Berechtigung `stage` kann den Vollbild-Songtexten eine kleine
+Bühne geben – etwa Figuren zum laufenden Spiel. CleanMusic animiert sie im Takt
+(der Beat kommt aus dem laufenden Visualizer, nicht aus dem Plugin):
+
+```js
+async setup(ctx) {
+  ctx.stage.set({
+    game: 'Undertale',
+    label: true,                       // Namen unter den Figuren
+    accent: '#ffd23f',
+    size: 1,                           // 0.5 – 1.4
+    characters: [
+      { src: 'file:///C:/Bilder/GameMotion/Undertale/sans.png', name: 'Sans', anchor: 'left', motion: 'bounce', scale: 1 },
+      { src: 'file:///C:/Bilder/GameMotion/Undertale/papyrus.png', name: 'Papyrus', anchor: 'right', motion: 'sway', scale: 1 },
+    ],
+  });
+}
+```
+
+- `src`: `https://`, `file://` (nur Bilder, die Datei muss existieren) oder ein
+  kleines `data:image/…;base64`. Kein HTML, kein SVG mit Skript, keine Fremd-CSS.
+- `anchor`: `left`, `right`, `center`. `motion`: `bounce`, `sway`, `pulse`,
+  `float`, `stomp`. Höchstens sechs Figuren, höchstens 1,5 MB pro Data-URL.
+- `ctx.stage.clear()` blendet die Bühne aus; beim Deaktivieren passiert das
+  automatisch. Setzen mehrere Plugins eine Bühne, gewinnt die zuletzt gesetzte.
+- Es wird **nichts** gespeichert und nichts hochgeladen. Die Bühne erscheint nur
+  im Vollbild, wenn ein Motion-Stil aktiv ist. Bei `prefers-reduced-motion`
+  stehen die Figuren still.
+- Rechte: Charakterbilder sind in der Regel geschützt. Ein Plugin sollte keine
+  Spiel-Assets mitliefern, sondern nur vom Nutzer gewählte Dateien anzeigen.
+  Beispiel: `extras/plugins/game-motion.js`.
 
 ### Dynamische Auswahllisten
 
