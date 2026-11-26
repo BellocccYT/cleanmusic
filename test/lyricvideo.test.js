@@ -134,10 +134,14 @@ check('wordTimes is safe for empty lines and missing next time', () => {
 
 /* --- 2.1.1: motion lyric styles (poster, brush, cinema) --------------------- */
 
-check('the four motion styles are known, frame styles exclude the stacked one', () => {
-  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema']);
-  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema']);
+check('the eight motion styles are known, frame styles exclude the stacked one', () => {
+  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic']);
+  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic']);
   assert.equal(LV.isStyle('poster'), true);
+  assert.equal(LV.isStyle('glitch'), true);
+  assert.equal(LV.isStyle('collage'), true);
+  assert.equal(LV.isStyle('synthwave'), true);
+  assert.equal(LV.isStyle('comic'), true);
   assert.equal(LV.isStyle('karaoke'), false);
   assert.equal(LV.letterCount("i'm"), 2);
   assert.equal(LV.letterCount('愛してる'), 4, 'non-Latin letters count');
@@ -301,6 +305,129 @@ check('brushFrame and cinemaFrame are deterministic and mark sensible keywords',
   let hearts = 0;
   for (let seed = 1; seed < 200; seed += 1) if (LV.cinemaHeart('Up the stairs', seed)) hearts += 1;
   assert.ok(hearts > 5 && hearts < 70, `rare hearts otherwise (${hearts}/199)`);
+});
+
+/* --- 2.2.0: glitch, collage, synthwave, comic ------------------------------- */
+
+check('glitch colours: dark ground, bright words, two readable ghosts', () => {
+  assert.deepEqual(plain(LV.glitchColors(null)), {
+    bg: '#06070e', fg: '#eef3ff', accent: '#ff2e88', ghostA: '#22d3ee', ghostB: '#ff3ea5', line: '#46557a',
+  });
+  for (const colors of covers) {
+    const c = LV.glitchColors(colors);
+    assert.match(c.bg, /^#[0-9a-f]{6}$/);
+    assert.ok(LV.contrast(c.fg, c.bg) >= 12, `white type readable (${colors && colors[0]})`);
+    assert.ok(LV.contrast(c.accent, c.bg) >= 4.5, 'accent readable');
+    assert.ok(LV.contrast(c.ghostA, c.bg) >= 4, 'ghost A visible');
+    assert.ok(LV.contrast(c.ghostB, c.bg) >= 4, 'ghost B visible');
+    assert.ok(LV.contrast('#ffffff', c.bg) >= 12, 'ground stays dark');
+  }
+});
+
+check('collage palette: three paper tones, readable ink and a cut-out accent', () => {
+  const base = LV.collagePalette(null);
+  assert.deepEqual(plain(base.papers), ['#f6edda', '#efe0c4', '#fbf7ee']);
+  for (const colors of covers) {
+    const c = LV.collagePalette(colors);
+    assert.equal(c.papers.length, 3);
+    assert.equal(new Set(c.papers).size, 3, 'paper tones differ');
+    c.papers.forEach((paper) => {
+      assert.match(paper, /^#[0-9a-f]{6}$/);
+      assert.ok(LV.contrast(c.inks[0], paper) >= 9, 'ink readable on every paper');
+      assert.ok(LV.contrast(c.accent, paper) >= 4, 'accent readable on paper');
+    });
+    assert.ok(LV.contrast(c.tape, c.papers[0]) >= 1.1);
+  }
+});
+
+check('synthwave colours: dark night sky, readable chrome and neon grid', () => {
+  const base = LV.synthColors(null);
+  assert.equal(base.grid, '#ff3ea5');
+  for (const colors of covers) {
+    const c = LV.synthColors(colors);
+    assert.ok(LV.contrast('#ffffff', c.sky) >= 12, `sky dark (${colors && colors[0]})`);
+    assert.ok(LV.contrast(c.chromeMid, c.sky) >= 6.5, 'chrome mid readable');
+    assert.ok(LV.contrast(c.chromeLow, c.sky) >= 4.5, 'chrome low readable');
+    assert.ok(LV.contrast(c.grid, c.sky) >= 3.5, 'grid visible');
+    assert.ok(LV.contrast(c.key, c.sky) >= 6.5, 'key readable');
+  }
+});
+
+check('comic colours: bright paper, hard ink, loud accent', () => {
+  const base = LV.comicColors(null);
+  assert.equal(base.ink, '#141414');
+  for (const colors of covers) {
+    const c = LV.comicColors(colors);
+    assert.ok(LV.contrast(c.ink, c.bg) >= 10, `ink readable (${colors && colors[0]})`);
+    assert.ok(LV.contrast(c.accent, c.bg) >= 3, 'accent readable');
+    assert.ok(LV.contrast(c.bubble, c.bg) >= 1, 'bubble sits on the paper');
+  }
+});
+
+const frameChunk = { words: [{ text: 'gonna' }, { text: 'fail' }] };
+const frameChunkLong = { words: [{ text: 'Preaching' }, { text: 'to' }, { text: 'the' }, { text: 'choir' }] };
+
+check('glitchFrame: deterministic offsets, keyword, calm slice count', () => {
+  const a = plain(LV.glitchFrame(frameChunkLong, 42));
+  assert.deepEqual(a, plain(LV.glitchFrame(frameChunkLong, 42)), 'deterministic');
+  assert.equal(a.key, 0, '"Preaching" is the keyword');
+  assert.equal(a.jitter.length, 4);
+  a.jitter.forEach((value) => assert.ok(value >= -1 && value <= 1));
+  assert.ok(a.bars >= 2 && a.bars <= 4);
+  assert.ok(a.shift >= 3 && a.shift < 10);
+  assert.equal(LV.glitchFrame(frameChunkLong, 42, { portrait: true }).stack, true);
+  assert.equal(LV.glitchFrame(frameChunkLong, 42).stack, false);
+});
+
+check('collageFrame: every letter is its own snippet and nothing is lost', () => {
+  const a = plain(LV.collageFrame(frameChunkLong, 7));
+  assert.deepEqual(a, plain(LV.collageFrame(frameChunkLong, 7)), 'deterministic');
+  assert.equal(a.key, 0);
+  const rebuilt = Object.values(a.letters)
+    .flat()
+    .map((letter) => letter.ch)
+    .join('');
+  assert.equal(rebuilt, LV.tokenize(frameChunkLong.words.map((w) => w.text).join(' ')).join(''), 'all letters kept');
+  Object.values(a.letters).flat().forEach((letter) => {
+    assert.ok(letter.paper >= 0 && letter.paper <= 2);
+    assert.ok(['ink', 'accent'].includes(letter.ink));
+    assert.ok(letter.face >= 0 && letter.face <= 2);
+    assert.ok(letter.rot >= -8 && letter.rot <= 8);
+  });
+  const portrait = LV.collageFrame(frameChunk, 7, { portrait: true });
+  assert.equal(portrait.rows.length, 2, 'upright: one word per row');
+  assert.equal(portrait.stack, true);
+  const short = { words: [{ text: 'Go' }, { text: 'on' }] };
+  const wide = LV.collageFrame(short, 7);
+  assert.equal(wide.rows.length, 1, 'wide short pair: one row');
+  assert.equal(LV.collageFrame(frameChunk, 7).rows.length, 1, 'nine letters still fit one wide row');
+  const longer = { words: [{ text: 'Everything' }, { text: 'forever' }] };
+  assert.equal(LV.collageFrame(longer, 7).rows.length, 2, 'very long phrase: stacked even when wide');
+});
+
+check('synthFrame and comicFrame: rows, stack and sensible keywords', () => {
+  const short = { words: [{ text: 'young' }, { text: 'wild' }] };
+  const synth = plain(LV.synthFrame(short, 3));
+  assert.deepEqual(synth, plain(LV.synthFrame(short, 3)), 'deterministic');
+  assert.equal(synth.rows.length, 1);
+  assert.ok(synth.key >= 0 && synth.key < 2, 'keyword marked');
+  assert.ok(['left', 'right'].includes(synth.skew));
+  assert.equal(LV.synthFrame(frameChunkLong, 3).stack, true, 'long phrase: stacked');
+  const synthPortrait = LV.synthFrame(frameChunkLong, 3, { portrait: true });
+  assert.equal(synthPortrait.stack, true);
+  assert.equal(synthPortrait.rows.length, 4);
+
+  const comic = plain(LV.comicFrame(frameChunkLong, 5));
+  assert.deepEqual(comic, plain(LV.comicFrame(frameChunkLong, 5)), 'deterministic');
+  assert.ok(comic.key >= 0 && comic.key < 4);
+  assert.ok(['burst', 'round', 'cloud'].includes(comic.bubble));
+  assert.ok(comic.tilt >= -3 && comic.tilt <= 3);
+  assert.equal(LV.comicFrame(frameChunk, 5, { portrait: true }).stack, true);
+  const filler = LV.comicFrame({ words: [{ text: 'the' }] }, 5);
+  assert.equal(filler.key, -1, 'a filler never becomes the key word');
+  const empty = LV.comicFrame({ words: [] }, 5);
+  assert.equal(empty.key, -1);
+  assert.equal(empty.accent, -1, 'no accent without words');
 });
 
 console.log(`${checks} passed, 0 failed`);

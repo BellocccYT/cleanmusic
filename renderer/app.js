@@ -5501,6 +5501,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.2.0': [
+      'Vier neue Motion-Songtexte für den Vollbild-Player: „Störung“ (Glitch mit RGB-Versatz, Scanlines und Zeitcode – ruhig statt flackernd), „Collage“ (jeder Buchstabe ein eigener Papierschnipsel mit Klebeband), „Synthwave“ (Chromschrift über Rasterhorizont und gestreifter Sonne) und „Comic“ (Pop-Art-Lettern mit Sprechblase, Stern und Rasterpunkten).',
+      'Alle acht Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
+      'Die vier neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
+    ],
     '2.1.1': [
       'Freunde, die gerade hören, erscheinen jetzt als große Karten mit Cover – mit „Mithören“ und den Emoji-Reaktionen direkt auf der Karte, dazu kleine Live-Effekte (bei „Bewegung reduzieren“ und im Sparmodus ohne Bewegung).',
       'Motion-Songtexte im ganzen Bildschirm: Mit „Lyric Video“ und den neuen Stilen füllt der Songtext im Vollbild-Player den kompletten Bildschirm – Steuerung, Titel und „Als Nächstes“ blenden sich aus und kommen bei Mausbewegung, Tippen oder Taste zurück.',
@@ -6404,11 +6409,15 @@
     ['poster', 'Poster'],
     ['brush', 'Pinsel'],
     ['cinema', 'Kino'],
+    ['glitch', 'Störung'],
+    ['collage', 'Collage'],
+    ['synthwave', 'Synthwave'],
+    ['comic', 'Comic'],
   ];
   // Effects that show one big line instead of the scrolling list.
-  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema'];
+  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
   // Motion styles (lyric-stage.js): fill the whole fullscreen player.
-  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema'];
+  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
 
   function lyricsEffect() {
     return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';
@@ -17435,10 +17444,17 @@ ${updatePanel()}
           renderLyrics();
           showLyricLine(1, true);
           await wait(80);
+          // Each style requests its own font; wait for it before measuring.
+          if (document.fonts && document.fonts.ready) await document.fonts.ready;
           window.CMLyricStage.refit();
           const stage = root.querySelector('#fs-lyrics .ly-kinetic');
+          // Measure the settled layout: entrance animations (scale/rotateX)
+          // would otherwise report a smaller word than the viewer ends up seeing.
+          if (stage) stage.classList.add('ls-measuring');
           const rect = stage ? stage.getBoundingClientRect() : { left: -1, top: -1, width: 0, height: 0 };
           const snap = window.CMLyricStage.snapshot() || {};
+          const big = Math.max(0, ...Array.from(stage ? stage.querySelectorAll('.ls-w, .lv-word') : []).map((el) => el.getBoundingClientRect().height)) / window.innerHeight;
+          if (stage) stage.classList.remove('ls-measuring');
           out.styles[style] = {
             stageMode: root.classList.contains('lyrics-stage'),
             fills:
@@ -17447,8 +17463,9 @@ ${updatePanel()}
             words: snap.words || 0,
             frames: snap.frames || 0,
             chunks: snap.chunks || 0,
+            font: snap.font || 0,
             // The biggest word is huge compared with the screen (not the old 900 × 320 box).
-            big: Math.max(0, ...Array.from(stage ? stage.querySelectorAll('.ls-w, .lv-word') : []).map((el) => el.getBoundingClientRect().height)) / window.innerHeight,
+            big,
             spectrum: Boolean(stage && stage.querySelector('.lc-spectrum')),
           };
         }

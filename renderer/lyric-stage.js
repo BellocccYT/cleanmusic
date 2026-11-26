@@ -1,11 +1,14 @@
 'use strict';
 
 /**
- * Full-screen motion lyrics (2.1.1) – the DOM side of the four motion styles:
+ * Full-screen motion lyrics (2.1.1) – the DOM side of the motion styles:
  *   lyricvideo – stacked blocks (the 2.0 "Lyric Video", now fitted to the screen)
  *   poster     – pastel poster frames, giant soft serif words, simple shapes
  *   brush      – one strong colour, marker letters painted in by a wipe
  *   cinema     – dark film look, words glide in with motion blur, real spectrum
+ *   2.2.0 adds glitch (calm digital tearing), collage (cut-out letters on
+ *   paper), synthwave (chrome type over a neon grid) and comic (pop art with
+ *   a speech bubble).
  *
  * app.js hands over the stage element (#fs-lyrics .ly-kinetic) plus the lines
  * and a time getter; everything that can be decided without a DOM (word
@@ -25,6 +28,10 @@ window.CMLyricStage = (function () {
     poster: ['900 100px "CM Fraunces"'],
     brush: ['400 100px "CM Permanent Marker"'],
     cinema: ['700 100px "CM Cinzel"'],
+    glitch: ['400 100px "Bebas Neue"'],
+    collage: ['900 100px "CM Fraunces"', '400 100px "Bebas Neue"', '700 100px "CM Cinzel"'],
+    synthwave: ['700 100px "CM Orbitron"'],
+    comic: ['400 100px "CM Bangers"'],
   };
   const FPS = { saver: 15, balanced: 24, quality: 30 };
   const SIZE_SCALE = { s: 0.84, m: 1, l: 1.1, xl: 1.2 };
@@ -195,6 +202,7 @@ window.CMLyricStage = (function () {
       if (index !== r.chunkIndex) showChunk(r, index);
     }
     if (r.style === 'cinema' && !r.reduced) drawSpectrum(r, bands);
+    if (r.style === 'glitch') updateGlitchHud(r);
   }
 
   function currentTime(r) {
@@ -219,9 +227,36 @@ window.CMLyricStage = (function () {
         <svg class="lc-heart" viewBox="0 0 100 92" aria-hidden="true"><path d="M50 90 C 18 66 2 48 2 28 C 2 13 13 2 27 2 C 38 2 46 9 50 18 C 54 9 62 2 73 2 C 87 2 98 13 98 28 C 98 48 82 66 50 90 Z" /><path class="lc-crack" d="M50 18 L 45 34 L 54 46 L 46 60 L 52 72 L 49 88" /></svg>
         <div class="ls-frames"></div>
         <canvas class="lc-spectrum" aria-hidden="true"></canvas>`;
+    } else if (style === 'glitch') {
+      stage.innerHTML = `
+        <div class="lg-ground" aria-hidden="true"></div>
+        <div class="lg-scan" aria-hidden="true"></div>
+        <div class="ls-frames"></div>
+        <div class="lg-hud" aria-hidden="true"><span><i class="lg-rec"></i>REC</span><span class="lg-time">00:00</span></div>`;
+    } else if (style === 'synthwave') {
+      stage.innerHTML = `
+        <div class="ly-sky" aria-hidden="true"></div>
+        <div class="ly-sun" aria-hidden="true"></div>
+        <div class="ly-horizon" aria-hidden="true"></div>
+        <div class="ly-grid" aria-hidden="true"></div>
+        <div class="ls-frames"></div>`;
+    } else if (style === 'comic') {
+      stage.innerHTML = `<div class="lcm-halftone" aria-hidden="true"></div><div class="ls-frames"></div>`;
     } else {
       stage.innerHTML = '<div class="ls-frames"></div>';
     }
+  }
+
+  // Minimal HUD timecode, only once a second (no flicker).
+  function updateGlitchHud(r) {
+    const el = r.stage.querySelector('.lg-time');
+    if (!el) return;
+    const total = Math.max(0, Math.floor(currentTime(r)));
+    if (r.hudSecond === total) return;
+    r.hudSecond = total;
+    const mm = String(Math.floor(total / 60)).padStart(2, '0');
+    const ss = String(total % 60).padStart(2, '0');
+    el.textContent = `${mm}:${ss}`;
   }
 
   /* --- Frame styles (poster, brush, cinema) ------------------------------------ */
@@ -274,6 +309,49 @@ window.CMLyricStage = (function () {
       stage.style.setProperty('--lc-key', c.key);
       stage.style.setProperty('--lc-heart', c.heart);
       stage.classList.toggle('lc-has-heart', !intro && Boolean(line.text) && LV.cinemaHeart(line.text, seedOf(line.text)));
+    } else if (r.style === 'glitch') {
+      const c = LV.glitchColors(colors);
+      r.glitch = c;
+      stage.style.setProperty('--lg-bg', c.bg);
+      stage.style.setProperty('--lg-fg', c.fg);
+      stage.style.setProperty('--lg-accent', c.accent);
+      stage.style.setProperty('--lg-ghost-a', c.ghostA);
+      stage.style.setProperty('--lg-ghost-b', c.ghostB);
+      stage.style.setProperty('--lg-line', c.line);
+      r.hudSecond = -1;
+    } else if (r.style === 'collage') {
+      const c = LV.collagePalette(colors);
+      r.collage = c;
+      stage.style.setProperty('--lk-paper-0', c.papers[0]);
+      stage.style.setProperty('--lk-paper-1', c.papers[1]);
+      stage.style.setProperty('--lk-paper-2', c.papers[2]);
+      stage.style.setProperty('--lk-ink', c.inks[0]);
+      stage.style.setProperty('--lk-soft', c.inks[1]);
+      stage.style.setProperty('--lk-accent', c.accent);
+      stage.style.setProperty('--lk-tape', c.tape);
+    } else if (r.style === 'synthwave') {
+      const c = LV.synthColors(colors);
+      r.synth = c;
+      stage.style.setProperty('--ly-sky', c.sky);
+      stage.style.setProperty('--ly-sky-2', c.sky2);
+      stage.style.setProperty('--ly-grid', c.grid);
+      stage.style.setProperty('--ly-grid-2', c.grid2);
+      stage.style.setProperty('--ly-sun-1', c.sun1);
+      stage.style.setProperty('--ly-sun-2', c.sun2);
+      stage.style.setProperty('--ly-chrome-top', c.chromeTop);
+      stage.style.setProperty('--ly-chrome-mid', c.chromeMid);
+      stage.style.setProperty('--ly-chrome-low', c.chromeLow);
+      stage.style.setProperty('--ly-key', c.key);
+      stage.style.setProperty('--ly-ink', c.ink);
+    } else if (r.style === 'comic') {
+      const c = LV.comicColors(colors);
+      r.comic = c;
+      stage.style.setProperty('--lcm-bg', c.bg);
+      stage.style.setProperty('--lcm-ink', c.ink);
+      stage.style.setProperty('--lcm-accent', c.accent);
+      stage.style.setProperty('--lcm-pop', c.pop);
+      stage.style.setProperty('--lcm-bubble', c.bubble);
+      stage.style.setProperty('--lcm-shadow', c.shadow);
     }
     r.chunkIndex = -1;
     showChunk(r, LV.activeChunk(r.chunks, currentTime(r)));
@@ -292,7 +370,11 @@ window.CMLyricStage = (function () {
     let el;
     if (r.style === 'poster') el = posterEl(r, chunk, seed, k, delayOf);
     else if (r.style === 'brush') el = brushEl(r, chunk, seed, delayOf);
-    else el = cinemaEl(r, chunk, seed, delayOf, Math.max(0.4, chunk.end - Math.max(now, chunk.start)));
+    else if (r.style === 'cinema') el = cinemaEl(r, chunk, seed, delayOf, Math.max(0.4, chunk.end - Math.max(now, chunk.start)));
+    else if (r.style === 'glitch') el = glitchEl(r, chunk, seed, delayOf);
+    else if (r.style === 'collage') el = collageEl(r, chunk, seed, delayOf);
+    else if (r.style === 'synthwave') el = synthwaveEl(r, chunk, seed, delayOf);
+    else el = comicEl(r, chunk, seed, delayOf);
     if (r.style === 'cinema' && !r.reduced) {
       host.querySelectorAll('.lc-frame:not(.lc-out)').forEach((old) => {
         old.classList.add('lc-out');
@@ -414,6 +496,143 @@ window.CMLyricStage = (function () {
       )
       .join(' ');
     el.innerHTML = `<div class="lc-drift" style="--hold:${hold.toFixed(2)}s">${words}</div>`;
+    return el;
+  }
+
+  // Glitch (Störung) -----------------------------------------------------------
+
+  function glitchEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.glitchFrame(chunk, seed, { portrait: Boolean(box && box.portrait) });
+    const rnd = LV.prng(seed ^ 0x51ed);
+    const el = document.createElement('div');
+    el.className = 'lg-frame';
+    el.dataset.shift = String(layout.shift);
+    const words = chunk.words.length
+      ? chunk.words
+          .map(
+            (word, i) =>
+              `<span class="ls-w lg-w${i === layout.key ? ' lg-key' : ''}" data-text="${esc(word.text)}" style="--d:${delayOf(word).toFixed(2)}s;--rot:${layout.rot[i]}deg;--x:${(layout.jitter[i] * 0.055).toFixed(3)}em">${esc(word.text)}</span>`
+          )
+          .join('')
+      : '<span class="ls-w lg-w" data-text="♪" style="--d:0s;--rot:0deg;--x:0em">♪</span>';
+    const bars = Array.from({ length: layout.bars }, () =>
+      `<i style="--y:${(6 + rnd() * 88).toFixed(1)}%;--w:${(16 + rnd() * 58).toFixed(1)}%;--h:${(1 + rnd() * 3).toFixed(1)}px;--dx:${(rnd() < 0.5 ? -1 : 1) * (5 + rnd() * 18)}%;--bd:${(-rnd() * 7).toFixed(2)}s"></i>`
+    ).join('');
+    el.innerHTML = `
+      <div class="lg-code">CH 0${1 + Math.floor(rnd() * 8)} <span>·</span> ${String(layout.shift).padStart(2, '0')} ms</div>
+      <div class="lg-words${layout.stack ? ' lg-stack' : ''}">${words}</div>
+      <div class="lg-bars" aria-hidden="true">${bars}</div>`;
+    return el;
+  }
+
+  // Collage --------------------------------------------------------------------
+
+  function collageEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.collageFrame(chunk, seed, { portrait: Boolean(box && box.portrait) });
+    const rnd = LV.prng(seed ^ 0x5a17);
+    const el = document.createElement('div');
+    el.className = `lk-frame lk-align-${layout.align}`;
+    el.style.setProperty('--tilt', `${layout.tilt}deg`);
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row) =>
+              `<div class="lk-row">${row
+                .map((index) => {
+                  const word = words[index];
+                  const letters = (layout.letters[index] || [])
+                    .map(
+                      (letter, at) =>
+                        `<span class="ls-w lk-letter lk-paper-${letter.paper} lk-face-${letter.face} lk-ink-${letter.ink}" style="--rot:${letter.rot}deg;--d:${(delayOf(word) + at * 0.028).toFixed(2)}s">${esc(letter.ch)}</span>`
+                    )
+                    .join('');
+                  const tape = index === layout.tape ? '<i class="lk-tape" aria-hidden="true"></i>' : '';
+                  return `<span class="lk-word${index === layout.key ? ' lk-key' : ''}">${letters}${tape}</span>`;
+                })
+                .join('')}</div>`
+          )
+          .join('')
+      : '<div class="lk-row"><span class="lk-word"><span class="ls-w lk-letter lk-paper-0 lk-face-1 lk-ink-ink" style="--rot:0deg;--d:0s">♪</span></span></div>';
+    const scraps = Array.from(
+      { length: layout.scraps },
+      () =>
+        `<i class="lk-scrap" style="--sx:${(rnd() < 0.5 ? 2 + rnd() * 12 : 78 + rnd() * 14).toFixed(1)}%;--sy:${(8 + rnd() * 78).toFixed(1)}%;--sw:${(9 + rnd() * 14).toFixed(1)}%;--sh:${(7 + rnd() * 9).toFixed(1)}%;--srot:${(rnd() * 24 - 12).toFixed(1)}deg"></i>`
+    ).join('');
+    el.innerHTML = `<div class="lk-scraps" aria-hidden="true">${scraps}</div><div class="lk-rows">${rows}</div>`;
+    return el;
+  }
+
+  // Synthwave ------------------------------------------------------------------
+
+  function synthwaveEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.synthFrame(chunk, seed, { portrait: Boolean(box && box.portrait) });
+    const rnd = LV.prng(seed ^ 0x7a31);
+    const el = document.createElement('div');
+    el.className = 'ly-frame';
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row) =>
+              `<div class="ly-row">${row
+                .map(
+                  (index) =>
+                    `<span class="ls-w ly-w${index === layout.key ? ' ly-key' : ''}" style="--d:${delayOf(words[index]).toFixed(2)}s">${esc(words[index].text)}</span>`
+                )
+                .join('')}</div>`
+          )
+          .join('')
+      : '<div class="ly-row"><span class="ls-w ly-w" style="--d:0s">♪</span></div>';
+    const skew = layout.skew === 'left' ? -1 : 1;
+    el.innerHTML = `
+      <div class="ly-flare" style="--fx:${(12 + rnd() * 12).toFixed(1)}%;--fy:${(18 + rnd() * 24).toFixed(1)}%;--frot:${(skew * (8 + rnd() * 10)).toFixed(1)}deg" aria-hidden="true"></div>
+      <div class="ly-rows${layout.stack ? ' ly-stack' : ''}">${rows}</div>`;
+    return el;
+  }
+
+  // Comic ----------------------------------------------------------------------
+
+  function comicBubble(kind) {
+    if (kind === 'round') {
+      return '<ellipse class="lcm-bubble-body" cx="50" cy="44" rx="45" ry="32" /><path class="lcm-bubble-body" d="M38 72 L30 92 L52 76 Z" />';
+    }
+    if (kind === 'cloud') {
+      return '<path class="lcm-bubble-body" d="M14 58 C 2 44 8 26 24 24 C 26 8 46 2 58 12 C 70 0 92 6 92 24 C 104 32 100 52 86 56 C 84 72 66 78 54 68 C 40 80 18 76 14 58 Z" />';
+    }
+    return '<path class="lcm-bubble-body" d="M50 2 L60 18 L80 8 L76 28 L98 32 L82 46 L96 62 L74 62 L70 84 L54 70 L40 88 L32 68 L10 74 L20 54 L2 44 L22 34 L10 14 L32 20 Z" /><path class="lcm-bubble-body" d="M44 76 L32 96 L54 84 Z" />';
+  }
+
+  function comicEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.comicFrame(chunk, seed, { portrait: Boolean(box && box.portrait) });
+    const rnd = LV.prng(seed ^ 0x2c19);
+    const el = document.createElement('div');
+    el.className = `lcm-frame${layout.stack ? ' lcm-stack' : ''}`;
+    el.style.setProperty('--tilt', `${layout.tilt}deg`);
+    const words = chunk.words;
+    const wordHtml = words.map(
+      (word, i) =>
+        `<span class="ls-w lcm-w${i === layout.key ? ' lcm-key' : ''}${i === layout.accent && i !== layout.key ? ' lcm-pop' : ''}" style="--d:${delayOf(word).toFixed(2)}s;--rot:${(Math.round((rnd() * 5 - 2.5) * 10) / 10).toFixed(1)}deg">${esc(word.text)}</span>`
+    );
+    const rows = layout.stack
+      ? wordHtml.map((word) => `<div class="lcm-row">${word}</div>`).join('')
+      : `<div class="lcm-row">${wordHtml.join('') || '<span class="ls-w lcm-w" style="--d:0s;--rot:0deg">♪</span>'}</div>`;
+    const bubble = layout.key >= 0
+      ? `<svg class="lcm-bubble" viewBox="0 0 100 100" preserveAspectRatio="none" style="--brot:${(rnd() * 10 - 5).toFixed(1)}deg;--btop:${layout.stack ? `${Math.min(78, 33 + layout.key * 22)}%` : '45%'}" aria-hidden="true">${comicBubble(layout.bubble)}</svg>`
+      : '';
+    const decor = layout.exclaim
+      ? `<svg class="lcm-star" viewBox="0 0 100 100" style="--sx:${(rnd() < 0.5 ? 4 + rnd() * 10 : 80 + rnd() * 10).toFixed(1)}%;--sy:${(6 + rnd() * 20).toFixed(1)}%;--srot:${(rnd() * 30 - 15).toFixed(1)}deg" aria-hidden="true"><path d="M50 2 L60 34 L94 26 L68 50 L94 74 L60 66 L50 98 L40 66 L6 74 L32 50 L6 26 L40 34 Z" /></svg>
+         <svg class="lcm-zap" viewBox="0 0 100 100" style="--sx:${(rnd() < 0.5 ? 8 + rnd() * 12 : 76 + rnd() * 12).toFixed(1)}%;--sy:${(68 + rnd() * 18).toFixed(1)}%;--srot:${(rnd() * 24 - 12).toFixed(1)}deg" aria-hidden="true"><path d="M58 2 L18 56 H44 L34 98 L84 38 H54 Z" /></svg>`
+      : '';
+    el.innerHTML = `${bubble}<div class="lcm-words">${rows}</div>${decor}`;
     return el;
   }
 
@@ -556,6 +775,37 @@ window.CMLyricStage = (function () {
     return size;
   }
 
+  // Measures the union of the word boxes (rotations included) with the
+  // entrance animations switched off – otherwise a mid-animation scale would
+  // make the words too big.
+  function fitGroup(r, el, maxW, maxH, cap, selector) {
+    if (!el) return 0;
+    r.stage.classList.add('ls-measuring');
+    el.style.fontSize = '100px';
+    const rects = Array.from(el.querySelectorAll(selector))
+      .map((node) => node.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    if (!rects.length) {
+      // No word boxes (hidden frame): at least do not leave the measuring size.
+      el.style.fontSize = `${Math.max(12, Math.min(maxW, maxH) * 0.24).toFixed(1)}px`;
+      r.stage.classList.remove('ls-measuring');
+      return 0;
+    }
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    const width = right - left;
+    const height = bottom - top;
+    let size = 0;
+    if (width > 0 && height > 0) {
+      size = Math.min((maxW * 0.95 / width) * 100, (maxH * 0.95 / height) * 100, cap);
+      el.style.fontSize = `${Math.max(12, size).toFixed(1)}px`;
+    }
+    r.stage.classList.remove('ls-measuring');
+    return size;
+  }
+
   function fitStacked(r) {
     const box = stageSize(r);
     const body = r.stage.querySelector('.lv-body');
@@ -584,6 +834,18 @@ window.CMLyricStage = (function () {
       const cover = (Number(el.dataset.cover) || 1) * (box.portrait ? 1.15 : 1);
       const stacked = el.classList.contains('lc-stack');
       fitSize(el.querySelector('.lc-drift'), box.w * (stacked ? 0.9 : cover) * s, box.h * (stacked ? 0.62 : 0.5), box.h * (stacked ? 0.22 : 0.42) * s);
+    } else if (r.style === 'glitch') {
+      const stacked = Boolean(el.querySelector('.lg-words.lg-stack'));
+      fitGroup(r, el.querySelector('.lg-words'), box.w * 0.9 * s, box.h * (stacked ? 0.6 : 0.34), box.h * (stacked ? 0.26 : 0.4) * s, '.lg-w');
+    } else if (r.style === 'collage') {
+      const stacked = Boolean(el.querySelectorAll('.lk-row').length > 1);
+      fitGroup(r, el.querySelector('.lk-rows'), box.w * 0.86 * s, box.h * (stacked ? 0.72 : 0.55), box.h * (stacked ? 0.28 : 0.34) * s, '.lk-letter');
+    } else if (r.style === 'synthwave') {
+      const stacked = Boolean(el.querySelector('.ly-rows.ly-stack'));
+      fitGroup(r, el.querySelector('.ly-rows'), box.w * 0.9 * s, box.h * (stacked ? 0.62 : 0.42), box.h * (stacked ? 0.28 : 0.42) * s, '.ly-w');
+    } else if (r.style === 'comic') {
+      const stacked = Boolean(el.querySelector('.lcm-frame.lcm-stack'));
+      fitGroup(r, el.querySelector('.lcm-words'), box.w * (stacked ? 0.8 : 0.82) * s, box.h * (stacked ? 0.62 : 0.42), box.h * (stacked ? 0.28 : 0.46) * s, '.lcm-w');
     }
   }
 
@@ -615,5 +877,11 @@ window.CMLyricStage = (function () {
     };
   }
 
-  return { render, stop, snapshot, refit: () => refit(run), STYLES: ['lyricvideo', 'poster', 'brush', 'cinema'] };
+  return {
+    render,
+    stop,
+    snapshot,
+    refit: () => refit(run),
+    STYLES: (window.CMLyricVideo && window.CMLyricVideo.STYLES) || ['lyricvideo', 'poster', 'brush', 'cinema'],
+  };
 })();

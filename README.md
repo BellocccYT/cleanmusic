@@ -404,7 +404,7 @@ In der Seitenleiste **Downloads**: alles aus deinem Cutting-Ordner (auch YouTube
 
 Im Vollbild-Player blendet der Knopf mit den drei Linien den **mitlaufenden Songtext**
 ein (aus der freien Datenbank [LRCLIB](https://lrclib.net); dabei werden nur Titel,
-Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. Einstellbar (in den Einstellungen und direkt im Vollbild-Player): Schriftgröße, Ausrichtung, Zeitversatz, Mitscrollen, gesungene Zeilen abdunkeln, Großansicht ohne Cover, „Neu suchen“ und **Effekte**: Pop, Karaoke (füllt sich im Takt), Motion (große Zeile, Wörter poppen einzeln rein wie in Lyric-Videos), Neon, Welle, Schreibmaschine, Zoom und vier **Motion-Stile**, die im Vollbild-Player den ganzen Bildschirm füllen (Steuerung blendet sich aus und kommt bei Mausbewegung, Tippen oder Taste zurück): Lyric Video (Kinetic Typography im TikTok-/Shorts-Stil: gestapelte Wörter in Bebas Neue, ein Schlüsselwort in der Coverfarbe, Hell/Dunkel-Wechsel auf den Beat), Poster (pastellige Riesen-Schrift mit Formen, Farben wechseln je Wortgruppe), Pinsel (gemalte Marker-Buchstaben auf kräftigem Grund) und Kino (dunkles Glühen, Wörter gleiten mit Bewegungsunschärfe herein, echtes Spektrum unten). Farben kommen nach Möglichkeit aus dem Cover. Visualizer-Stile: Kreis, Balken, Welle, Spiegel und Partikel.
+Artist, Album und Länge abgefragt). Auch als OBS-Overlay-Stil „Songtext“. Einstellbar (in den Einstellungen und direkt im Vollbild-Player): Schriftgröße, Ausrichtung, Zeitversatz, Mitscrollen, gesungene Zeilen abdunkeln, Großansicht ohne Cover, „Neu suchen“ und **Effekte**: Pop, Karaoke (füllt sich im Takt), Motion (große Zeile, Wörter poppen einzeln rein wie in Lyric-Videos), Neon, Welle, Schreibmaschine, Zoom und acht **Motion-Stile**, die im Vollbild-Player den ganzen Bildschirm füllen (Steuerung blendet sich aus und kommt bei Mausbewegung, Tippen oder Taste zurück): Lyric Video (Kinetic Typography im TikTok-/Shorts-Stil: gestapelte Wörter in Bebas Neue, ein Schlüsselwort in der Coverfarbe, Hell/Dunkel-Wechsel auf den Beat), Poster (pastellige Riesen-Schrift mit Formen, Farben wechseln je Wortgruppe), Pinsel (gemalte Marker-Buchstaben auf kräftigem Grund), Kino (dunkles Glühen, Wörter gleiten mit Bewegungsunschärfe herein, echtes Spektrum unten), Störung (Glitch: RGB-Versatz, Scanlines und Zeitcode, aber kein Flackern), Collage (jeder Buchstabe ein eigener Papierschnipsel mit Klebeband), Synthwave (Chromschrift über Rasterhorizont und gestreifter Sonne) und Comic (Pop-Art-Lettern mit harter Kontur, Sprechblase und Rasterpunkten). Farben kommen nach Möglichkeit aus dem Cover. Beispiele in `docs/images/lyrics/`. Visualizer-Stile: Kreis, Balken, Welle, Spiegel und Partikel.
 
 ### Lautstärke
 
@@ -956,7 +956,7 @@ unterstützen möchte, kann das freiwillig über
 *Einstellungen → System*).
 
 **Supporter-Extras:** Ein paar optische Extras – 6 Themes, die Live-Hintergründe,
-8 Songtext-Effekte und 2 Visualizer-Stile – sind mit ♥ markiert. Nach der Installation sind
+12 Songtext-Effekte und 2 Visualizer-Stile – sind mit ♥ markiert. Nach der Installation sind
 sie **7 Tage frei**; danach springen sie auf den Standard zurück und fragen einmal nach einem
 Code. Den Code bekommt **jeder kostenlos, auch ohne Spende** – er steht offen auf der
 [Ko-fi-Seite](https://ko-fi.com/belloccc) und im [Discord](https://discord.gg/XqYMZJXJjA).

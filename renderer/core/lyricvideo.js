@@ -10,6 +10,10 @@
  * brush and cinema (frames per word group, colour sequences, layouts); the
  * DOM side lives in renderer/lyric-stage.js.
  *
+ * Since 2.2.0 four more directions: glitch (digital tearing in calm waves),
+ * collage (cut-out letters on paper snippets), synthwave (chrome type over a
+ * neon grid) and comic (pop-art lettering with a speech bubble).
+ *
  * Everything here is deterministic (seeded by the line text) and DOM-free,
  * so it can be tested with plain Node. Loaded before app.js as
  * window.CMLyricVideo; tested in test/lyricvideo.test.js.
@@ -217,14 +221,18 @@
    * wordTimes(). Everything below is pure and deterministic.
    */
 
-  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema'];
+  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
   // Styles that play frame by frame (chunks of a line).
-  const FRAME_STYLES = ['poster', 'brush', 'cinema'];
+  const FRAME_STYLES = ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'];
 
   const CHUNK_RULES = {
     poster: { words: 3, letters: 12 },
     brush: { words: 2, letters: 11 },
     cinema: { words: 3, letters: 16 },
+    glitch: { words: 3, letters: 14 },
+    collage: { words: 2, letters: 10 },
+    synthwave: { words: 2, letters: 11 },
+    comic: { words: 3, letters: 13 },
   };
 
   function isStyle(id) {
@@ -608,6 +616,263 @@
     return prng((Number(seed) >>> 0) ^ 0x9e3779b9)() < 0.15;
   }
 
+  /* --- 2.2.0: glitch, collage, synthwave, comic ---------------------------- */
+
+  const GLITCH_DEFAULT = { bg: '#06070e', fg: '#eef3ff', accent: '#ff2e88', ghostA: '#22d3ee', ghostB: '#ff3ea5', line: '#46557a' };
+
+  // Dark signal ground, a bright accent and two ghost colours for the RGB split.
+  function glitchColors(colors) {
+    const out = Object.assign({}, GLITCH_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    out.bg = hsl(ha, Math.max(0.12, Math.min(0.45, sa * 0.45)), 0.055);
+    if (sa >= 0.28) out.accent = hsl(ha, Math.max(0.68, sa), 0.61);
+    // Ghosts keep the cyan/magenta split of a signal error and only lean a
+    // little towards the cover, so the style stays recognisable.
+    out.ghostA = hsl(188 + Math.max(-18, Math.min(18, ha - 188)), 0.88, 0.62);
+    out.ghostB = hsl(326 + Math.max(-18, Math.min(18, hb - 326)), 0.88, 0.63);
+    const bg = hexToRgb(out.bg);
+    out.fg = ensureContrast('#f2f6ff', bg, 12, '#ffffff');
+    out.accent = ensureContrast(out.accent, bg, 4.5, GLITCH_DEFAULT.accent);
+    out.ghostA = ensureContrast(out.ghostA, bg, 4, GLITCH_DEFAULT.ghostA);
+    out.ghostB = ensureContrast(out.ghostB, bg, 4, GLITCH_DEFAULT.ghostB);
+    out.line = hsl(ha, 0.18, 0.36);
+    return out;
+  }
+
+  const COLLAGE_DEFAULT = {
+    papers: ['#f6edda', '#efe0c4', '#fbf7ee'],
+    inks: ['#1b1712', '#3b342b'],
+    accent: '#c81f3b',
+    tape: '#d8c39a',
+  };
+
+  // Three paper tones, two inks and a cut-out accent that stays readable.
+  function collagePalette(colors) {
+    const base = {
+      papers: COLLAGE_DEFAULT.papers.slice(),
+      inks: COLLAGE_DEFAULT.inks.slice(),
+      accent: COLLAGE_DEFAULT.accent,
+      tape: COLLAGE_DEFAULT.tape,
+    };
+    const pair = coverPair(colors);
+    if (!pair) return base;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    const paperSat = Math.max(0.16, Math.min(0.32, sa * 0.3 + 0.12));
+    base.papers = [0, 1, 2].map((i) => hsl(ha + i * 26, paperSat, 0.94 - i * 0.055));
+    base.inks = [ensureContrast(hsl(ha, 0.2, 0.12), hexToRgb(base.papers[0]), 11, '#171512'), hsl(ha, 0.18, 0.3)];
+    // Use the warmer of the two cover colours for the cut-out ink (green/teal
+    // covers would otherwise turn every accent olive).
+    const warmth = (hue) => {
+      const d = Math.abs((((hue - 25) % 360) + 360) % 360);
+      return Math.min(d, 360 - d);
+    };
+    const accentHue = warmth(ha) <= warmth(hb) ? ha : hb;
+    const accentSat = Math.max(0.72, accentHue === ha ? sa : sb);
+    let accent = hsl(accentHue, accentSat, 0.46);
+    base.papers.forEach((paper) => {
+      accent = ensureContrast(accent, hexToRgb(paper), 4.5, COLLAGE_DEFAULT.accent);
+    });
+    base.accent = accent;
+    base.tape = hsl(ha + 26, 0.24, 0.77);
+    return base;
+  }
+
+  const SYNTH_DEFAULT = {
+    sky: '#100629',
+    sky2: '#2a0b45',
+    grid: '#ff3ea5',
+    grid2: '#7b2dff',
+    sun1: '#ffd76a',
+    sun2: '#ff4f8b',
+    chromeTop: '#ffffff',
+    chromeMid: '#a8f0ff',
+    chromeLow: '#ff9de0',
+    key: '#ffd76a',
+    ink: '#240a33',
+  };
+
+  // Night sky, neon grid and a chrome gradient for the type.
+  function synthColors(colors) {
+    const out = Object.assign({}, SYNTH_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    // The night is purple, the grid pink/cyan; a cover that lives in that
+    // family may tint them, an orange or green one does not turn it into a forest.
+    const family = hueDistance(ha, 320) <= 34 || hueDistance(ha, 190) <= 28;
+    if (family && sa >= 0.3) {
+      out.sky = hsl(ha, 0.55, 0.07);
+      out.sky2 = hsl(ha + 18, 0.6, 0.17);
+      out.grid = hsl(ha, Math.max(0.8, sa), 0.62);
+      out.grid2 = hsl(ha + 130, 0.75, 0.42);
+      out.sun2 = hsl(ha - 18, 0.86, 0.6);
+      out.chromeLow = hsl(hb, Math.max(0.65, sb), 0.74);
+      out.key = hsl(ha + 40, 0.9, 0.7);
+    }
+    // Warm sun even on a cold cover (a slight lean towards its hue only).
+    out.sun1 = hsl(45 + Math.max(-25, Math.min(25, ha - 45)), 0.88, 0.72);
+    const sky = hexToRgb(out.sky);
+    out.grid = ensureContrast(out.grid, sky, 4, SYNTH_DEFAULT.grid);
+    out.chromeMid = ensureContrast(out.chromeMid, sky, 7, '#d6f6ff');
+    out.chromeLow = ensureContrast(out.chromeLow, sky, 5, SYNTH_DEFAULT.chromeLow);
+    out.key = ensureContrast(out.key, sky, 7, SYNTH_DEFAULT.key);
+    return out;
+  }
+
+  const COMIC_DEFAULT = {
+    bg: '#fff2d0',
+    ink: '#141414',
+    accent: '#e8253f',
+    pop: '#ffd21f',
+    bubble: '#fffdf4',
+    shadow: '#ffffff',
+  };
+
+  // Bright paper, hard ink and a loud accent – pop art, not pastel.
+  function comicColors(colors) {
+    const out = Object.assign({}, COMIC_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    if (sa >= 0.3) {
+      out.bg = hsl(ha + 30, 0.55, 0.93);
+      out.accent = hsl(ha, Math.max(0.78, sa), 0.5);
+      out.pop = hsl(ha + 150, 0.85, 0.62);
+      out.shadow = hsl(ha, 0.5, 0.97);
+    } else {
+      out.accent = ensureContrast(out.accent, hexToRgb(out.bg), 3.5, COMIC_DEFAULT.accent);
+    }
+    out.ink = ensureContrast(out.ink, hexToRgb(out.bg), 11, COMIC_DEFAULT.ink);
+    out.accent = ensureContrast(out.accent, hexToRgb(out.bg), 3.5, COMIC_DEFAULT.accent);
+    out.bubble = hsl(hb, 0.2, 0.98);
+    return out;
+  }
+
+  /**
+   * Glitch frame: words with small offsets, a slice or two and a code line.
+   *   { key, stack, jitter: [-1..1 per word], rot: [deg per word], shift, bars, from }
+   */
+  function glitchFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const rnd = prng(seed);
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword) && rnd() < 0.85) key = texts.indexOf(keyword);
+    }
+    const portrait = Boolean(options && options.portrait);
+    return {
+      key,
+      stack: portrait && texts.length > 1,
+      jitter: texts.map(() => Math.round((rnd() * 2 - 1) * 10) / 10),
+      rot: texts.map(() => Math.round((rnd() * 8 - 4) * 10) / 10),
+      shift: Math.round(3 + rnd() * 6),
+      bars: 2 + Math.floor(rnd() * 3),
+      from: rnd() < 0.5 ? 'left' : 'right',
+    };
+  }
+
+  /**
+   * Collage frame: every letter is its own paper snippet.
+   *   { key, rows, letters: { wordIndex: [{ ch, rot, paper, ink, face }] },
+   *     tilt, align, tape, scraps, stack }
+   *   ink ∈ 'ink' | 'accent', face ∈ 0..2 (three cut-out typefaces)
+   */
+  function collageFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const rnd = prng(seed);
+    const portrait = Boolean(options && options.portrait);
+    const total = texts.reduce((sum, t) => sum + letterCount(t), 0);
+    const stack = texts.length >= 2 && (portrait || total > 12);
+    const rows = stack ? texts.map((_t, i) => [i]) : [texts.map((_t, i) => i)];
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    const letters = {};
+    texts.forEach((text, index) => {
+      const chars = Array.from(String(text || '')).filter((ch) => ch.trim());
+      letters[index] = chars.map(() => ({
+        ch: '',
+        rot: Math.round((rnd() * 16 - 8) * 10) / 10,
+        paper: Math.floor(rnd() * 3),
+        ink: index === key && rnd() < 0.55 ? 'accent' : rnd() < 0.1 ? 'accent' : 'ink',
+        face: Math.floor(rnd() * 3),
+      }));
+      letters[index].forEach((letter, at) => {
+        letter.ch = chars[at];
+      });
+    });
+    return {
+      key,
+      rows,
+      letters,
+      tilt: Math.round((rnd() * 5 - 2.5) * 10) / 10,
+      align: rnd() < 0.6 ? 'left' : 'center',
+      tape: key >= 0 ? key : texts.length && rnd() < 0.5 ? Math.floor(rnd() * texts.length) : -1,
+      scraps: 1 + Math.floor(rnd() * 2),
+      stack,
+    };
+  }
+
+  /**
+   * Synthwave frame: chrome words over the grid, one row or one word per row.
+   *   { key, rows, stack, skew, flare: 'left'|'right' }
+   */
+  function synthFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const rnd = prng(seed);
+    const portrait = Boolean(options && options.portrait);
+    const total = texts.reduce((sum, t) => sum + letterCount(t), 0);
+    const stack = texts.length >= 2 && (portrait || total > 12);
+    const rows = stack ? texts.map((_t, i) => [i]) : [texts.map((_t, i) => i)];
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword) && (texts.length > 1 || rnd() < 0.6)) key = texts.indexOf(keyword);
+    }
+    return {
+      key,
+      rows,
+      stack,
+      skew: rnd() < 0.5 ? 'left' : 'right',
+      flare: Math.round(10 + rnd() * 14),
+    };
+  }
+
+  /**
+   * Comic frame: chunky lettering, one word in the accent colour, a bubble.
+   *   { key, bubble: 'burst'|'round'|'cloud', tilt, exclaim, accent, stack }
+   */
+  function comicFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const rnd = prng(seed);
+    const portrait = Boolean(options && options.portrait);
+    const bubbles = ['burst', 'burst', 'round', 'cloud'];
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    const others = texts.map((_t, i) => i).filter((i) => i !== key);
+    const accent = others.length && rnd() < 0.35 ? others[Math.floor(rnd() * others.length)] : key;
+    return {
+      key,
+      bubble: bubbles[Math.floor(rnd() * bubbles.length)],
+      tilt: Math.round((rnd() * 6 - 3) * 10) / 10,
+      exclaim: rnd() < 0.7,
+      accent,
+      stack: portrait && texts.length > 1,
+    };
+  }
+
   window.CMLyricVideo = {
     FILLERS,
     normWord,
@@ -634,9 +899,17 @@
     posterColors,
     brushColors,
     cinemaColors,
+    glitchColors,
+    collagePalette,
+    synthColors,
+    comicColors,
     posterFrame,
     brushFrame,
     cinemaFrame,
+    glitchFrame,
+    collageFrame,
+    synthFrame,
+    comicFrame,
     cinemaHeart,
     prng,
   };

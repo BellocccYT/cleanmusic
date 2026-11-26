@@ -3037,7 +3037,9 @@ function createMainWindow() {
               s && s.stageMode && s.fills && s.words > 0 && s.big > 0.12 &&
               (name === 'lyricvideo' || (s.frames >= 1 && s.chunks >= 2)) &&
               (name !== 'cinema' || s.spectrum);
-            const broken = ['lyricvideo', 'poster', 'brush', 'cinema'].filter((name) => !styleOk(name, styles[name]));
+            const broken = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic'].filter(
+              (name) => !styleOk(name, styles[name])
+            );
             if (broken.length || !(stage.idleOpacity < 0.05 && stage.activeOpacity > 0.95) || stage.plainEffectStage) {
               throw new Error(JSON.stringify({ broken, stage }));
             }

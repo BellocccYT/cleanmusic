@@ -59,6 +59,24 @@ im Vollbild-Player verwendet:
   [SIL Open Font License 1.1](https://openfontlicense.org). Lizenztext:
   `renderer/assets/fonts/LICENSE-Cinzel.txt`. Verwendet für „Kino“.
 
+## Schriftarten der Motion-Songtexte „Synthwave“ und „Comic“
+
+Auch diese beiden werden lokal eingebettet (Untergruppen als woff2 aus Google
+Fonts, kein Nachladen aus dem Netz, kein Tracking) und nur für die
+Songtext-Effekte im Vollbild-Player verwendet:
+
+- **Orbitron** (Bold) – `renderer/assets/fonts/orbitron-bold-latin.woff2`;
+  Copyright 2018 The Orbitron Project Authors
+  (https://github.com/theleagueof/orbitron), with Reserved Font Name:
+  „Orbitron“, lizenziert unter der
+  [SIL Open Font License 1.1](https://openfontlicense.org). Lizenztext:
+  `renderer/assets/fonts/LICENSE-Orbitron.txt`. Verwendet für „Synthwave“.
+- **Bangers** – `renderer/assets/fonts/bangers-latin.woff2` und
+  `bangers-latin-ext.woff2`; Copyright 2010 The Bangers Project Authors
+  (https://github.com/googlefonts/bangers), lizenziert unter der
+  [SIL Open Font License 1.1](https://openfontlicense.org). Lizenztext:
+  `renderer/assets/fonts/LICENSE-Bangers.txt`. Verwendet für „Comic“.
+
 ## MIT-Lizenz (gilt für jede der oben genannten Paletten)
 
 Copyright (c) die jeweiligen oben genannten Rechteinhaber
