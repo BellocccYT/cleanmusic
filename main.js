@@ -7020,9 +7020,11 @@ async function smokeRedirect() {
   await listen(target);
   const targetPort = target.address().port;
   const to = `http://127.0.0.1:${targetPort}/ziel.wav?t=1`;
+  const to2 = `http://127.0.0.1:${targetPort}/ziel.wav?t=2`;
   const origin = http.createServer((request, response) => {
     if (request.url && request.url.startsWith('/weiter')) {
-      response.writeHead(302, { location: to });
+      const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+      response.writeHead(302, { location: `http://127.0.0.1:${targetPort}/ziel.wav${query}` });
       response.end();
       return;
     }
@@ -7032,7 +7034,39 @@ async function smokeRedirect() {
   await listen(origin);
   const originPort = origin.address().port;
   const from = `http://127.0.0.1:${originPort}/weiter.wav?t=1`;
+  const from2 = `http://127.0.0.1:${originPort}/weiter.wav?t=2`;
   try {
+    // Second path on its own: without the redirect event the title stays
+    // silent; asking the main process for the target (as the visualizer does
+    // on "cross-origin data") brings the sound back.
+    const pulled = await mainWindow.webContents.executeJavaScript(`
+      (async () => {
+        const cm = window.CleanMusic;
+        const viz = window.CMVisualizer;
+        const audio = document.querySelector('#audio');
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        cm.setTone(3, 0);
+        cm.redirectPush(false);
+        cm.diagnosticPlay(${JSON.stringify(from2)}, { title: 'Weiterleitung ohne Ereignis' });
+        for (let i = 0; i < 24 && audio.currentTime < 1.2; i += 1) await wait(250);
+        await wait(500);
+        const before = { src: audio.getAttribute('src') === ${JSON.stringify(from2)}, signal: viz.signal(), time: Number(audio.currentTime.toFixed(2)) };
+        cm.redirectPush(true);
+        const followed = await cm.pullMediaRedirect();
+        let peak = 0;
+        for (let i = 0; i < 24; i += 1) {
+          await wait(250);
+          const value = viz.signal();
+          if (value !== null && audio.currentTime > 0.3) peak = Math.max(peak, value);
+          if (peak > 0.05 && audio.currentTime > 1.5) break;
+        }
+        audio.pause();
+        return { before, followed, target: audio.getAttribute('src') === ${JSON.stringify(to2)}, peak: Number(peak.toFixed(4)) };
+      })()
+    `);
+    if (!pulled.before.src || pulled.before.signal !== 0 || !pulled.followed || !pulled.target || !(pulled.peak > 0.05)) {
+      throw new Error(`zweiter Weg: ${JSON.stringify(pulled)}`);
+    }
     const played = await mainWindow.webContents.executeJavaScript(`
       (async () => {
         const cm = window.CleanMusic;
@@ -7067,6 +7101,7 @@ async function smokeRedirect() {
     const text = await diagnosticText();
     const result = {
       ...played,
+      pulled: { followed: pulled.followed, peak: pulled.peak, silentBefore: pulled.before.signal === 0 },
       listed:
         text.includes('Medien-Weiterleitungen auf andere Server (letzte 10)') &&
         text.includes(`127.0.0.1:${originPort} → 127.0.0.1:${targetPort}`),
@@ -7720,10 +7755,45 @@ function onMediaRedirect(details) {
   const after = mediaOriginOf(to);
   if (!before || !after || before === after) return;
   recordMediaRedirect(from, to);
-  if (mainWindow && !mainWindow.isDestroyed() && details.webContentsId === mainWindow.webContents.id) {
+  rememberRedirectTarget(from, to);
+  // Media requests do not always carry a webContents id – the renderer only
+  // acts on a URL it is loading itself, so sending it there is safe.
+  const owner = details.webContentsId;
+  if (mainWindow && !mainWindow.isDestroyed() && (owner == null || owner === mainWindow.webContents.id)) {
     sendToRenderer('media-redirect', { from, to });
   }
 }
+
+// Second path for the same fix: when the visualizer is refused the data
+// ("cross-origin data") the renderer asks here for the target – the redirect
+// event may have arrived too early, too late or not at all.
+const mediaRedirectTargets = new Map(); // from → { to, at }
+const REDIRECT_TARGET_MS = 30 * 60 * 1000;
+
+function rememberRedirectTarget(from, to) {
+  if (!from || !to) return;
+  mediaRedirectTargets.delete(from);
+  mediaRedirectTargets.set(from, { to, at: Date.now() });
+  while (mediaRedirectTargets.size > 100) {
+    mediaRedirectTargets.delete(mediaRedirectTargets.keys().next().value);
+  }
+}
+
+function redirectTargetOf(url) {
+  const start = String(url || '');
+  let current = start;
+  for (let hop = 0; hop < 3; hop += 1) {
+    const entry = mediaRedirectTargets.get(current);
+    if (!entry || Date.now() - entry.at > REDIRECT_TARGET_MS) break;
+    current = entry.to;
+  }
+  return current !== start ? current : '';
+}
+
+ipcMain.handle('media-redirect-target', (event, url) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return '';
+  return redirectTargetOf(url);
+});
 
 function recordMediaRequestError(what, url) {
   mediaRequestErrors.push({
@@ -7808,7 +7878,7 @@ async function diagnosticText() {
     `CleanMusic ${app.getVersion()} (${isInstalledCopy() ? 'installiert' : 'portable'})`,
     `Electron ${process.versions.electron} · Chrome ${process.versions.chrome} · Windows ${os.release()}`,
     `Plugins: ${pluginLine}`,
-    `Audio: ${audio.audioContext || 'unbekannt'} · ${audio.sampleRate ? `${audio.sampleRate} Hz` : 'Abtastrate unbekannt'} · Lautstärke ${audio.volume || 0}%${audio.muted ? ' · stumm' : ''} · Audio-Kette ${audio.audioChain ? 'an' : 'aus'}`,
+    `Audio: ${audio.audioContext || 'unbekannt'} · ${audio.sampleRate ? `${audio.sampleRate} Hz` : 'Abtastrate unbekannt'} · Lautstärke ${audio.volume || 0}%${audio.muted ? ' · stumm' : ''} · Audio-Kette ${audio.audioChain ? 'an' : 'aus'} · Analyse ${audio.analysis || 'unbekannt'}${audio.restricted ? ` · Analyse gesperrt (fremde Herkunft): ${audio.restricted}×` : ''}`,
     `Fernbedienung: ${config.remoteEnabled ? 'an' : 'aus'} · Layout: ${audio.layout || 'unbekannt'}`,
     `Daten-Schema: ${audio.schema || '?'}${audio.migration ? ` (${audio.migration})` : ''} · Quarantäne: ${audio.quarantined || 0}`,
     '',
@@ -7853,6 +7923,8 @@ ipcMain.on('diagnostic-state', (event, payload) => {
   if (!mainWindow || event.sender !== mainWindow.webContents || !payload || typeof payload !== 'object') return;
   rendererDiagnosticState = {
     audioChain: Boolean(payload.audioChain),
+    analysis: ['Audio-Kette', 'captureStream', 'keine'].includes(payload.analysis) ? payload.analysis : '',
+    restricted: Math.max(0, Math.min(9999, Math.floor(Number(payload.restricted) || 0))),
     audioContext: cleanText(payload.audioContext, 30),
     sampleRate: Math.max(0, Math.min(384000, Math.floor(Number(payload.sampleRate) || 0))),
     volume: Math.max(0, Math.min(150, Math.floor(Number(payload.volume) || 0))),

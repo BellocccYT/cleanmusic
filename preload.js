@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('cm', {
   onStageScene: (listener) => {
     ipcRenderer.on('stage-scene', (_event, scene) => listener(scene || null));
   },
+  mediaRedirectTarget: (url) => ipcRenderer.invoke('media-redirect-target', String(url || '')),
   // A media request was redirected to another origin (see main.js onMediaRedirect).
   onMediaRedirect: (listener) => {
     ipcRenderer.on('media-redirect', (_event, info) =>

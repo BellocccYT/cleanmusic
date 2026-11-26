@@ -117,8 +117,11 @@ window.CMVisualizer = (function () {
     let stream = null;
     try {
       stream = audioEl.captureStream ? audioEl.captureStream() : null;
-    } catch {
+    } catch (error) {
       stream = null;
+      // "Cannot capture from element with cross-origin data": the stream was
+      // redirected to another server. app.js then loads the target directly.
+      if (error && error.name === 'SecurityError') notifyRestricted();
     }
     if (!stream) return;
     captureStream = stream;
@@ -143,6 +146,20 @@ window.CMVisualizer = (function () {
       };
       stream.addEventListener('addtrack', captureAddTrackHandler);
     }
+  }
+
+  // Analysis refused because of cross-origin data (count for the diagnosis).
+  let restrictedCount = 0;
+  const restrictedListeners = new Set();
+  function notifyRestricted() {
+    restrictedCount += 1;
+    restrictedListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch {
+        /* ignore */
+      }
+    });
   }
 
   function attach(audio) {
@@ -817,6 +834,10 @@ window.CMVisualizer = (function () {
     onFrame,
     wake,
     setWatching,
+    onRestricted: (listener) => {
+      if (typeof listener === 'function') restrictedListeners.add(listener);
+    },
+    restricted: () => restrictedCount,
     spectrum,
     energy: () => energy,
     level: () => bassLevel,

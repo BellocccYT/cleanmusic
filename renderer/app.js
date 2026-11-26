@@ -369,8 +369,12 @@
     const migration = window.CMMigrations ? window.CMMigrations.report() : null;
     const audioContext =
       viz && typeof viz.contextState === 'function' ? viz.contextState() : null;
+    const chain = Boolean(viz && typeof viz.hasEngine === 'function' && viz.hasEngine());
+    const analysing = Boolean(viz && typeof viz.isAnalysing === 'function' && viz.isAnalysing());
     bridge.diagnosticState({
-      audioChain: Boolean(viz && typeof viz.hasEngine === 'function' && viz.hasEngine()),
+      audioChain: chain,
+      analysis: analysing ? (chain ? 'Audio-Kette' : 'captureStream') : 'keine',
+      restricted: viz && typeof viz.restricted === 'function' ? viz.restricted() : 0,
       audioContext: audioContext ? audioContext.state : '',
       sampleRate: audioContext ? audioContext.sampleRate : 0,
       volume: CMVolume.percent(volumeLevel()),
@@ -5304,7 +5308,25 @@
   // title runs silent and the visualizer stays flat. Load the target URL
   // directly instead (same position, same play state); see
   // CMPlayback.redirectDecision for what is left alone.
-  const redirectFollow = { token: 0, hops: 0 };
+  const redirectFollow = { token: 0, hops: 0, push: true };
+
+  // Second path: the visualizer was refused the data (cross-origin) – ask the
+  // main process whether it saw a redirect for this URL and load the target.
+  async function pullMediaRedirect() {
+    syncDiagnosticState();
+    if (!bridge.mediaRedirectTarget) return false;
+    const from = audio.getAttribute('src') || '';
+    if (!from) return false;
+    const token = playToken;
+    const to = await Promise.resolve(bridge.mediaRedirectTarget(from)).catch(() => '');
+    if (!to || token !== playToken) return false;
+    return followMediaRedirect({ from, to });
+  }
+
+  function onMediaRedirectEvent(info) {
+    // The smoke switches the event off to prove the second path on its own.
+    if (redirectFollow.push) followMediaRedirect(info);
+  }
 
   function followMediaRedirect(info) {
     const from = String((info && info.from) || '');
@@ -5321,7 +5343,7 @@
       kind: item ? item.kind : '',
       hops: redirectFollow.hops,
     });
-    if (decision !== 'follow') return;
+    if (decision !== 'follow') return false;
     redirectFollow.hops += 1;
 
     const token = playToken;
@@ -5343,6 +5365,7 @@
       );
     }
     if (resume) audio.play().catch(() => {});
+    return true;
   }
 
   // A title that never moves on is treated like a failed one. Polling is
@@ -17503,7 +17526,12 @@ ${updatePanel()}
     if (bridge.onPluginsChanged) bridge.onPluginsChanged(() => refreshPlugins(false));
     if (bridge.onStageScene) bridge.onStageScene(applyStageScene);
     if (bridge.stageGet) bridge.stageGet().then(applyStageScene).catch(() => {});
-    if (bridge.onMediaRedirect) bridge.onMediaRedirect(followMediaRedirect);
+    if (bridge.onMediaRedirect) bridge.onMediaRedirect(onMediaRedirectEvent);
+    if (window.CMVisualizer && typeof window.CMVisualizer.onRestricted === 'function') {
+      window.CMVisualizer.onRestricted(() => {
+        pullMediaRedirect().catch(() => {});
+      });
+    }
 
     if (bridge.onUpdateState) bridge.onUpdateState(onUpdateState);
     if (bridge.updateGet) bridge.updateGet().then(onUpdateState).catch(() => {});
@@ -17611,6 +17639,12 @@ ${updatePanel()}
       playList('shared', 0);
       return entry.id;
     },
+    // Smoke only: switch the redirect event off / run the second path by hand.
+    redirectPush: (on) => {
+      redirectFollow.push = on !== false;
+      return redirectFollow.push;
+    },
+    pullMediaRedirect: () => pullMediaRedirect(),
     toggleFavoriteAt: (key, index) => toggleFavorite(entryAt(key, index)),
     createPlaylist: (name) => createPlaylist(name).id,
     matchKey: (entry) => matchKey(entry || {}),
