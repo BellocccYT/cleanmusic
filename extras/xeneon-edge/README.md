@@ -39,11 +39,29 @@ Layouts: 840 × 344 (kompakt), mittlere Breiten, 2536 × 696 (breit mit „Als
 Nächstes“), hochkant (696 × 840 und höher). Die Wahl erfolgt über
 Seitenverhältnis/Breite, nicht über den Slot-Namen.
 
+## Stile
+
+Der Stil ist eine iCUE-Eigenschaft (`style`) und lässt sich jederzeit wechseln:
+
+| Stil | Aussehen |
+|---|---|
+| **Automatisch (Cover)** | Hintergrund und Akzent aus den zwei Coverfarben (Standard) |
+| **Nacht** | Ruhiges Marineblau/Schwarz, blauer Akzent |
+| **Neon** | Fast schwarz mit Pink und Cyan-Glühen, feine Scanlines |
+| **Glas** | Dunkles Glas mit hellblauem Akzent, weichgezeichnete Flächen |
+| **Hell** | Helle Fläche, dunkle Schrift, kräftiger blauer Akzent |
+| **Retro** | Warmes Braun/Creme, Amber-Akzent, leichte Vignette |
+
+Jeder Stil prüft die Text- und Akzentfarben gegen den Hintergrund (WCAG 4,5:1);
+„Custom Style“ in iCUE überschreibt die Farben, der Stil bleibt für Flächen,
+Glühen und Effekte zuständig. Screenshots: `screenshots/styles-840x344-*.png`.
+
 ## iCUE-Einstellungen
 
 | Eigenschaft | Standard | Wirkung |
 |---|---|---|
 | `layout` | Automatisch | Automatisch, Kompakt oder Groß |
+| `style` | Automatisch (Cover) | Nacht, Neon, Glas, Hell oder Retro |
 | `showLyrics` | an | aktuelle + nächste Songtext-Zeile |
 | `showQueue` | an | „Als Nächstes“ im breiten Layout |
 | `showSpectrum` | an | dezentes Mini-Spektrum (max. 20 fps) |
@@ -58,13 +76,14 @@ npm.cmd run smoke:xeneon               # echtes CleanMusic + Plugin
 icuewidget validate extras\xeneon-edge\widget
 icuewidget package extras\xeneon-edge\widget -o release\CleanMusic-Xeneon-Edge-1.0.0.icuewidget
 node_modules\.bin\electron.cmd extras\xeneon-edge\preview\shoot.js
+node_modules\.bin\electron.cmd extras\xeneon-edge\preview\styles.js
 ```
 
 `preview/shoot.js` rendert die Screenshots in `screenshots/` (840 × 344,
 2536 × 696 und 696 × 840; Zustände: nicht verbunden, Kopplung, läuft, Pause,
 Radio, offline, nichts läuft) mit einem iCUE-Stub und festen Beispieldaten –
-ohne Edge. `preview/make-assets.js` erzeugt Icon, Vorschau, Thumbnail und das
-Beispiel-Cover.
+ohne Edge. `preview/styles.js` rendert alle sechs Stile in 840 × 344,
+`preview/make-assets.js` Icon, Vorschau, Thumbnail und das Beispiel-Cover.
 
 ## Sicherheit
 

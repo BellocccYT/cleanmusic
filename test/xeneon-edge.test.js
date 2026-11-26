@@ -227,6 +227,25 @@ function loadLogic() {
     assert.equal(L.queueRows('compact'), 0);
   });
 
+  await check('Widget-Logik: sechs Stile mit lesbaren Farben', () => {
+    assert.equal(L.STYLES.join(','), 'auto,nacht,neon,glas,hell,retro');
+    L.STYLES.forEach((id) => {
+      const palette = L.stylePalette(id, ['#5b8cff', '#35e0c0']);
+      assert.equal(palette.id, id);
+      assert.ok(/^#[0-9a-f]{6}$/.test(palette.from), `${id} from`);
+      assert.ok(/^#[0-9a-f]{6}$/.test(palette.to), `${id} to`);
+      assert.ok(
+        L.contrast(L.parseHex(palette.text), L.parseHex(palette.to)) >= 4.5,
+        `${id} Textkontrast`
+      );
+      assert.ok(palette.surface && palette.line && palette.glow, `${id} Flächen`);
+    });
+    assert.equal(L.stylePalette('unbekannt', []).id, 'auto');
+    assert.equal(L.stylePalette('auto', ['#5b8cff']).accent, '#5b8cff');
+    assert.ok(L.luminance(L.parseHex(L.stylePalette('hell', []).to)) > 0.5);
+    assert.ok(L.luminance(L.parseHex(L.stylePalette('nacht', []).to)) < 0.1);
+  });
+
   await check('Widget-Logik: Zeit, Projektion und Fortschritt', () => {
     assert.equal(L.fmtTime(0), '0:00');
     assert.equal(L.fmtTime(65), '1:05');
@@ -344,6 +363,13 @@ function loadLogic() {
     assert.ok(head.includes('content="textColor"'));
     assert.ok(head.includes('content="accentColor"'));
     assert.ok(head.includes('content="backgroundColor"'));
+    assert.ok(head.includes('content="style"'));
+    const translation = JSON.parse(fs.readFileSync(path.join(widgetDir, 'translation.json'), 'utf8'));
+    assert.equal(translation.de.translation.Night, 'Nacht');
+    assert.equal(translation.de.translation.Neon, 'Neon');
+    assert.equal(translation.de.translation.Glass, 'Glas');
+    assert.equal(translation.de.translation.Light, 'Hell');
+    assert.equal(translation.de.translation.Retro, 'Retro');
   });
 
   await check('Plugin: startet, Host-Prüfung und Token-Pflicht', async () => {

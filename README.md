@@ -114,7 +114,8 @@ eine kleine Karte, was neu ist.
 
 Das 14,5-Zoll-Display zeigt das iCUE-Widget **CleanMusic**: Cover, Titel, Artist,
 Songtext-Zeile, Fortschritt, Zurück/Play/Weiter, Lautstärke und „Als Nächstes“.
-Die Steuerung läuft über die lokale Brücke `extras/plugins/xeneon-edge.js`
+Sechs Stile stehen zur Wahl: Automatisch aus dem Cover, Nacht, Neon, Glas,
+Hell und Retro. Die Steuerung läuft über die lokale Brücke `extras/plugins/xeneon-edge.js`
 (nur `localhost:4790`), gekoppelt wird mit einem 4-stelligen Code in
 **Einstellungen → Plugins**. Das Widget liegt als
 `CleanMusic-Xeneon-Edge-<version>.icuewidget` im Release und wird in iCUE

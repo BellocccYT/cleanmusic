@@ -79,6 +79,7 @@
     data: null,
     layout: 'compact',
     layoutPref: 'auto',
+    style: 'auto',
     skin: { text: '#f4f7ff', accent: '#5b8cff', bg: '#0b0d12', custom: false },
     accentCss: '#5b8cff',
     showLyrics: true,
@@ -158,6 +159,9 @@
     st.showSpectrum = getProperty('showSpectrum') !== false;
     var pref = String(getProperty('layout') || 'auto');
     st.layoutPref = ['auto', 'compact', 'large'].indexOf(pref) >= 0 ? pref : 'auto';
+    var style = String(getProperty('style') || 'auto');
+    st.style = L.STYLES.indexOf(style) >= 0 ? style : 'auto';
+    document.body.setAttribute('data-style', st.style);
     st.pairKey = String(getProperty('pairKey') || '')
       .trim()
       .slice(0, 200);
@@ -166,15 +170,27 @@
 
   function paintSkin() {
     var colors = st.data && st.data.track ? st.data.track.colors : [];
-    var stops = L.backgroundStops(colors, st.skin.custom ? st.skin.bg : null, st.skin.accent);
-    var accent = st.skin.custom ? st.skin.accent : stops.accent;
-    accent = L.ensureContrast(accent, stops.to, 4.5);
+    var palette = L.stylePalette(st.style, colors);
+    var stops = { from: palette.from, to: palette.to };
+    if (st.skin.custom) {
+      stops = L.backgroundStops(colors, st.skin.bg, st.skin.accent);
+    }
+    var accent = L.ensureContrast(st.skin.custom ? st.skin.accent : palette.accent, stops.to, 4.5);
+    var text = L.ensureContrast(st.skin.custom ? st.skin.text : palette.text, stops.to, 4.5);
     st.accentCss = accent;
     root.style.setProperty('--accent', accent);
     root.style.setProperty('--on-accent', L.ensureContrast('#080b12', accent, 4.5));
     root.style.setProperty('--bg1', stops.from);
     root.style.setProperty('--bg2', stops.to);
-    root.style.setProperty('--text', L.ensureContrast(st.skin.text, stops.to, 4.5));
+    root.style.setProperty('--text', text);
+    root.style.setProperty('--glow', st.skin.custom ? accent : palette.glow);
+    if (st.skin.custom) {
+      root.style.setProperty('--surface', 'color-mix(in srgb, var(--text) 7%, transparent)');
+      root.style.setProperty('--line', 'color-mix(in srgb, var(--text) 15%, transparent)');
+    } else {
+      root.style.setProperty('--surface', palette.surface);
+      root.style.setProperty('--line', palette.line);
+    }
   }
 
   /* ---------------------------------------------------------------- *

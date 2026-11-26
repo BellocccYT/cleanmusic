@@ -135,6 +135,74 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Styles
+   * ---------------------------------------------------------------- */
+
+  var STYLES = ['auto', 'nacht', 'neon', 'glas', 'hell', 'retro'];
+
+  function stylePalette(style, colors) {
+    var id = STYLES.indexOf(String(style || '')) >= 0 ? String(style) : 'auto';
+    var cover = backgroundStops(colors, null, FALLBACK_ACCENT);
+    var palettes = {
+      auto: {
+        from: cover.from,
+        to: cover.to,
+        accent: cover.accent,
+        text: '#f4f7ff',
+        surface: 'rgba(255,255,255,.065)',
+        line: 'rgba(255,255,255,.14)',
+        glow: cover.accent,
+      },
+      nacht: {
+        from: '#14213a',
+        to: '#05070e',
+        accent: '#7aa2ff',
+        text: '#eef3ff',
+        surface: 'rgba(255,255,255,.055)',
+        line: 'rgba(255,255,255,.12)',
+        glow: '#4f7bd8',
+      },
+      neon: {
+        from: '#1b0b33',
+        to: '#06020f',
+        accent: '#ff5ad9',
+        text: '#f7edff',
+        surface: 'rgba(255,255,255,.07)',
+        line: 'rgba(255,255,255,.16)',
+        glow: '#35f0e0',
+      },
+      glas: {
+        from: '#22303d',
+        to: '#090e15',
+        accent: '#a9d4ff',
+        text: '#f3f9ff',
+        surface: 'rgba(255,255,255,.10)',
+        line: 'rgba(255,255,255,.24)',
+        glow: '#7fb8ff',
+      },
+      hell: {
+        from: '#f5f7fb',
+        to: '#dbe3ee',
+        accent: '#2456d8',
+        text: '#0d1420',
+        surface: 'rgba(13,20,32,.06)',
+        line: 'rgba(13,20,32,.16)',
+        glow: '#2456d8',
+      },
+      retro: {
+        from: '#3d2a18',
+        to: '#150d06',
+        accent: '#f4a53e',
+        text: '#f8ecd6',
+        surface: 'rgba(248,236,214,.07)',
+        line: 'rgba(248,236,214,.18)',
+        glow: '#f4a53e',
+      },
+    };
+    return Object.assign({ id: id }, palettes[id]);
+  }
+
+  /* ---------------------------------------------------------------- *
    * Layout
    * ---------------------------------------------------------------- */
 
@@ -290,6 +358,8 @@
 
   return {
     FALLBACK_ACCENT: FALLBACK_ACCENT,
+    STYLES: STYLES,
+    stylePalette: stylePalette,
     clamp: clamp,
     parseHex: parseHex,
     toHex: toHex,

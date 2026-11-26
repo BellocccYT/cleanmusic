@@ -11,6 +11,8 @@ const path = require('node:path');
 const args = process.argv.join(' ');
 const match = /--cm-scenario=([a-z-]+)/.exec(args);
 const scenario = (match && match[1]) || 'playing';
+const styleMatch = /--cm-style=([a-z]+)/.exec(args);
+const style = (styleMatch && styleMatch[1]) || 'auto';
 let cover = Buffer.alloc(0);
 try {
   cover = fs.readFileSync(path.join(__dirname, 'cover.png'));
@@ -24,6 +26,7 @@ window.__CM_XENEON_PREVIEW__ = true;
 window.iCUE_initialized = true;
 window.iCUE = { isPreview: false, fpsLimit: 60, iCUELanguage: 'de' };
 window.layout = 'auto';
+window.style = style;
 window.showLyrics = true;
 window.showQueue = true;
 window.showSpectrum = true;

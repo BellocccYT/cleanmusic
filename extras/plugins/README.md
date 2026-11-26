@@ -260,7 +260,9 @@ Abfrage). Die Karte zeigt gekoppelte Geräte (höchstens drei), den Code währen
 der Kopplung und die Aktionen **Kopplungsschlüssel kopieren** (Notlösung für
 die Widget-Eigenschaft „Kopplungsschlüssel“), **Widget herunterladen** und
 **Kopplungen zurücksetzen**. Einstellungen: Mini-Spektrum und Songtext-Zeile
-senden (beides an).
+senden (beides an). Im Widget selbst gibt es sechs Stile (Automatisch aus dem
+Cover, Nacht, Neon, Glas, Hell, Retro) und die Wahl zwischen Automatisch,
+Kompakt und Groß.
 
 Das Widget zeigt nur Titel, Artist, Album, Cover, Songtext-Zeile, Position und
 Lautstärke; Cover werden über die Brücke geladen, damit das Widget keine
