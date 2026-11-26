@@ -5505,6 +5505,7 @@
       'Vier neue Motion-Songtexte für den Vollbild-Player: „Störung“ (Glitch mit RGB-Versatz, Scanlines und Zeitcode – ruhig statt flackernd), „Collage“ (jeder Buchstabe ein eigener Papierschnipsel mit Klebeband), „Synthwave“ (Chromschrift über Rasterhorizont und gestreifter Sonne) und „Comic“ (Pop-Art-Lettern mit Sprechblase, Stern und Rasterpunkten).',
       'Alle acht Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
       'Die vier neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
+      'Neu als optionales Plugin: CleanMusic auf dem CORSAIR XENEON EDGE (inoffiziell). Das iCUE-Widget zeigt Cover, Titel, Songtext und große Touch-Knöpfe; gekoppelt wird mit einem 4-stelligen Code unter Einstellungen → Plugins. Widget und Plugin-Datei liegen beim Release auf GitHub.',
     ],
     '2.1.1': [
       'Freunde, die gerade hören, erscheinen jetzt als große Karten mit Cover – mit „Mithören“ und den Emoji-Reaktionen direkt auf der Karte, dazu kleine Live-Effekte (bei „Bewegung reduzieren“ und im Sparmodus ohne Bewegung).',
