@@ -37,6 +37,10 @@ window.CMLyricStage = (function () {
     cards: ['400 100px "Bebas Neue"', '900 100px "CM Fraunces"'],
     revolt: ['400 100px "Bebas Neue"'],
     story: ['400 100px "Bebas Neue"', '900 100px "CM Fraunces"'],
+    diary: ['400 100px "CM Permanent Marker"', '900 100px "CM Fraunces"'],
+    news: ['900 100px "CM Fraunces"', '400 100px "Bebas Neue"'],
+    terminal: [],
+    tunnel: ['400 100px "Bebas Neue"', '700 100px "CM Orbitron"'],
   };
   const FPS = { saver: 15, balanced: 24, quality: 30 };
   const SIZE_SCALE = { s: 0.84, m: 1, l: 1.1, xl: 1.2 };
@@ -388,6 +392,41 @@ window.CMLyricStage = (function () {
       stage.style.setProperty('--ls2-accent-2', c.accent2);
       stage.style.setProperty('--ls2-soft', c.soft);
       stage.style.setProperty('--ls2-paper', c.paper);
+    } else if (r.style === 'diary') {
+      const c = LV.diaryColors(colors);
+      r.diary = c;
+      stage.style.setProperty('--ldy-paper', c.paper);
+      stage.style.setProperty('--ldy-ink', c.ink);
+      stage.style.setProperty('--ldy-accent', c.accent);
+      stage.style.setProperty('--ldy-tape', c.tape);
+      stage.style.setProperty('--ldy-rule', c.rule);
+      stage.style.setProperty('--ldy-soft', c.soft);
+    } else if (r.style === 'news') {
+      const c = LV.newsColors(colors);
+      r.news = c;
+      stage.style.setProperty('--lnw-paper', c.paper);
+      stage.style.setProperty('--lnw-ink', c.ink);
+      stage.style.setProperty('--lnw-accent', c.accent);
+      stage.style.setProperty('--lnw-muted', c.muted);
+      stage.style.setProperty('--lnw-soft', c.soft);
+    } else if (r.style === 'terminal') {
+      const c = LV.terminalColors(colors);
+      r.terminal = c;
+      stage.style.setProperty('--ltm-bg', c.bg);
+      stage.style.setProperty('--ltm-fg', c.fg);
+      stage.style.setProperty('--ltm-accent', c.accent);
+      stage.style.setProperty('--ltm-dim', c.dim);
+      stage.style.setProperty('--ltm-panel', c.panel);
+    } else if (r.style === 'tunnel') {
+      const c = LV.tunnelColors(colors);
+      r.tunnel = c;
+      stage.style.setProperty('--ltn-bg', c.bg);
+      stage.style.setProperty('--ltn-fg', c.fg);
+      stage.style.setProperty('--ltn-accent', c.accent);
+      stage.style.setProperty('--ltn-ring1', c.ring1);
+      stage.style.setProperty('--ltn-ring2', c.ring2);
+      stage.style.setProperty('--ltn-ring3', c.ring3);
+      stage.style.setProperty('--ltn-dim', c.dim);
     }
     r.chunkIndex = -1;
     showChunk(r, LV.activeChunk(r.chunks, currentTime(r)));
@@ -415,7 +454,11 @@ window.CMLyricStage = (function () {
     else if (r.style === 'comic') el = comicEl(r, chunk, seed, delayOf);
     else if (r.style === 'cards') el = cardsEl(r, chunk, seed, delayOf);
     else if (r.style === 'revolt') el = revoltEl(r, chunk, seed, delayOf);
-    else el = storyEl(r, chunk, seed, delayOf);
+    else if (r.style === 'story') el = storyEl(r, chunk, seed, delayOf);
+    else if (r.style === 'diary') el = diaryEl(r, chunk, seed, delayOf);
+    else if (r.style === 'news') el = newsEl(r, chunk, seed, delayOf);
+    else if (r.style === 'terminal') el = terminalEl(r, chunk, seed, delayOf);
+    else el = tunnelEl(r, chunk, seed, delayOf);
     if (r.style === 'cinema' && !r.reduced) {
       host.querySelectorAll('.lc-frame:not(.lc-out)').forEach((old) => {
         old.classList.add('lc-out');
@@ -841,6 +884,132 @@ window.CMLyricStage = (function () {
     return el;
   }
 
+  // Tagebuch (diary) ----------------------------------------------------------
+
+  function diaryEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.diaryFrame(chunk, seed, { portrait: Boolean(box && box.portrait), text: r.lineText });
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row) =>
+              `<div class="ldy-row">${row
+                .map(
+                  (index) =>
+                    `<span class="ls-w ldy-w${index === layout.key ? ' ldy-key' : ''}${index === layout.underline ? ' ldy-under' : ''}" style="--d:${delayOf(words[index]).toFixed(2)}s">${esc(words[index].text)}</span>`
+                )
+                .join('')}</div>`
+          )
+          .join('')
+      : '<div class="ldy-row"><span class="ls-w ldy-w" style="--d:0s">♪</span></div>';
+    const artwork = r.opts.artwork ? `<img src="${esc(r.opts.artwork)}" alt="" loading="lazy" />` : '';
+    const el = document.createElement('div');
+    el.className = `ldy-frame ldy-align-${layout.align || 'left'}${layout.stack ? ' ldy-stack' : ''}`;
+    el.style.setProperty('--ldy-tilt', `${layout.tilt}deg`);
+    el.innerHTML = `
+      ${layout.polaroid ? `<div class="ldy-photo"><div class="ldy-photo-inner">${artwork}</div><i class="ldy-photo-tape"></i></div>` : ''}
+      <svg class="ldy-doodle" viewBox="0 0 100 100" aria-hidden="true">${ICON_PATHS[layout.doodle] || ICON_PATHS.star}</svg>
+      <div class="ldy-words">${rows}</div>
+      <div class="ldy-note"><span>${esc(layout.motif.label)}</span><i></i></div>
+      ${layout.scribble ? '<svg class="ldy-scribble" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true"><path d="M2 14 C 20 4 34 18 52 10 S 82 4 98 12"/></svg>' : ''}`;
+    return el;
+  }
+
+  // Zeitung (news) ------------------------------------------------------------
+
+  function newsEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.newsFrame(chunk, seed, { portrait: Boolean(box && box.portrait), text: r.lineText });
+    const words = chunk.words;
+    const headline = words.length
+      ? words
+          .map(
+            (word, i) =>
+              `<span class="ls-w lnw-w${i === layout.key ? ' lnw-key' : ''}" style="--d:${delayOf(word).toFixed(2)}s">${esc(word.text)}</span>`
+          )
+          .join('')
+      : '<span class="ls-w lnw-w" style="--d:0s">♪</span>';
+    const el = document.createElement('div');
+    el.className = `lnw-frame${layout.stack ? ' lnw-stack' : ''}`;
+    el.style.setProperty('--lnw-cols', String(layout.columns));
+    el.innerHTML = `
+      <header class="lnw-head"><span class="lnw-kicker">${esc(layout.kicker)}</span><span class="lnw-edition">CLEANMUSIC · SONGTEXT</span></header>
+      <div class="lnw-rule"></div>
+      <div class="lnw-headline">${headline}</div>
+      <div class="lnw-lower">
+        <div class="lnw-photo" aria-hidden="true"><div class="lnw-photo-art">${iconSvg(layout.photoIcon, 'lnw-photo-icon')}</div><span>${esc(layout.photoLabel)}</span></div>
+        <div class="lnw-cols" aria-hidden="true">${Array.from({ length: layout.columns }, () => `<span class="lnw-col">${'<i></i>'.repeat(72)}</span>`).join('')}</div>
+      </div>
+      <footer class="lnw-foot"><span>${esc(layout.motif.label)}</span><span>NR. ${String((Number(seed) >>> 0) % 900 + 100)}</span><span>SEITE 1</span></footer>`;
+    return el;
+  }
+
+  // Terminal ------------------------------------------------------------------
+
+  function terminalEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.terminalFrame(chunk, seed, { portrait: Boolean(box && box.portrait), text: r.lineText });
+    const words = chunk.words;
+    const line = words.length
+      ? words
+          .map(
+            (word, i) =>
+              `<span class="ls-w ltm-w${i === layout.key ? ' ltm-key' : ''}" style="--d:${delayOf(word).toFixed(2)}s">${esc(word.text)}</span>`
+          )
+          .join(' ')
+      : '<span class="ls-w ltm-w" style="--d:0s">♪</span>';
+    const el = document.createElement('div');
+    el.className = `ltm-frame${layout.stack ? ' ltm-stack' : ''}`;
+    el.innerHTML = `
+      <div class="ltm-window">
+        <div class="ltm-bar"><span>cleanmusic@local</span><span>~/lyrics</span></div>
+        <div class="ltm-screen">
+          <div class="ltm-cmd"><span class="ltm-prompt">${esc(layout.prompt)}</span> <span class="ltm-command">${esc(layout.command)}</span><span class="ltm-cursor" aria-hidden="true"></span></div>
+          <div class="ltm-words">${line}</div>
+          <div class="ltm-status"><span>MOTIF ${esc(layout.label)}</span><span>ONLINE</span><span>48 kHz</span></div>
+        </div>
+      </div>`;
+    return el;
+  }
+
+  // Tunnel --------------------------------------------------------------------
+
+  function tunnelEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const layout = LV.tunnelFrame(chunk, seed, { portrait: Boolean(box && box.portrait), text: r.lineText });
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row) =>
+              `<div class="ltn-row">${row
+                .map(
+                  (index) =>
+                    `<span class="ls-w ltn-w${index === layout.key ? ' ltn-key' : ''}" style="--d:${delayOf(words[index]).toFixed(2)}s">${esc(words[index].text)}</span>`
+                )
+                .join('')}</div>`
+          )
+          .join('')
+      : '<div class="ltn-row"><span class="ls-w ltn-w" style="--d:0s">♪</span></div>';
+    const rings = Array.from(
+      { length: layout.rings },
+      (_, i) => `<i style="--i:${i};--ring-rot:${(layout.spin + i * 9).toFixed(1)}deg"></i>`
+    ).join('');
+    const el = document.createElement('div');
+    el.className = `ltn-frame${layout.stack ? ' ltn-stack' : ''}`;
+    el.style.setProperty('--ltn-depth', String(layout.depth));
+    el.innerHTML = `
+      <div class="ltn-rings" aria-hidden="true">${rings}</div>
+      <div class="ltn-core" aria-hidden="true">${iconSvg(layout.icon, 'ltn-core-icon')}</div>
+      <div class="ltn-words">${rows}</div>`;
+    return el;
+  }
+
   function drawSpectrum(r, bands) {
     const canvas = r.stage.querySelector('.lc-spectrum');
     if (!canvas) return;
@@ -1060,6 +1229,18 @@ window.CMLyricStage = (function () {
     } else if (r.style === 'story') {
       const stacked = el.classList.contains('ls2-stack');
       fitGroup(r, el.querySelector('.ls2-words'), box.w * (stacked ? 0.86 : 0.45) * s, box.h * (stacked ? 0.3 : 0.5), box.h * (stacked ? 0.18 : 0.34) * s, '.ls2-w');
+    } else if (r.style === 'diary') {
+      const stacked = el.classList.contains('ldy-stack');
+      fitGroup(r, el.querySelector('.ldy-words'), box.w * (stacked ? 0.86 : 0.58) * s, box.h * (stacked ? 0.4 : 0.5), box.h * (stacked ? 0.24 : 0.34) * s, '.ldy-w');
+    } else if (r.style === 'news') {
+      const stacked = el.classList.contains('lnw-stack');
+      fitGroup(r, el.querySelector('.lnw-headline'), box.w * 0.9 * s, box.h * (stacked ? 0.55 : 0.3), box.h * (stacked ? 0.17 : 0.26) * s, '.lnw-w');
+    } else if (r.style === 'terminal') {
+      const stacked = el.classList.contains('ltm-stack');
+      fitGroup(r, el.querySelector('.ltm-words'), box.w * 0.86 * s, box.h * (stacked ? 0.52 : 0.3), box.h * (stacked ? 0.18 : 0.26) * s, '.ltm-w');
+    } else if (r.style === 'tunnel') {
+      const stacked = el.classList.contains('ltn-stack');
+      fitGroup(r, el.querySelector('.ltn-words'), box.w * (stacked ? 0.86 : 0.8) * s, box.h * (stacked ? 0.62 : 0.4), box.h * (stacked ? 0.2 : 0.34) * s, '.ltn-w');
     }
   }
 

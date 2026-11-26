@@ -3038,7 +3038,7 @@ function createMainWindow() {
               s && s.stageMode && s.fills && s.words > 0 && s.big > 0.12 &&
               (name === 'lyricvideo' || (s.frames >= 1 && s.chunks >= 2)) &&
               (name !== 'cinema' || s.spectrum);
-            const broken = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'].filter(
+            const broken = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'].filter(
               (name) => !styleOk(name, styles[name])
             );
             if (broken.length || !(stage.idleOpacity < 0.05 && stage.activeOpacity > 0.95) || stage.plainEffectStage) {
@@ -3052,6 +3052,17 @@ function createMainWindow() {
             }));
           } catch (error) {
             console.error('SMOKE_LYRIC_VIDEO_FAIL:', error.message);
+          }
+
+          // Effect picker: images for every motion style, one click applies it.
+          try {
+            const picker = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsPickerTest()');
+            if (!(picker && picker.open && picker.cards === 15 && picker.images === 15 && picker.loaded === 15 && picker.applied === 'poster' && picker.closed)) {
+              throw new Error(JSON.stringify(picker));
+            }
+            console.log('SMOKE_LYRIC_PICKER:', JSON.stringify(picker));
+          } catch (error) {
+            console.error('SMOKE_LYRIC_PICKER_FAIL:', error.message);
           }
 
           // Studio (2.0): Timeline rendern (Datenmodell + WAV) und Export per IPC.

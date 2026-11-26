@@ -223,9 +223,9 @@
    * wordTimes(). Everything below is pure and deterministic.
    */
 
-  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
+  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
   // Styles that play frame by frame (chunks of a line).
-  const FRAME_STYLES = ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
+  const FRAME_STYLES = ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
 
   const CHUNK_RULES = {
     poster: { words: 3, letters: 12 },
@@ -238,6 +238,10 @@
     cards: { words: 3, letters: 14 },
     revolt: { words: 3, letters: 14 },
     story: { words: 3, letters: 13 },
+    diary: { words: 2, letters: 11 },
+    news: { words: 3, letters: 14 },
+    terminal: { words: 3, letters: 14 },
+    tunnel: { words: 2, letters: 10 },
   };
 
   function isStyle(id) {
@@ -1092,6 +1096,207 @@
     };
   }
 
+  /* --- 2.2.0: diary, news, terminal, tunnel ------------------------------ */
+
+  const DIARY_DEFAULT = { paper: '#f8f1e0', ink: '#1e2a44', accent: '#c94040', tape: '#d9c7a4', rule: '#b9c6d8', soft: '#7d8aa0' };
+
+  // Handwritten page: warm paper, ink blue, one warm accent and tape.
+  function diaryColors(colors) {
+    const out = Object.assign({}, DIARY_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    out.paper = hsl(ha + 28, 0.24, 0.94);
+    out.ink = ensureContrast(hsl(ha + 208, 0.32, 0.2), hexToRgb(out.paper), 12, '#1e2a44');
+    out.accent = ensureContrast(hsl(hb, Math.max(0.66, sb), 0.48), hexToRgb(out.paper), 4, DIARY_DEFAULT.accent);
+    out.tape = hsl(ha + 36, 0.3, 0.8);
+    out.rule = hsl(ha + 200, 0.22, 0.72);
+    out.soft = ensureContrast(hsl(ha + 210, 0.18, 0.45), hexToRgb(out.paper), 2.5, DIARY_DEFAULT.soft);
+    return out;
+  }
+
+  const NEWS_DEFAULT = { paper: '#f1ead9', ink: '#141414', accent: '#b31b25', muted: '#6b6256', soft: '#cfc4ad' };
+
+  // Newspaper: newsprint, black ink, one red spot colour.
+  function newsColors(colors) {
+    const out = Object.assign({}, NEWS_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    out.paper = hsl(ha + 34, 0.2, 0.93);
+    out.ink = ensureContrast(hsl(ha + 220, 0.12, 0.1), hexToRgb(out.paper), 13, '#141414');
+    const redHue = hueDistance(ha, 355) <= 26 ? ha : hueDistance(hb, 355) <= 26 ? hb : 355;
+    out.accent = ensureContrast(hsl(redHue, 0.72, 0.42), hexToRgb(out.paper), 4.5, NEWS_DEFAULT.accent);
+    out.muted = ensureContrast(hsl(ha + 30, 0.12, 0.34), hexToRgb(out.paper), 4.5, NEWS_DEFAULT.muted);
+    out.soft = hsl(ha + 30, 0.16, 0.8);
+    return out;
+  }
+
+  const TERM_DEFAULT = { bg: '#06110b', fg: '#7dff9b', accent: '#d7ff5f', dim: '#2f6b46', panel: '#0a1a11' };
+
+  // CRT screen: green by default, amber for warm covers; cover accent for keys.
+  function terminalColors(colors) {
+    const out = Object.assign({}, TERM_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    const warm = hueDistance(ha, 40) <= 42;
+    out.bg = warm ? '#140d04' : hsl(ha + 160, 0.35, 0.045);
+    out.fg = warm ? '#ffc46b' : hsl(138, 0.85, 0.68);
+    out.accent = warm ? '#ffe38a' : '#d7ff5f';
+    out.dim = warm ? '#6b4a1f' : hsl(140, 0.4, 0.32);
+    out.panel = warm ? '#1d1308' : hsl(ha + 160, 0.4, 0.075);
+    if (sa >= 0.3) out.accent = hsl(ha, Math.max(0.8, sa), 0.66);
+    const bg = hexToRgb(out.bg);
+    out.fg = ensureContrast(out.fg, bg, 7, '#7dff9b');
+    out.accent = ensureContrast(out.accent, bg, 4.5, TERM_DEFAULT.accent);
+    out.dim = ensureContrast(out.dim, bg, 2, TERM_DEFAULT.dim);
+    return out;
+  }
+
+  const TUNNEL_DEFAULT = { bg: '#070812', fg: '#f4f7ff', accent: '#ffd21f', ring1: '#ff2e88', ring2: '#22d3ee', ring3: '#7b5cff', dim: '#2a2b4a' };
+
+  // Depth tunnel: dark centre, neon rings, bright words in front.
+  function tunnelColors(colors) {
+    const out = Object.assign({}, TUNNEL_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    out.bg = hsl(ha, Math.max(0.2, Math.min(0.5, sa * 0.45)), 0.055);
+    // Keep the neon family (magenta/cyan/violet); the cover may lean it a little.
+    const lean = (target, source) => target + Math.max(-18, Math.min(18, source - target));
+    out.ring1 = hsl(lean(328, ha), 0.88, 0.62);
+    out.ring2 = hsl(lean(188, hb), 0.86, 0.62);
+    out.ring3 = hsl(lean(268, ha + 40), 0.78, 0.58);
+    out.accent = hsl(lean(45, ha), 0.9, 0.64);
+    const bg = hexToRgb(out.bg);
+    out.fg = ensureContrast(out.fg, bg, 12, '#ffffff');
+    out.accent = ensureContrast(out.accent, bg, 5, TUNNEL_DEFAULT.accent);
+    out.ring1 = ensureContrast(out.ring1, bg, 4, TUNNEL_DEFAULT.ring1);
+    out.ring2 = ensureContrast(out.ring2, bg, 4, TUNNEL_DEFAULT.ring2);
+    out.ring3 = ensureContrast(out.ring3, bg, 4, TUNNEL_DEFAULT.ring3);
+    return out;
+  }
+
+  /**
+   * Diary frame: a handwritten page, taped photo and a doodle from the line.
+   *   { motif, rows, stack, tilt, doodle, tape, polaroid, scribble, key, underline }
+   */
+  function diaryFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const text = options && options.text ? String(options.text) : texts.join(' ');
+    const portrait = Boolean(options && options.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x4b1d);
+    const motif = motifOf(text, seed);
+    const total = texts.reduce((sum, t) => sum + letterCount(t), 0);
+    const stack = texts.length >= 2 && (portrait || total > 10);
+    const rows = stack ? texts.map((_t, i) => [i]) : [texts.map((_t, i) => i)];
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    return {
+      motif,
+      rows,
+      stack,
+      tilt: Math.round((rnd() * 5 - 2.5) * 10) / 10,
+      align: rnd() < 0.55 ? 'left' : 'center',
+      doodle: motif.icon,
+      tape: rnd() < 0.8,
+      polaroid: rnd() < 0.9,
+      scribble: rnd() < 0.55,
+      underline: texts.length && rnd() < 0.6 ? Math.floor(rnd() * texts.length) : -1,
+      key,
+    };
+  }
+
+  /**
+   * News frame: headline, kicker, columns and a halftone photo from the motif.
+   *   { motif, key, kicker, photoIcon, photoLabel, stack, columns }
+   */
+  function newsFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const text = options && options.text ? String(options.text) : texts.join(' ');
+    const portrait = Boolean(options && options.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x2d77);
+    const motif = motifOf(text, seed);
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    const kickers = ['EXTRA', 'HEUTE', 'STORY', 'AKTUELL'];
+    return {
+      motif,
+      key,
+      kicker: kickers[Math.floor(rnd() * kickers.length)],
+      photoIcon: motif.icon,
+      photoLabel: motif.label,
+      stack: portrait && texts.length > 1,
+      columns: 2 + Math.floor(rnd() * 2),
+    };
+  }
+
+  /**
+   * Terminal frame: prompt, command and the line typed on a CRT.
+   *   { motif, key, command, prompt, stack, label }
+   */
+  function terminalFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const text = options && options.text ? String(options.text) : texts.join(' ');
+    const portrait = Boolean(options && options.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x61af);
+    const motif = motifOf(text, seed);
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    return {
+      motif,
+      key,
+      command: `play --mood ${motif.id}`,
+      prompt: rnd() < 0.5 ? '$' : '>',
+      stack: portrait && texts.length > 1,
+      label: motif.label,
+    };
+  }
+
+  /**
+   * Tunnel frame: words in front of neon rings, icon in the vanishing point.
+   *   { motif, key, rows, stack, rings, icon, spin, depth }
+   */
+  function tunnelFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const text = options && options.text ? String(options.text) : texts.join(' ');
+    const portrait = Boolean(options && options.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x1f3c);
+    const motif = motifOf(text, seed);
+    const total = texts.reduce((sum, t) => sum + letterCount(t), 0);
+    const stack = texts.length >= 2 && (portrait || total > 10);
+    const rows = stack ? texts.map((_t, i) => [i]) : [texts.map((_t, i) => i)];
+    let key = -1;
+    if (texts.length) {
+      const keyword = chooseKeyword(texts);
+      if (!isFiller(keyword)) key = texts.indexOf(keyword);
+    }
+    return {
+      motif,
+      key,
+      rows,
+      stack,
+      rings: 5 + Math.floor(rnd() * 3),
+      icon: motif.icon,
+      spin: Math.round((rnd() * 16 - 8) * 10) / 10,
+      depth: Math.round((0.88 + rnd() * 0.2) * 100) / 100,
+    };
+  }
+
   window.CMLyricVideo = {
     FILLERS,
     normWord,
@@ -1125,6 +1330,10 @@
     cardsColors,
     revoltColors,
     storyColors,
+    diaryColors,
+    newsColors,
+    terminalColors,
+    tunnelColors,
     MOTIFS,
     motifOf,
     posterFrame,
@@ -1137,6 +1346,10 @@
     cardsFrame,
     revoltFrame,
     storyFrame,
+    diaryFrame,
+    newsFrame,
+    terminalFrame,
+    tunnelFrame,
     cinemaHeart,
     prng,
   };

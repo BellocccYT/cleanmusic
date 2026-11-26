@@ -98,3 +98,30 @@ Herz-Karten und eine Liebesszene, „Drive fast“ eine Stadt mit Auto,
 „The price of fame“ ein rotes Poster mit Münze. Die Motiv-Erkennung ist rein
 und deterministisch (`motifOf`), damit dieselbe Zeile immer gleich aussieht.
 
+## Dritte Welle: Papier, Druck, Bildschirm, Tiefe
+
+Vier weitere Richtungen, die in der Stichprobe immer wieder auftauchen und
+sich deutlich von den bisherigen unterscheiden. Auch hier bleibt die Gestaltung
+eigen: keine nachgebauten Zeitungsseiten, Terminal-Screens oder Spiel-Szenen.
+
+| Richtung | Beobachtung | Umsetzung in CleanMusic |
+| --- | --- | --- |
+| Tagebuch / Notizbuch | Liniertes Papier, Handschrift, ein eingeklebtes Foto, kleine Kritzeleien am Rand. Die Zeile wirkt wie ein persönlicher Eintrag, nicht wie ein Plakat. | **Tagebuch**: liniertes Blatt mit rotem Rand, Permanent-Marker-Handschrift, taped Cover-Foto, eine zum Motiv passende Kritzelei (Mond, Herz, Stern, Blume …), welliger Unterstrich. |
+| Zeitung / Schlagzeile | Riesige Serifen-Schlagzeile, Kicker, Spalten aus grauem Text, ein Rasterfoto. Harte Schwarz-Weiß-Hierarchie mit einer roten Akzentfarbe. | **Zeitung**: Fraunces-Schlagzeile aus der Zeile, Kicker „HEUTE/EXTRA“, Spalten, Rasterfoto mit Motiv-Icon, Ausgabe und Seitenzahl. |
+| Terminal / CRT | Monospace, Prompt, Befehl, Cursor, Statuszeile, Scanlines. Der Songtext wird zur Ausgabe eines Programms. | **Terminal**: grüner oder bernsteinfarbener CRT, Fenster mit `play --mood <motif>`, getippte Zeile, Statuszeile, blinkender Cursor. |
+| Tunnel / Perspektive | Ringe oder Linien laufen auf einen Fluchtpunkt zu, Wörter kommen aus der Tiefe. Oft neonfarben und mit starkem Zentrum. | **Tunnel**: Neonringe in Magenta/Cyan/Violett, Motiv-Icon im Fluchtpunkt, Wörter davor; sanfter Beat-Puls, keine hektische Rotation. |
+
+Die vier Stile teilen sich dieselbe Motiv-Erkennung wie Karten, Revolte und
+Bilderbogen. So wird „Acres of open stars“ zum Mond im Tagebuch, „The price of
+fame“ zur Fortune-Schlagzeile und „Be my sex“ zum Herz im Tunnel.
+
+## Auswahlmenü statt Durchklicken
+
+Weil es inzwischen viele Stile gibt, öffnet der Effekt-Knopf kein Rad mehr,
+sondern eine Galerie mit Vorschaubildern. Jede Karte zeigt einen echten
+Screenshot des Stils, den Namen und – bei Supporter-Extras – ein ♥. Ein Klick
+übernimmt den Stil; Escape oder ein Klick auf den Hintergrund schließt die
+Auswahl. Die einfachen Effekte (Pop, Karaoke, Neon, Welle, Schreibmaschine,
+Zoom) stehen als kompakte Text-Auswahl darunter, damit die Galerie auf das
+Wesentliche beschränkt bleibt.
+

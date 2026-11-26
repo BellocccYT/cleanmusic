@@ -134,9 +134,9 @@ check('wordTimes is safe for empty lines and missing next time', () => {
 
 /* --- 2.1.1: motion lyric styles (poster, brush, cinema) --------------------- */
 
-check('the eleven motion styles are known, frame styles exclude the stacked one', () => {
-  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story']);
-  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story']);
+check('the fifteen motion styles are known, frame styles exclude the stacked one', () => {
+  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel']);
+  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel']);
   assert.equal(LV.isStyle('poster'), true);
   assert.equal(LV.isStyle('glitch'), true);
   assert.equal(LV.isStyle('collage'), true);
@@ -145,6 +145,10 @@ check('the eleven motion styles are known, frame styles exclude the stacked one'
   assert.equal(LV.isStyle('cards'), true);
   assert.equal(LV.isStyle('revolt'), true);
   assert.equal(LV.isStyle('story'), true);
+  assert.equal(LV.isStyle('diary'), true);
+  assert.equal(LV.isStyle('news'), true);
+  assert.equal(LV.isStyle('terminal'), true);
+  assert.equal(LV.isStyle('tunnel'), true);
   assert.equal(LV.isStyle('karaoke'), false);
   assert.equal(LV.letterCount("i'm"), 2);
   assert.equal(LV.letterCount('愛してる'), 4, 'non-Latin letters count');
@@ -508,6 +512,61 @@ check('storyFrame turns the line into a scene and keeps every word', () => {
   assert.equal(LV.storyFrame(frameChunkLong, 4, { text: 'Drive fast', portrait: true }).stack, true);
   const rows = LV.storyFrame(frameChunkLong, 4, { text: 'Drive fast', portrait: true }).rows;
   assert.equal(rows.length, 4, 'upright: one word per row');
+});
+
+/* --- 2.2.0: diary, news, terminal, tunnel ---------------------------------- */
+
+check('diary/news/terminal/tunnel colours stay readable', () => {
+  for (const colors of covers) {
+    const diary = LV.diaryColors(colors);
+    assert.ok(LV.contrast(diary.ink, diary.paper) >= 12, `diary ink (${colors && colors[0]})`);
+    assert.ok(LV.contrast(diary.accent, diary.paper) >= 4, 'diary accent');
+    const news = LV.newsColors(colors);
+    assert.ok(LV.contrast(news.ink, news.paper) >= 13, 'news ink');
+    assert.ok(LV.contrast(news.accent, news.paper) >= 4.5, 'news spot colour');
+    assert.ok(LV.contrast(news.muted, news.paper) >= 4.5, 'news small print');
+    const term = LV.terminalColors(colors);
+    assert.ok(LV.contrast(term.fg, term.bg) >= 7, 'terminal type');
+    assert.ok(LV.contrast(term.accent, term.bg) >= 4.5, 'terminal accent');
+    const tunnel = LV.tunnelColors(colors);
+    assert.ok(LV.contrast(tunnel.fg, tunnel.bg) >= 12, 'tunnel type');
+    assert.ok(LV.contrast(tunnel.accent, tunnel.bg) >= 5, 'tunnel key');
+    [tunnel.ring1, tunnel.ring2, tunnel.ring3].forEach((ring) => assert.ok(LV.contrast(ring, tunnel.bg) >= 4, 'tunnel ring'));
+  }
+});
+
+check('diaryFrame and newsFrame follow the motif and keep their layout', () => {
+  const diary = plain(LV.diaryFrame(frameChunkLong, 8, { text: 'My heart is on fire' }));
+  assert.deepEqual(diary, plain(LV.diaryFrame(frameChunkLong, 8, { text: 'My heart is on fire' })), 'deterministic');
+  assert.equal(diary.motif.id, 'love');
+  assert.equal(diary.doodle, 'heart');
+  assert.ok(diary.rows.length >= 1);
+  const diaryPortrait = LV.diaryFrame(frameChunkLong, 8, { text: 'My heart', portrait: true });
+  assert.equal(diaryPortrait.stack, true);
+
+  const news = plain(LV.newsFrame(frameChunkLong, 8, { text: 'The price of fame' }));
+  assert.equal(news.motif.id, 'money');
+  assert.equal(news.photoIcon, 'coin');
+  assert.ok(news.kicker.length >= 4);
+  assert.ok(news.columns >= 2 && news.columns <= 3);
+  assert.equal(LV.newsFrame(frameChunkLong, 8, { text: 'The price of fame', portrait: true }).stack, true);
+});
+
+check('terminalFrame and tunnelFrame set prompt, rings and key', () => {
+  const term = plain(LV.terminalFrame(frameChunkLong, 12, { text: 'A lot of money' }));
+  assert.deepEqual(term, plain(LV.terminalFrame(frameChunkLong, 12, { text: 'A lot of money' })), 'deterministic');
+  assert.equal(term.motif.id, 'money');
+  assert.match(term.command, /^play --mood /);
+  assert.equal(term.label, 'FORTUNE');
+  assert.ok(['$', '>'].includes(term.prompt));
+  assert.equal(LV.terminalFrame(frameChunkLong, 12, { text: 'A lot of money', portrait: true }).stack, true);
+
+  const tunnel = plain(LV.tunnelFrame(frameChunkLong, 12, { text: 'Be my sex on the side' }));
+  assert.equal(tunnel.motif.id, 'love');
+  assert.equal(tunnel.icon, 'heart');
+  assert.ok(tunnel.rings >= 5 && tunnel.rings <= 7);
+  assert.ok(tunnel.depth >= 0.88 && tunnel.depth <= 1.08);
+  assert.equal(LV.tunnelFrame(frameChunkLong, 12, { text: 'Be my sex', portrait: true }).stack, true);
 });
 
 console.log(`${checks} passed, 0 failed`);

@@ -5504,7 +5504,9 @@
     '2.2.0': [
       'Vier neue Motion-Songtexte für den Vollbild-Player: „Störung“ (Glitch mit RGB-Versatz, Scanlines und Zeitcode – ruhig statt flackernd), „Collage“ (jeder Buchstabe ein eigener Papierschnipsel mit Klebeband), „Synthwave“ (Chromschrift über Rasterhorizont und gestreifter Sonne) und „Comic“ (Pop-Art-Lettern mit Sprechblase, Stern und Rasterpunkten).',
       'Drei Stile, die den Songtext lesen: „Karten“ legt Tarot-/Spielkarten mit Herz für Liebe, Münze für Geld oder Mond für die Nacht; „Revolte“ wird bei Feuer-, Kampf- und Liebeszeilen zum roten Poster mit Stern; „Bilderbogen“ zeichnet eine flache Szene aus der Zeile (Stadt und Auto bei „Drive“, Mond bei „Night“, Herz bei „Love“).',
-      'Alle elf Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
+      'Vier weitere Motion-Stile: „Tagebuch“ (liniertes Papier, Handschrift, eingeklebtes Cover und eine Kritzelei), „Zeitung“ (Schlagzeile, Spalten, Rasterfoto), „Terminal“ (CRT-Fenster mit Prompt und Befehl) und „Tunnel“ (Neonringe in die Tiefe). Auch sie nehmen ihr Motiv aus der Zeile.',
+      'Der Effekt-Knopf öffnet jetzt ein Menü mit Vorschaubildern aller Motion-Stile – ein Klick übernimmt den Stil, statt sich durchzuklicken. Auch in den Einstellungen gibt es die Auswahl mit Bild.',
+      'Alle fünfzehn Motion-Stile nehmen Farben aus dem Cover, wenn sie zum Stil passen, und haben sonst eine feste Palette. Sie füllen den ganzen Bildschirm, funktionieren im Hochformat, respektieren „Bewegung reduzieren“ und den Sparmodus und lassen sich mit A−/A+ skalieren.',
       'Die neuen Stile zählen wie Poster, Pinsel und Kino zu den Supporter-Extras (♥): in der Probezeit frei, danach mit dem kostenlosen Code. Eine Spende ist weiterhin freiwillig.',
       'Neu als optionales Plugin: CleanMusic auf dem CORSAIR XENEON EDGE (inoffiziell). Das iCUE-Widget zeigt Cover, Titel, Songtext und große Touch-Knöpfe; gekoppelt wird mit einem 4-stelligen Code unter Einstellungen → Plugins. Widget und Plugin-Datei liegen beim Release auf GitHub.',
     ],
@@ -6418,14 +6420,139 @@
     ['cards', 'Karten'],
     ['revolt', 'Revolte'],
     ['story', 'Bilderbogen'],
+    ['diary', 'Tagebuch'],
+    ['news', 'Zeitung'],
+    ['terminal', 'Terminal'],
+    ['tunnel', 'Tunnel'],
   ];
   // Effects that show one big line instead of the scrolling list.
-  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
+  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
   // Motion styles (lyric-stage.js): fill the whole fullscreen player.
-  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story'];
+  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
 
   function lyricsEffect() {
     return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';
+  }
+
+  /* --- Effect picker with preview images --------------------------------- */
+
+  let lyPickerOpen = false;
+  const LYRIC_THUMB_DIR = 'assets/lyric-styles/';
+
+  function lyricEffectLabel(id) {
+    const entry = LYRIC_EFFECTS.find(([effect]) => effect === id);
+    return entry ? entry[1] : id;
+  }
+
+  function lyricThumb(id) {
+    return MOTION_EFFECTS.includes(id) ? `${LYRIC_THUMB_DIR}${id}.png` : '';
+  }
+
+  function lyricLockBadge(id) {
+    // During the trial every motion style is open – no hearts in the gallery.
+    if (extraLocked('lyricsEffect', id)) return '<span class="ly-pick-lock" title="Supporter-Extra">♥</span>';
+    return '';
+  }
+
+  function lyricPickerHtml() {
+    const current = lyricsEffect();
+    const motion = MOTION_EFFECTS.map((id) => {
+      const active = id === current;
+      return `<button type="button" class="ly-pick${active ? ' is-active' : ''}" data-ly-pick="${id}" aria-pressed="${active}">
+        <span class="ly-pick-art"><img src="${lyricThumb(id)}" alt="" loading="lazy" /></span>
+        <span class="ly-pick-name">${esc(lyricEffectLabel(id))}</span>
+        ${lyricLockBadge(id)}
+      </button>`;
+    }).join('');
+    const basic = LYRIC_EFFECTS.filter(([id]) => !MOTION_EFFECTS.includes(id))
+      .map(([id, label]) => {
+        const active = id === current;
+        return `<button type="button" class="ly-pick-text${active ? ' is-active' : ''}" data-ly-pick="${id}" aria-pressed="${active}">${esc(label)}${lyricLockBadge(id)}</button>`;
+      })
+      .join('');
+    return `<div class="ly-picker-card" role="dialog" aria-modal="true" aria-labelledby="ly-picker-title">
+      <header class="ly-picker-head">
+        <div><strong id="ly-picker-title">Songtext-Effekt</strong><small>Vorschau antippen – der Effekt gilt sofort.</small></div>
+        <button type="button" class="ly-picker-close" data-ly-picker-close aria-label="Schließen">×</button>
+      </header>
+      <div class="ly-picker-grid">${motion}</div>
+      <div class="ly-picker-basic"><span>Einfach</span><div>${basic}</div></div>
+    </div>`;
+  }
+
+  function openLyricPicker() {
+    const picker = $('#ly-picker');
+    if (!picker) return;
+    lyPickerOpen = true;
+    picker.innerHTML = lyricPickerHtml();
+    picker.hidden = false;
+    document.body.classList.add('ly-picker-open');
+    const fullscreen = $('#fullscreen');
+    if (fullscreen) {
+      fullscreen.classList.add('picker-open');
+      fsActivity();
+    }
+    const active = picker.querySelector('.ly-pick.is-active, .ly-pick-text.is-active');
+    (active || picker.querySelector('.ly-picker-close')).focus({ preventScroll: true });
+  }
+
+  function closeLyricPicker() {
+    const picker = $('#ly-picker');
+    if (!picker || !lyPickerOpen) return;
+    lyPickerOpen = false;
+    picker.hidden = true;
+    picker.innerHTML = '';
+    document.body.classList.remove('ly-picker-open');
+    const fullscreen = $('#fullscreen');
+    if (fullscreen) fullscreen.classList.remove('picker-open');
+    const back = document.querySelector('#fs-lyrics-tools [data-ly-tool="effect"], [data-ly-open-picker]');
+    if (back) back.focus({ preventScroll: true });
+  }
+
+  async function chooseLyricEffect(id) {
+    if (!LYRIC_EFFECTS.some(([effect]) => effect === id)) return;
+    const ok = await guardExtra('lyricsEffect', id, `Songtext-Effekt „${lyricEffectLabel(id)}“`);
+    if (!ok) return;
+    setLyricsOption({ lyricsEffect: id });
+    closeLyricPicker();
+  }
+
+  function wireLyricPicker() {
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('[data-ly-open-picker]')) {
+        event.preventDefault();
+        openLyricPicker();
+        return;
+      }
+      if (event.target.closest('[data-ly-picker-close]')) {
+        event.preventDefault();
+        closeLyricPicker();
+        return;
+      }
+      const pick = event.target.closest('[data-ly-pick]');
+      if (pick) {
+        event.preventDefault();
+        event.stopPropagation();
+        chooseLyricEffect(pick.dataset.lyPick);
+        return;
+      }
+      if (lyPickerOpen && event.target.id === 'ly-picker') {
+        event.preventDefault();
+        closeLyricPicker();
+      }
+    });
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (!lyPickerOpen) return;
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          closeLyricPicker();
+        }
+      },
+      true
+    );
   }
 
   function lineDuration(index) {
@@ -6548,11 +6675,9 @@
       case 'focus':
         setLyricsOption({ lyricsFocus: !state.settings.lyricsFocus });
         return;
-      case 'effect': {
-        const ids = LYRIC_EFFECTS.map(([id]) => id);
-        setLyricsOption({ lyricsEffect: ids[(ids.indexOf(lyricsEffect()) + 1) % ids.length] });
+      case 'effect':
+        openLyricPicker();
         return;
-      }
       case 'refresh':
         ensureLyrics(true);
         return;
@@ -6578,9 +6703,11 @@
             </div>
             <div class="setting-line">
               <strong>Effekt</strong>
-              <div class="radio-tags">${LYRIC_EFFECTS.map(
-                ([id, label]) => `<button class="radio-tag ${lyricsEffect() === id ? 'active' : ''}${lockedClass('lyricsEffect', id)}" data-ly-effect="${id}">${label}</button>`
-              ).join('')}</div>
+              <button type="button" class="ly-effect-open${lockedClass('lyricsEffect', lyricsEffect())}" data-ly-open-picker>
+                <span class="ly-effect-thumb">${lyricThumb(lyricsEffect()) ? `<img src="${lyricThumb(lyricsEffect())}" alt="" loading="lazy" />` : '<i></i>'}</span>
+                <span class="ly-effect-text"><strong>${esc(lyricEffectLabel(lyricsEffect()))}</strong><small>Aus dem Menü mit Vorschau wählen</small></span>
+                <span class="ly-effect-change">Ändern</span>
+              </button>
             </div>
             <div class="setting-line">
               <strong>Ausrichtung</strong>
@@ -12704,6 +12831,7 @@
 
   function closeFullscreen() {
     if (!state.fullscreen) return;
+    closeLyricPicker();
     state.fullscreen = false;
     syncLiveBackground();
     $('#fullscreen').hidden = true;
@@ -12726,7 +12854,7 @@
     root.classList.remove('idle');
     clearTimeout(fsIdleTimer);
     fsIdleTimer = setTimeout(() => {
-      if (state.fullscreen && !audio.paused) root.classList.add('idle');
+      if (state.fullscreen && !audio.paused && !lyPickerOpen) root.classList.add('idle');
     }, 2800);
   }
 
@@ -16796,6 +16924,7 @@ ${updatePanel()}
     wireCutterExtras();
     wireDownloadsView();
     wireLyricsTools();
+    wireLyricPicker();
     wireVinyl();
     wireReview();
     wireGlobal();
@@ -17486,6 +17615,64 @@ ${updatePanel()}
         out.plainEffectStage = root.classList.contains('lyrics-stage');
         return out;
       } finally {
+        lyricsHold = saved.hold;
+        state.settings.lyrics = saved.lyrics;
+        state.settings.lyricsEffect = saved.effect;
+        state.nowMode = saved.mode;
+        Object.assign(lyricsState, saved.data);
+        renderLyrics();
+        if (!saved.open) closeFullscreen();
+      }
+    },
+    // The picker must show every motion style as an image and apply a click.
+    lyricsPickerTest: async () => {
+      const saved = {
+        lyrics: state.settings.lyrics,
+        effect: state.settings.lyricsEffect,
+        mode: state.nowMode,
+        data: Object.assign({}, lyricsState),
+        hold: lyricsHold,
+        open: state.fullscreen,
+      };
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      try {
+        lyricsHold = true;
+        state.settings.lyrics = true;
+        state.settings.lyricsEffect = 'lyricvideo';
+        state.nowMode = 'plugin';
+        Object.assign(lyricsState, {
+          key: 'smoke|picker',
+          lines: [{ time: 0, text: 'Think my paradise' }, { time: 3, text: 'Be my own housewife' }],
+          plain: '',
+          loading: false,
+          error: null,
+          index: -1,
+        });
+        if (!state.fullscreen) openFullscreen();
+        renderLyrics();
+        await wait(350);
+        openLyricPicker();
+        await wait(350);
+        const picker = $('#ly-picker');
+        const cards = Array.from(picker.querySelectorAll('.ly-pick'));
+        const images = Array.from(picker.querySelectorAll('.ly-pick img'));
+        await Promise.all(images.map((img) => (img.decode ? img.decode().catch(() => {}) : Promise.resolve())));
+        const loaded = images.filter((img) => img.complete && img.naturalWidth > 0).length;
+        const open = !picker.hidden;
+        const card = picker.querySelector('[data-ly-pick="poster"]');
+        if (card) card.click();
+        await wait(550);
+        return {
+          open,
+          cards: cards.length,
+          images: images.length,
+          loaded,
+          applied: $('#fs-lyrics').dataset.fx,
+          closed: picker.hidden,
+          stage: $('#fullscreen').classList.contains('lyrics-stage'),
+        };
+      } finally {
+        closeLyricPicker();
         lyricsHold = saved.hold;
         state.settings.lyrics = saved.lyrics;
         state.settings.lyricsEffect = saved.effect;
