@@ -3079,13 +3079,14 @@ function createMainWindow() {
             // 2.1.1: alle Motion-Stile füllen den Vollbild-Player, die Steuerung blendet aus und wieder ein.
             const stage = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsStageTest()');
             const styles = (stage && stage.styles) || {};
+            // Chat shows a thread (up to four bubbles, header, "Gesendet") – smaller words by design.
             const styleOk = (name, s) =>
-              s && s.stageMode && s.fills && s.words > 0 && s.big > 0.12 &&
+              s && s.stageMode && s.fills && s.words > 0 && s.big > (name === 'chat' ? 0.05 : 0.12) &&
               (name === 'lyricvideo' || (s.frames >= 1 && s.chunks >= 2)) &&
               (name !== 'cinema' || s.spectrum);
-            const broken = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'].filter(
-              (name) => !styleOk(name, styles[name])
-            );
+            // 2.3.1: nineteen motion styles; every style the app reports must pass.
+            const names = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel', 'chat', 'aurora', 'concert', 'swiss'];
+            const broken = Array.from(new Set(names.concat(Object.keys(styles)))).filter((name) => !styleOk(name, styles[name]));
             const castOk = stage.cast && stage.cast.count === 2 && stage.cast.images === 2 && stage.cast.behind && stage.cast.motion;
             if (broken.length || !(stage.idleOpacity < 0.05 && stage.activeOpacity > 0.95) || stage.plainEffectStage || !castOk) {
               throw new Error(JSON.stringify({ broken, stage }));
@@ -3094,7 +3095,7 @@ function createMainWindow() {
             console.log('SMOKE_LYRIC_VIDEO:', JSON.stringify({
               words: first.words, accent: first.accent, seedStable: first.html === second.html,
               styles: Object.keys(styles).length, fullscreen: true, big: bigness,
-              idle: stage.idleOpacity, active: stage.activeOpacity, cast: stage.cast,
+              idle: stage.idleOpacity, active: stage.activeOpacity, cast: stage.cast, raf: stage.rafTicks,
             }));
           } catch (error) {
             console.error('SMOKE_LYRIC_VIDEO_FAIL:', error.message);
@@ -3103,7 +3104,9 @@ function createMainWindow() {
           // Effect picker: images for every motion style, one click applies it.
           try {
             const picker = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsPickerTest()');
-            if (!(picker && picker.open && picker.cards === 15 && picker.images === 15 && picker.loaded === 15 && picker.applied === 'poster' && picker.closed)) {
+            if (!(picker && picker.open && picker.cards === 19 && picker.images === 19 && picker.loaded === 19 && picker.applied === 'poster' && picker.closed &&
+              picker.categories && picker.categories.groups === 4 && picker.categories.night === 5 && picker.categories.nightHasCinema &&
+              picker.categories.basicHidden && picker.categories.basicOnly && picker.categories.all === 19)) {
               throw new Error(JSON.stringify(picker));
             }
             console.log('SMOKE_LYRIC_PICKER:', JSON.stringify(picker));
@@ -3403,9 +3406,19 @@ function createMainWindow() {
               cm.closeFullscreen();
               cm.setFsBackground('cover-moving');
               cm.setBgPulse(false);
+              // Visible in the real window too, not only in the offscreen probe:
+              // #app must not paint an opaque background over #app-bg.
+              const appEl = document.querySelector('#app');
+              const bgEl = document.querySelector('#app-bg');
+              const visibleBg = {
+                layerShown: getComputedStyle(bgEl).display !== 'none'
+                  && bgEl.getBoundingClientRect().height >= window.innerHeight - 1,
+                appClear: getComputedStyle(appEl).backgroundColor === 'rgba(0, 0, 0, 0)',
+              };
               cm.setBackground('none');
               return {
                 pixels,
+                visibleBg,
                 allRendered: ids.every((id) => pixels[id] > 0),
                 beat: { before: beatBefore, after: beatAfter, changed: beatChanged },
                 hiddenPaused,
@@ -3418,6 +3431,9 @@ function createMainWindow() {
             })()
           `);
           console.log('SMOKE_LIVEBG:', JSON.stringify(liveBg));
+          if (!liveBg.visibleBg || !liveBg.visibleBg.layerShown || !liveBg.visibleBg.appClear) {
+            console.error('SMOKE_LIVEBG_FAIL: Hintergrund-Ebene liegt hinter einer deckenden Fläche');
+          }
 
           const performance = await mainWindow.webContents.executeJavaScript(`
             (async () => {
@@ -3871,6 +3887,12 @@ function createMainWindow() {
           console.log('SMOKE_REDIRECT:', JSON.stringify(await smokeRedirect()));
         } catch (error) {
           console.error('SMOKE_REDIRECT_FAIL:', error.message);
+        }
+
+        try {
+          console.log('SMOKE_LYRICS_SEEK:', JSON.stringify(await smokeLyricSeek()));
+        } catch (error) {
+          console.error('SMOKE_LYRICS_SEEK_FAIL:', error.message);
         }
 
         try {
@@ -6987,6 +7009,47 @@ function smokeToneWav(seconds = 12, rate = 22050) {
     wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 0.4 * 32767), 44 + i * 2);
   }
   return wav;
+}
+
+// 2.3.1: tapping a synced lyric line seeks there (silent 20-s file over http,
+// with Range support so the element can seek).
+async function smokeLyricSeek() {
+  if (!isSmoke) throw new Error('Songtext-Spulen-Smoke ist nur im Smoke-Profil erlaubt.');
+  const wav = smokeToneWav(20, 8000);
+  wav.fill(0, 44);
+  const server = http.createServer((request, response) => {
+    const range = /bytes=(\d+)-(\d*)/.exec(request.headers.range || '');
+    if (range) {
+      const start = Math.min(Number(range[1]), wav.length - 1);
+      const end = range[2] ? Math.min(Number(range[2]), wav.length - 1) : wav.length - 1;
+      response.writeHead(206, {
+        'content-type': 'audio/wav',
+        'content-length': end - start + 1,
+        'content-range': `bytes ${start}-${end}/${wav.length}`,
+        'accept-ranges': 'bytes',
+      });
+      response.end(wav.subarray(start, end + 1));
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'audio/wav', 'content-length': wav.length, 'accept-ranges': 'bytes' });
+    response.end(wav);
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/songtext.wav`;
+    const out = await mainWindow.webContents.executeJavaScript(`window.CleanMusic.lyricsSeekTest(${JSON.stringify(url)})`);
+    const ok =
+      out && out.lines === 4 && out.pointer === 'pointer' &&
+      Math.abs(out.third - 12) < 0.3 && out.on && out.playing &&
+      Math.abs(out.offset - 5) < 0.3 && out.pastEnd;
+    if (!ok) throw new Error(JSON.stringify(out));
+    return out;
+  } finally {
+    server.close();
+  }
 }
 
 // A stream that the server redirects to another origin, played with the audio

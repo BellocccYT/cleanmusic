@@ -223,9 +223,23 @@
    * wordTimes(). Everything below is pure and deterministic.
    */
 
-  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
+  const STYLES = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel', 'chat', 'aurora', 'concert', 'swiss'];
   // Styles that play frame by frame (chunks of a line).
-  const FRAME_STYLES = ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
+  const FRAME_STYLES = ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel', 'chat', 'aurora', 'concert', 'swiss'];
+
+  // 2.3.1: the effect picker groups the motion styles. Every style sits in
+  // exactly one group (test/lyricvideo.test.js checks that).
+  const PICKER_GROUPS = [
+    { id: 'type', label: 'Typo & Plakat', hint: 'Große Schrift, klare Formen', styles: ['lyricvideo', 'poster', 'swiss', 'revolt', 'news'] },
+    { id: 'play', label: 'Verspielt', hint: 'Papier, Comic, Handschrift, Chat', styles: ['brush', 'collage', 'comic', 'diary', 'chat'] },
+    { id: 'night', label: 'Neon & Nacht', hint: 'Dunkel, Glühen, Retro-Technik', styles: ['cinema', 'glitch', 'synthwave', 'tunnel', 'terminal'] },
+    { id: 'scene', label: 'Szenen & Licht', hint: 'Bilder und Licht zum Songtext', styles: ['aurora', 'concert', 'cards', 'story'] },
+  ];
+
+  function pickerGroupOf(style) {
+    const group = PICKER_GROUPS.find((entry) => entry.styles.includes(style));
+    return group ? group.id : '';
+  }
 
   const CHUNK_RULES = {
     poster: { words: 3, letters: 12 },
@@ -242,6 +256,10 @@
     news: { words: 3, letters: 14 },
     terminal: { words: 3, letters: 14 },
     tunnel: { words: 2, letters: 10 },
+    chat: { words: 4, letters: 18 },
+    aurora: { words: 3, letters: 14 },
+    concert: { words: 2, letters: 11 },
+    swiss: { words: 3, letters: 14 },
   };
 
   function isStyle(id) {
@@ -1297,6 +1315,263 @@
     };
   }
 
+  /* --- 2.3.1: chat, aurora, concert, swiss --------------------------------- */
+
+  function keyIndex(texts) {
+    if (!texts.length) return -1;
+    const keyword = chooseKeyword(texts);
+    return isFiller(keyword) ? -1 : texts.indexOf(keyword);
+  }
+
+  function stackRows(texts, portrait, limit) {
+    const total = texts.reduce((sum, t) => sum + letterCount(t), 0);
+    const stack = texts.length >= 2 && (portrait || total > limit);
+    return { stack, rows: stack ? texts.map((_t, i) => [i]) : [texts.map((_t, i) => i)] };
+  }
+
+  const CHAT_DEFAULT = {
+    bg: '#0d1016',
+    bg2: '#151b27',
+    me: '#2f62e9',
+    meText: '#ffffff',
+    them: '#262c38',
+    themText: '#f2f4f8',
+    meta: '#8f98aa',
+    key: '#ffd34d',
+  };
+
+  // Messenger: own bubbles in the cover colour (white text stays readable),
+  // the other side in a quiet grey, a dark wallpaper behind.
+  function chatColors(colors) {
+    const out = Object.assign({}, CHAT_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    out.bg = hsl(ha, Math.min(0.32, Math.max(0.12, sa * 0.4)), 0.07);
+    out.bg2 = hsl(ha, Math.min(0.36, Math.max(0.14, sa * 0.45)), 0.11);
+    const white = hexToRgb('#ffffff');
+    out.me = ensureContrast(hsl(ha, Math.max(0.62, Math.min(0.9, sa + 0.1)), 0.5), white, 4.5, CHAT_DEFAULT.me);
+    out.them = hsl(ha + 200, 0.12, 0.19);
+    const bg = hexToRgb(out.bg);
+    out.meta = ensureContrast(hsl(ha, 0.1, 0.62), bg, 4.5, CHAT_DEFAULT.meta);
+    out.key = ensureContrast(hsl(hb, Math.max(0.85, sb), 0.7), hexToRgb(out.them), 4.5, CHAT_DEFAULT.key);
+    return out;
+  }
+
+  function shortText(text, maxWords) {
+    const words = tokenize(text);
+    return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')} …` : words.join(' ');
+  }
+
+  /**
+   * Chat thread for frame `index` of a line: the line is a run of messages
+   * from one side, the next line answers from the other side (a duet).
+   *   options: { lineIndex, prevText, nextText, max }
+   *   → { side, other, bubbles: [{ side, chunk | text, fresh }], key, typing }
+   *   - bubbles: oldest first, at most `max` (default 4); the previous line's
+   *     end (other side) leads in when there is room
+   *   - typing:  who "types" next – the same side when the line goes on,
+   *              the other side when a next line exists, else ''
+   */
+  function chatThread(chunks, index, options) {
+    const opts = options || {};
+    const max = Math.max(2, Math.min(6, Number(opts.max) || 4));
+    const lineIndex = Math.max(0, Number(opts.lineIndex) || 0);
+    const side = lineIndex % 2 === 0 ? 'me' : 'them';
+    const other = side === 'me' ? 'them' : 'me';
+    const list = Array.isArray(chunks) ? chunks : [];
+    const at = Math.max(0, Math.min(list.length - 1, Number(index) || 0));
+    const from = Math.max(0, at - (max - 1));
+    const bubbles = [];
+    for (let i = from; i <= at; i += 1) bubbles.push({ side, chunk: i, fresh: i === at });
+    const prev = String(opts.prevText || '').trim();
+    if (prev && bubbles.length < max) bubbles.unshift({ side: other, text: shortText(prev, 4), fresh: false });
+    const current = list[at];
+    const key = keyIndex(frameTexts(current));
+    let typing = '';
+    if (at < list.length - 1) typing = side;
+    else if (String(opts.nextText || '').trim()) typing = other;
+    return { side, other, bubbles, key, typing };
+  }
+
+  const AURORA_DEFAULT = { bg: '#060818', blobs: ['#1bb8a0', '#7a3fe0', '#e8478f', '#2f7be6'], fg: '#ffffff', key: '#ffe7a3' };
+
+  // Soft aurora: four deep colour veils from the cover, white words on top.
+  function auroraColors(colors) {
+    const out = { bg: AURORA_DEFAULT.bg, blobs: AURORA_DEFAULT.blobs.slice(), fg: AURORA_DEFAULT.fg, key: AURORA_DEFAULT.key };
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    let [hb, sb] = rgbToHsl(pair[1]);
+    if (hueDistance(ha, hb) < 40 || sb < 0.15) {
+      hb = ha + 150;
+      sb = 0.7;
+    }
+    // Keep the aurora family (teal, violet, pink, blue); the cover only leans
+    // each veil a little – warm covers otherwise turned the sky olive and muddy.
+    const lean = (target, source) => target + Math.max(-22, Math.min(22, ((((source - target) % 360) + 540) % 360) - 180));
+    out.bg = hsl(ha, Math.min(0.5, Math.max(0.25, sa * 0.6)), 0.055);
+    out.blobs = [hsl(lean(172, ha), 0.72, 0.46), hsl(lean(276, hb), 0.7, 0.52), hsl(lean(328, ha), 0.74, 0.54), hsl(lean(212, hb), 0.76, 0.5)];
+    out.key = ensureContrast(hsl(hb, 0.9, 0.84), hexToRgb(out.bg), 9, AURORA_DEFAULT.key);
+    return out;
+  }
+
+  /**
+   * Aurora frame: calm centred words that surface from blur.
+   *   { rows, stack, key, rise: 'up'|'down', drift }
+   */
+  function auroraFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const portrait = Boolean(options && options.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x3a07);
+    const { stack, rows } = stackRows(texts, portrait, 13);
+    return {
+      rows,
+      stack,
+      key: keyIndex(texts),
+      rise: rnd() < 0.7 ? 'up' : 'down',
+      drift: Math.round((rnd() * 4 - 2) * 10) / 10,
+    };
+  }
+
+  const CONCERT_DEFAULT = {
+    bg: '#05040a',
+    beams: ['#ff3d7f', '#3dc5ff', '#ffd23d'],
+    fg: '#ffffff',
+    key: '#ffd23d',
+    haze: '#2b1d4a',
+    crowd: '#020203',
+  };
+
+  // Concert: black stage, three light colours (cover-led when colourful).
+  function concertColors(colors) {
+    const out = Object.assign({}, CONCERT_DEFAULT, { beams: CONCERT_DEFAULT.beams.slice() });
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    if (sa >= 0.3) out.beams[0] = hsl(ha, Math.max(0.8, sa), 0.6);
+    if (sb >= 0.3 && hueDistance(ha, hb) >= 30) out.beams[1] = hsl(hb, Math.max(0.8, sb), 0.62);
+    out.haze = hsl(ha, 0.4, 0.14);
+    out.bg = hsl(ha, 0.3, 0.025);
+    const bg = hexToRgb(out.bg);
+    out.key = ensureContrast(hsl(sa >= 0.3 ? ha + 30 : 48, 0.95, 0.62), bg, 9, CONCERT_DEFAULT.key);
+    out.beams = out.beams.map((c) => ensureContrast(c, bg, 5, '#ffffff'));
+    return out;
+  }
+
+  /**
+   * Concert frame: words in the light, beams aimed from the stage floor.
+   *   { rows, stack, key, beams: [{ x, angle, tone, width }], flash }
+   */
+  function concertFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const portrait = Boolean(options && options.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x7c11);
+    const { stack, rows } = stackRows(texts, portrait, 9);
+    const count = portrait ? 3 : 4 + Math.floor(rnd() * 2);
+    const beams = [];
+    for (let i = 0; i < count; i += 1) {
+      const x = Math.round(((i + 0.5) / count) * 100 + (rnd() * 8 - 4));
+      // Beams lean towards the centre, a little random.
+      const lean = (50 - x) * 0.45 + (rnd() * 16 - 8);
+      beams.push({
+        x: Math.max(4, Math.min(96, x)),
+        angle: Math.round(Math.max(-38, Math.min(38, lean))),
+        tone: i % 3,
+        width: Math.round(10 + rnd() * 8),
+      });
+    }
+    const key = keyIndex(texts);
+    return { rows, stack, key, beams, flash: key >= 0 && rnd() < 0.5 };
+  }
+
+  /**
+   * Crowd silhouette (deterministic): an SVG path in a 1000 × 220 box –
+   * heads, shoulders and a few raised hands along the bottom edge.
+   */
+  function crowdPath(seed, count) {
+    const n = Math.max(8, Math.min(60, Math.round(Number(count)) || 30));
+    const rnd = prng((Number(seed) >>> 0) ^ 0xc0ffee);
+    const step = 1000 / n;
+    const num = (v) => Math.round(v * 10) / 10;
+    let d = 'M0 220 L0 200';
+    for (let i = 0; i < n; i += 1) {
+      const cx = step * (i + 0.5) + (rnd() * step * 0.4 - step * 0.2);
+      const head = 13 + rnd() * 7;
+      const top = 120 + rnd() * 34;
+      const shoulder = top + head * 1.9;
+      // Shoulder slope up to the neck, round head, back down.
+      d += ` L${num(cx - step * 0.5)} ${num(shoulder + 6)}`;
+      d += ` Q${num(cx - head * 1.3)} ${num(shoulder - 4)} ${num(cx - head * 0.45)} ${num(top + head * 1.45)}`;
+      d += ` A${num(head)} ${num(head)} 0 1 1 ${num(cx + head * 0.45)} ${num(top + head * 1.45)}`;
+      if (rnd() < 0.26) {
+        // A raised arm next to the head.
+        const hx = cx + (rnd() < 0.5 ? -1 : 1) * head * (0.7 + rnd() * 0.5);
+        const hy = top - 46 - rnd() * 36;
+        const fist = 7 + rnd() * 3;
+        d += ` L${num(cx + head * 0.75)} ${num(top + head * 1.6)} L${num(hx + fist * 0.8)} ${num(hy + fist)}`;
+        d += ` A${num(fist)} ${num(fist)} 0 1 0 ${num(hx - fist * 0.8)} ${num(hy + fist)} L${num(cx + head * 0.05)} ${num(top + head * 1.75)}`;
+      }
+      d += ` Q${num(cx + head * 1.3)} ${num(shoulder - 4)} ${num(cx + step * 0.5)} ${num(shoulder + 6)}`;
+    }
+    return `${d} L1000 200 L1000 220 Z`;
+  }
+
+  const SWISS_DEFAULT = { paper: '#f1eee7', ink: '#111111', accent: '#e1251b', grid: '#d4cfc4', muted: '#5f5b55' };
+
+  // Swiss poster: paper, black grotesk, one signal colour.
+  function swissColors(colors) {
+    const out = Object.assign({}, SWISS_DEFAULT);
+    const pair = coverPair(colors);
+    if (!pair) return out;
+    const [ha, sa] = rgbToHsl(pair[0]);
+    const [hb, sb] = rgbToHsl(pair[1]);
+    out.paper = hsl(ha + 30, 0.14, 0.93);
+    const paper = hexToRgb(out.paper);
+    const pick = sa >= 0.45 ? [ha, sa] : sb >= 0.45 ? [hb, sb] : null;
+    out.accent = pick
+      ? ensureContrast(hsl(pick[0], Math.max(0.75, pick[1]), 0.48), paper, 3.5, SWISS_DEFAULT.accent)
+      : SWISS_DEFAULT.accent;
+    out.grid = hsl(ha + 30, 0.1, 0.8);
+    out.ink = ensureContrast('#111111', paper, 15, '#000000');
+    out.muted = ensureContrast(hsl(ha + 30, 0.06, 0.38), paper, 5, SWISS_DEFAULT.muted);
+    return out;
+  }
+
+  /**
+   * Swiss frame: flush-left words in a strict grid, a big line number and one
+   * geometric block.
+   *   { rows, stack, key, number, block: { kind, x, y, size }, label, slide }
+   */
+  function swissFrame(chunk, seed, options) {
+    const texts = frameTexts(chunk);
+    const opts = options || {};
+    const portrait = Boolean(opts.portrait);
+    const rnd = prng((Number(seed) >>> 0) ^ 0x5e15);
+    const text = opts.text ? String(opts.text) : texts.join(' ');
+    const { stack, rows } = stackRows(texts, portrait, 8);
+    const kinds = ['circle', 'square', 'bar', 'quarter'];
+    const lineNo = Math.max(0, Number(opts.lineIndex) || 0) + 1;
+    return {
+      rows,
+      stack,
+      key: keyIndex(texts),
+      number: String(lineNo % 100).padStart(2, '0'),
+      block: {
+        kind: kinds[Math.floor(rnd() * kinds.length)],
+        // Grid positions (12 columns, 8 rows) – snapped, never in the middle.
+        x: Math.round((rnd() < 0.5 ? 8 + Math.floor(rnd() * 2) : 9 + Math.floor(rnd() * 3)) * (100 / 12)),
+        // Between the line number (top) and the words (bottom).
+        y: Math.round((3 + Math.floor(rnd() * 2)) * (100 / 8)),
+        size: Math.round(18 + rnd() * 14),
+      },
+      label: motifOf(text, seed).label,
+      slide: rnd() < 0.5 ? 'left' : 'up',
+    };
+  }
+
   window.CMLyricVideo = {
     FILLERS,
     normWord,
@@ -1308,6 +1583,8 @@
     wordTimes,
     STYLES,
     FRAME_STYLES,
+    PICKER_GROUPS,
+    pickerGroupOf,
     CHUNK_RULES,
     isStyle,
     letterCount,
@@ -1350,6 +1627,15 @@
     newsFrame,
     terminalFrame,
     tunnelFrame,
+    chatColors,
+    chatThread,
+    auroraColors,
+    auroraFrame,
+    concertColors,
+    concertFrame,
+    crowdPath,
+    swissColors,
+    swissFrame,
     cinemaHeart,
     prng,
   };

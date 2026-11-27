@@ -5150,6 +5150,14 @@ html[data-perf='saver'] .fs-glow { animation: none !important; opacity: .9; }
 html[data-bg] #app-bg {
   display: block;
 }
+/* #app-bg liegt hinter #app. Solange #app selbst eine deckende Fläche malt,
+   sieht man von keinem Hintergrund etwas. Deshalb nur die weichen Akzent-
+   Schleier behalten – der Grund kommt aus #app-bg. */
+html[data-bg] #app {
+  background:
+    radial-gradient(1100px 520px at 78% -12%, rgba(var(--accent-rgb), 0.1), transparent 62%),
+    radial-gradient(900px 460px at 18% 118%, rgba(var(--accent-2-rgb), 0.06), transparent 60%);
+}
 html[data-bg='gradient'] #app-bg {
   background:
     radial-gradient(120% 90% at 0% 0%, rgba(var(--accent-rgb), 0.22), transparent 60%),
@@ -5354,6 +5362,13 @@ html.bg-hidden .fs-glow { animation-play-state: paused !important; }
 .fs-lyrics p.on {
   color: #fff;
   transform: scale(1.04);
+}
+/* 2.3.1: Zeile antippen spult dorthin (wie bei Spotify). */
+.fs-lyrics p[data-ly] {
+  cursor: pointer;
+}
+.fs-lyrics p[data-ly]:not(.on):hover {
+  color: rgba(255, 255, 255, 0.8);
 }
 .fs-lyrics .lyrics-note {
   font-size: 12px;

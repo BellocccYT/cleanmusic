@@ -41,6 +41,10 @@ window.CMLyricStage = (function () {
     news: ['900 100px "CM Fraunces"', '400 100px "Bebas Neue"'],
     terminal: [],
     tunnel: ['400 100px "Bebas Neue"', '700 100px "CM Orbitron"'],
+    chat: [],
+    aurora: [],
+    concert: ['400 100px "Bebas Neue"'],
+    swiss: [],
   };
   const FPS = { saver: 15, balanced: 24, quality: 30 };
   const SIZE_SCALE = { s: 0.84, m: 1, l: 1.1, xl: 1.2 };
@@ -265,6 +269,19 @@ window.CMLyricStage = (function () {
       stage.innerHTML = `<div class="ltm-bg" aria-hidden="true"></div><div class="ls-frames"></div>`;
     } else if (style === 'tunnel') {
       stage.innerHTML = `<div class="ltn-bg" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'chat') {
+      stage.innerHTML = `<div class="lch-wall" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'aurora') {
+      stage.innerHTML = `<div class="lau-sky" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="lau-grain" aria-hidden="true"></div><div class="ls-frames"></div>`;
+    } else if (style === 'concert') {
+      const crowd = lv().crowdPath(seedOf(`crowd:${(r.opts && r.opts.title) || ''}`), 30);
+      stage.innerHTML = `
+        <div class="lcn-haze" aria-hidden="true"></div>
+        <div class="ls-frames"></div>
+        <svg class="lcn-crowd" viewBox="0 0 1000 220" preserveAspectRatio="none" aria-hidden="true"><path d="${crowd}" /></svg>
+        <div class="lcn-floor" aria-hidden="true"></div>`;
+    } else if (style === 'swiss') {
+      stage.innerHTML = `<div class="lsw-grid" aria-hidden="true"></div><div class="ls-frames"></div>`;
     } else {
       // cards (and any future plain stage)
       stage.innerHTML = '<div class="ls-frames"></div>';
@@ -517,6 +534,26 @@ window.CMLyricStage = (function () {
       stage.style.setProperty('--ltn-ring2', c.ring2);
       stage.style.setProperty('--ltn-ring3', c.ring3);
       stage.style.setProperty('--ltn-dim', c.dim);
+    } else if (r.style === 'chat') {
+      const c = LV.chatColors(colors);
+      ['bg', 'bg2', 'me', 'meText', 'them', 'themText', 'meta', 'key'].forEach((name) => stage.style.setProperty(`--lch-${name}`, c[name]));
+    } else if (r.style === 'aurora') {
+      const c = LV.auroraColors(colors);
+      stage.style.setProperty('--lau-bg', c.bg);
+      stage.style.setProperty('--lau-fg', c.fg);
+      stage.style.setProperty('--lau-key', c.key);
+      c.blobs.forEach((blob, i) => stage.style.setProperty(`--lau-b${i + 1}`, blob));
+    } else if (r.style === 'concert') {
+      const c = LV.concertColors(colors);
+      stage.style.setProperty('--lcn-bg', c.bg);
+      stage.style.setProperty('--lcn-fg', c.fg);
+      stage.style.setProperty('--lcn-key', c.key);
+      stage.style.setProperty('--lcn-haze', c.haze);
+      stage.style.setProperty('--lcn-crowd', c.crowd);
+      c.beams.forEach((beam, i) => stage.style.setProperty(`--lcn-beam${i}`, beam));
+    } else if (r.style === 'swiss') {
+      const c = LV.swissColors(colors);
+      ['paper', 'ink', 'accent', 'grid', 'muted'].forEach((name) => stage.style.setProperty(`--lsw-${name}`, c[name]));
     }
     r.chunkIndex = -1;
     showChunk(r, LV.activeChunk(r.chunks, currentTime(r)));
@@ -548,6 +585,10 @@ window.CMLyricStage = (function () {
     else if (r.style === 'diary') el = diaryEl(r, chunk, seed, delayOf);
     else if (r.style === 'news') el = newsEl(r, chunk, seed, delayOf);
     else if (r.style === 'terminal') el = terminalEl(r, chunk, seed, delayOf);
+    else if (r.style === 'chat') el = chatEl(r, chunk, seed, delayOf);
+    else if (r.style === 'aurora') el = auroraEl(r, chunk, seed, delayOf);
+    else if (r.style === 'concert') el = concertEl(r, chunk, seed, delayOf);
+    else if (r.style === 'swiss') el = swissEl(r, chunk, seed, delayOf);
     else el = tunnelEl(r, chunk, seed, delayOf);
     if (r.style === 'cinema' && !r.reduced) {
       host.querySelectorAll('.lc-frame:not(.lc-out)').forEach((old) => {
@@ -1100,6 +1141,147 @@ window.CMLyricStage = (function () {
     return el;
   }
 
+  // Chat (2.3.1) ----------------------------------------------------------------
+
+  function chatEl(r, chunk, seed, delayOf) {
+    const LV = lv();
+    const box = stageSize(r);
+    const lines = Array.isArray(r.opts.lines) ? r.opts.lines : [];
+    const li = Math.max(0, Number(r.opts.index) || 0);
+    const intro = Number(r.opts.index) < 0;
+    const prev = !intro && li > 0 && lines[li - 1] ? lines[li - 1].text : '';
+    const next = intro ? (lines[0] && lines[0].text) || '' : (lines[li + 1] && lines[li + 1].text) || '';
+    const thread = LV.chatThread(r.chunks, r.chunkIndex, { lineIndex: li, prevText: prev, nextText: next, max: box && box.portrait ? 5 : 4 });
+    let lastDelay = 0;
+    const bubble = (b) => {
+      let inner;
+      if (b.text != null) {
+        inner = esc(b.text);
+      } else {
+        const words = (r.chunks[b.chunk] && r.chunks[b.chunk].words) || [];
+        inner = words.length
+          ? words
+              .map((word, i) => {
+                if (!b.fresh) return esc(word.text);
+                const d = delayOf(word);
+                lastDelay = Math.max(lastDelay, d);
+                return `<span class="ls-w lch-w${i === thread.key ? ' lch-key' : ''}" style="--d:${d.toFixed(2)}s">${esc(word.text)}</span>`;
+              })
+              .join(' ')
+          : '♪';
+      }
+      const meta = b.fresh && b.side === 'me' ? '<span class="lch-meta">Gesendet</span>' : '';
+      return `<div class="lch-msg lch-${b.side}${b.fresh ? ' lch-fresh' : ''}"><div class="lch-bubble">${inner}</div>${meta}</div>`;
+    };
+    const body = thread.bubbles.map(bubble).join('');
+    const typing = thread.typing
+      ? `<div class="lch-msg lch-${thread.typing} lch-typing" style="--td:${(lastDelay + 0.6).toFixed(2)}s"><div class="lch-bubble"><i></i><i></i><i></i></div></div>`
+      : '';
+    const title = String(r.opts.title || 'CleanMusic');
+    const avatar = r.opts.artwork
+      ? `<img src="${esc(r.opts.artwork)}" alt="" />`
+      : `<b>${esc(Array.from(title)[0] || '♪')}</b>`;
+    const el = document.createElement('div');
+    el.className = `lch-frame${r.chunkIndex > 0 ? ' lch-scroll' : ''}`;
+    el.innerHTML = `
+      <header class="lch-head"><span class="lch-avatar" aria-hidden="true">${avatar}</span><span class="lch-who"><b>${esc(title)}</b><small>${thread.typing ? 'schreibt …' : 'online'}</small></span></header>
+      <div class="lch-thread">${body}${typing}</div>`;
+    return el;
+  }
+
+  // Aurora (2.3.1) --------------------------------------------------------------
+
+  function auroraEl(r, chunk, seed, delayOf) {
+    const box = stageSize(r);
+    const layout = lv().auroraFrame(chunk, seed, { portrait: Boolean(box && box.portrait) });
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row) =>
+              `<div class="lau-row">${row
+                .map(
+                  (index) =>
+                    `<span class="ls-w lau-w${index === layout.key ? ' lau-key' : ''}" style="--d:${delayOf(words[index]).toFixed(2)}s">${esc(words[index].text)}</span>`
+                )
+                .join('')}</div>`
+          )
+          .join('')
+      : '<div class="lau-row"><span class="ls-w lau-w" style="--d:0s">♪</span></div>';
+    const el = document.createElement('div');
+    el.className = `lau-frame lau-rise-${layout.rise}${layout.stack ? ' lau-stack' : ''}`;
+    el.style.setProperty('--lau-drift', `${layout.drift}deg`);
+    el.innerHTML = `<div class="lau-words">${rows}</div>`;
+    return el;
+  }
+
+  // Bühne / concert (2.3.1) -----------------------------------------------------
+
+  function concertEl(r, chunk, seed, delayOf) {
+    const box = stageSize(r);
+    const layout = lv().concertFrame(chunk, seed, { portrait: Boolean(box && box.portrait) });
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row) =>
+              `<div class="lcn-row">${row
+                .map(
+                  (index) =>
+                    `<span class="ls-w lcn-w${index === layout.key ? ' lcn-key' : ''}" style="--d:${delayOf(words[index]).toFixed(2)}s">${esc(words[index].text)}</span>`
+                )
+                .join('')}</div>`
+          )
+          .join('')
+      : '<div class="lcn-row"><span class="ls-w lcn-w" style="--d:0s">♪</span></div>';
+    const beams = layout.beams
+      .map(
+        (beam, i) =>
+          `<i class="lcn-beam lcn-t${beam.tone}" style="--x:${beam.x}%;--a:${beam.angle}deg;--bw:${beam.width}vmax;--i:${i}"></i>`
+      )
+      .join('');
+    const keyWord = layout.key >= 0 && words[layout.key] ? words[layout.key] : null;
+    const flash = layout.flash && keyWord ? `<div class="lcn-flash" style="--d:${delayOf(keyWord).toFixed(2)}s" aria-hidden="true"></div>` : '';
+    const el = document.createElement('div');
+    el.className = `lcn-frame${layout.stack ? ' lcn-stack' : ''}`;
+    el.innerHTML = `<div class="lcn-beams" aria-hidden="true">${beams}</div>${flash}<div class="lcn-words">${rows}</div>`;
+    return el;
+  }
+
+  // Raster / Swiss (2.3.1) ------------------------------------------------------
+
+  function swissEl(r, chunk, seed, delayOf) {
+    const box = stageSize(r);
+    const layout = lv().swissFrame(chunk, seed, {
+      portrait: Boolean(box && box.portrait),
+      lineIndex: Math.max(0, Number(r.opts.index) || 0),
+      text: r.lineText,
+    });
+    const words = chunk.words;
+    const rows = words.length
+      ? layout.rows
+          .map(
+            (row, rowIndex) =>
+              `<div class="lsw-row" style="--r:${rowIndex}">${row
+                .map(
+                  (index) =>
+                    `<span class="ls-w lsw-w${index === layout.key ? ' lsw-key' : ''}" style="--d:${delayOf(words[index]).toFixed(2)}s">${esc(words[index].text)}</span>`
+                )
+                .join(' ')}</div>`
+          )
+          .join('')
+      : '<div class="lsw-row"><span class="ls-w lsw-w" style="--d:0s">♪</span></div>';
+    const b = layout.block;
+    const el = document.createElement('div');
+    el.className = `lsw-frame lsw-slide-${layout.slide}${layout.stack ? ' lsw-stack' : ''}`;
+    el.innerHTML = `
+      <div class="lsw-block lsw-${b.kind}" style="--bx:${b.x}%;--by:${b.y}%;--bs:${b.size}vmin" aria-hidden="true"></div>
+      <div class="lsw-number" aria-hidden="true">${esc(layout.number)}</div>
+      <div class="lsw-meta" aria-hidden="true"><span>ZEILE ${esc(layout.number)}</span><span>${esc(layout.label)}</span><span>${esc(String(r.opts.title || '').slice(0, 40))}</span></div>
+      <div class="lsw-words">${rows}</div>`;
+    return el;
+  }
+
   function drawSpectrum(r, bands) {
     const canvas = r.stage.querySelector('.lc-spectrum');
     if (!canvas) return;
@@ -1331,6 +1513,18 @@ window.CMLyricStage = (function () {
     } else if (r.style === 'tunnel') {
       const stacked = el.classList.contains('ltn-stack');
       fitGroup(r, el.querySelector('.ltn-words'), box.w * (stacked ? 0.86 : 0.8) * s, box.h * (stacked ? 0.62 : 0.4), box.h * (stacked ? 0.2 : 0.34) * s, '.ltn-w');
+    } else if (r.style === 'chat') {
+      // The whole thread scales together; bubbles never wrap (short groups).
+      fitGroup(r, el.querySelector('.lch-thread'), box.w * (box.portrait ? 0.92 : 0.86) * s, box.h * (box.portrait ? 0.66 : 0.68), box.h * (box.portrait ? 0.06 : 0.085) * s, '.lch-bubble, .lch-meta');
+    } else if (r.style === 'aurora') {
+      const stacked = el.classList.contains('lau-stack');
+      fitGroup(r, el.querySelector('.lau-words'), box.w * 0.84 * s, box.h * (stacked ? 0.66 : 0.4), box.h * (stacked ? 0.2 : 0.34) * s, '.lau-w');
+    } else if (r.style === 'concert') {
+      const stacked = el.classList.contains('lcn-stack');
+      fitGroup(r, el.querySelector('.lcn-words'), box.w * 0.86 * s, box.h * (stacked ? 0.5 : 0.36), box.h * (stacked ? 0.2 : 0.32) * s, '.lcn-w');
+    } else if (r.style === 'swiss') {
+      const stacked = el.classList.contains('lsw-stack');
+      fitGroup(r, el.querySelector('.lsw-words'), box.w * (box.portrait ? 0.84 : 0.78) * s, box.h * (stacked ? 0.72 : 0.42), box.h * (stacked ? 0.27 : 0.42) * s, '.lsw-w');
     }
   }
 

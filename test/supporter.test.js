@@ -53,7 +53,7 @@ check('only listed extras are locked, and only while locked', () => {
   assert.equal(S.isLocked('vizStyle', 'off', locked), false);
   assert.equal(S.isLocked('unknown', 'x', locked), false);
   assert.equal(S.isLocked('theme', 'synthwave', { unlocked: true }), false);
-  assert.equal(S.lockedCount(), 33);
+  assert.equal(S.lockedCount(), 37);
 });
 
 const DAY = 24 * 60 * 60 * 1000;

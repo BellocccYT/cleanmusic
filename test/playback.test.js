@@ -166,4 +166,26 @@ check('redirect: same origin, other element, local files, loops and junk are ign
   assert.equal(P.REDIRECT_HOPS, 3);
 });
 
+check('lyrics: tapping a line seeks to its start, shifted by the offset', () => {
+  assert.equal(P.lyricSeekTime(12.5, 0, 200), 12.5);
+  // Offset +1 s shows lines one second early, so the line starts earlier in the audio.
+  assert.equal(P.lyricSeekTime(12.5, 1, 200), 11.5);
+  assert.equal(P.lyricSeekTime(12.5, -2, 200), 14.5);
+  assert.equal(P.lyricSeekTime(0.4, 2, 200), 0);
+  // Unknown duration (stream still loading) still seeks.
+  assert.equal(P.lyricSeekTime(30, 0, NaN), 30);
+  assert.equal(P.lyricSeekTime(30, 0, 0), 30);
+  assert.equal(P.lyricSeekTime(1 / 3, 0, 10), 0.333);
+});
+
+check('lyrics: no seek past the end or without a time', () => {
+  assert.equal(P.lyricSeekTime(199.9, 0, 200), null);
+  assert.equal(P.lyricSeekTime(250, 0, 200), null);
+  assert.equal(P.lyricSeekTime(undefined, 0, 200), null);
+  assert.equal(P.lyricSeekTime(null, 0, 200), null);
+  assert.equal(P.lyricSeekTime('', 0, 200), null);
+  assert.equal(P.lyricSeekTime('x', 0, 200), null);
+  assert.equal(P.lyricSeekTime(10, 'x', 200), 10);
+});
+
 console.log(`\n${checks} passed, 0 failed`);

@@ -134,9 +134,24 @@ check('wordTimes is safe for empty lines and missing next time', () => {
 
 /* --- 2.1.1: motion lyric styles (poster, brush, cinema) --------------------- */
 
+check('picker groups: every motion style in exactly one group, no strays', () => {
+  const seen = [];
+  for (const group of LV.PICKER_GROUPS) {
+    assert.ok(group.id && group.label && group.hint, 'group needs id, label and hint');
+    assert.ok(group.styles.length >= 3, `${group.id} is too small`);
+    seen.push(...group.styles);
+  }
+  assert.deepEqual(seen.slice().sort(), plain(LV.STYLES).slice().sort());
+  assert.equal(new Set(seen).size, seen.length);
+  assert.equal(new Set(LV.PICKER_GROUPS.map((group) => group.id)).size, LV.PICKER_GROUPS.length);
+  assert.equal(LV.pickerGroupOf('chat'), 'play');
+  assert.equal(LV.pickerGroupOf('cinema'), 'night');
+  assert.equal(LV.pickerGroupOf('pop'), '');
+});
+
 check('the fifteen motion styles are known, frame styles exclude the stacked one', () => {
-  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel']);
-  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel']);
+  assert.deepEqual(plain(LV.STYLES), ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel', 'chat', 'aurora', 'concert', 'swiss']);
+  assert.deepEqual(plain(LV.FRAME_STYLES), ['poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel', 'chat', 'aurora', 'concert', 'swiss']);
   assert.equal(LV.isStyle('poster'), true);
   assert.equal(LV.isStyle('glitch'), true);
   assert.equal(LV.isStyle('collage'), true);
@@ -567,6 +582,96 @@ check('terminalFrame and tunnelFrame set prompt, rings and key', () => {
   assert.ok(tunnel.rings >= 5 && tunnel.rings <= 7);
   assert.ok(tunnel.depth >= 0.88 && tunnel.depth <= 1.08);
   assert.equal(LV.tunnelFrame(frameChunkLong, 12, { text: 'Be my sex', portrait: true }).stack, true);
+});
+
+/* --- 2.3.1: chat, aurora, concert, swiss ------------------------------------ */
+
+check('chat colours: white text on own bubbles, readable meta and keyword', () => {
+  assert.equal(LV.chatColors(null).me, '#2f62e9');
+  for (const colors of covers) {
+    const c = LV.chatColors(colors);
+    assert.ok(LV.contrast('#ffffff', c.me) >= 4.5, `own bubble (${colors && colors[0]})`);
+    assert.ok(LV.contrast(c.themText, c.them) >= 7, 'other bubble');
+    assert.ok(LV.contrast(c.meta, c.bg) >= 4.5, 'meta line');
+    assert.ok(LV.contrast(c.key, c.them) >= 4.5, 'keyword in the grey bubble');
+  }
+});
+
+check('chatThread: one side per line, duet with the next line, at most four bubbles', () => {
+  const line = { time: 10, text: "Truth is, it's more like loads of cash and a nice guy and a life lived right" };
+  const chunks = LV.chunkLine(line, 20, 'chat');
+  assert.ok(chunks.length >= 3);
+  const first = plain(LV.chatThread(chunks, 0, { lineIndex: 2, prevText: 'Think my paradise is tabloids and flashing lights' }));
+  assert.equal(first.side, 'me', 'even lines are "me"');
+  assert.equal(first.bubbles[0].side, 'them', 'the previous line answers from the other side');
+  assert.match(first.bubbles[0].text, /…$/, 'long previous lines are shortened');
+  assert.equal(first.bubbles[1].fresh, true);
+  const last = plain(LV.chatThread(chunks, chunks.length - 1, { lineIndex: 3, prevText: 'x', nextText: 'next line' }));
+  assert.equal(last.side, 'them');
+  assert.ok(last.bubbles.length <= 4);
+  assert.equal(last.bubbles[last.bubbles.length - 1].chunk, chunks.length - 1, 'newest bubble last');
+  assert.equal(last.bubbles.filter((b) => b.fresh).length, 1);
+  assert.equal(last.typing, 'me', 'at the end of a line the other side types');
+  assert.equal(plain(LV.chatThread(chunks, 0, { lineIndex: 0 })).typing, 'me', 'mid-line the same side keeps typing');
+  assert.equal(plain(LV.chatThread(chunks, chunks.length - 1, { lineIndex: 0 })).typing, '', 'no next line: nobody types');
+});
+
+check('aurora: four veils, keyword bright on the dark ground, rows stack upright', () => {
+  for (const colors of covers) {
+    const c = LV.auroraColors(colors);
+    assert.equal(c.blobs.length, 4);
+    c.blobs.forEach((b) => assert.match(b, /^#[0-9a-f]{6}$/));
+    assert.ok(LV.contrast(c.fg, c.bg) >= 15, 'white words');
+    assert.ok(LV.contrast(c.key, c.bg) >= 9, 'keyword');
+  }
+  const frame = plain(LV.auroraFrame(frameChunkLong, 4, {}));
+  assert.deepEqual(frame, plain(LV.auroraFrame(frameChunkLong, 4, {})), 'deterministic');
+  assert.equal(frame.key, 0, '"Preaching" is the keyword');
+  assert.equal(LV.auroraFrame(frameChunkLong, 4, { portrait: true }).stack, true);
+  assert.ok(['up', 'down'].includes(frame.rise));
+});
+
+check('concert: beams lean to the centre, crowd path is deterministic', () => {
+  for (const colors of covers) {
+    const c = LV.concertColors(colors);
+    assert.equal(c.beams.length, 3);
+    c.beams.forEach((b) => assert.ok(LV.contrast(b, c.bg) >= 5, 'beam visible'));
+    assert.ok(LV.contrast(c.key, c.bg) >= 9);
+  }
+  const frame = plain(LV.concertFrame({ words: [{ text: 'so' }, { text: 'young' }] }, 7, {}));
+  assert.equal(frame.key, 1);
+  assert.ok(frame.beams.length >= 4 && frame.beams.length <= 5);
+  frame.beams.forEach((beam) => {
+    assert.ok(beam.x >= 4 && beam.x <= 96);
+    assert.ok(Math.abs(beam.angle) <= 38);
+  });
+  const leftBeam = frame.beams[0];
+  assert.ok(leftBeam.angle > 0, 'the leftmost beam points to the right (centre)');
+  assert.equal(LV.concertFrame({ words: [{ text: 'so' }, { text: 'young' }] }, 7, { portrait: true }).beams.length, 3);
+  const path = LV.crowdPath(9, 30);
+  assert.equal(path, LV.crowdPath(9, 30));
+  assert.notEqual(path, LV.crowdPath(10, 30));
+  assert.match(path, /^M0 220 /);
+  assert.match(path, / Z$/);
+  assert.ok(!/NaN/.test(path));
+});
+
+check('swiss: paper, ink and one signal colour; number, block and stacking', () => {
+  assert.equal(LV.swissColors(null).accent, '#e1251b');
+  for (const colors of covers) {
+    const c = LV.swissColors(colors);
+    assert.ok(LV.contrast(c.ink, c.paper) >= 15);
+    assert.ok(LV.contrast(c.accent, c.paper) >= 3.5, `signal colour (${colors && colors[0]})`);
+    assert.ok(LV.contrast(c.muted, c.paper) >= 5);
+  }
+  const frame = plain(LV.swissFrame(frameChunkLong, 3, { lineIndex: 6, text: 'A lot of money' }));
+  assert.deepEqual(frame, plain(LV.swissFrame(frameChunkLong, 3, { lineIndex: 6, text: 'A lot of money' })));
+  assert.equal(frame.number, '07');
+  assert.equal(frame.label, 'FORTUNE');
+  assert.ok(['circle', 'square', 'bar', 'quarter'].includes(frame.block.kind));
+  assert.ok(frame.block.x >= 60, 'the block sits on the right side of the grid');
+  assert.equal(frame.stack, true, 'long groups go one word per row');
+  assert.equal(LV.swissFrame({ words: [{ text: 'Go' }, { text: 'now' }] }, 3, {}).stack, false);
 });
 
 console.log(`${checks} passed, 0 failed`);

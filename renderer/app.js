@@ -5592,6 +5592,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.3.1': [
+      'Vier neue Motion-Songtexte: „Chat“ (der Songtext als Nachrichtenverlauf mit Sprechblasen und Tipp-Punkten, jede Zeile antwortet von der anderen Seite), „Aurora“ (weiche Farbschleier aus dem Cover, Wörter tauchen aus der Unschärfe auf), „Bühne“ (Lichtkegel schwenken im Takt über ein Publikum) und „Raster“ (Schweizer Plakat-Typografie mit Raster, Zeilennummer und roter Form).',
+      'Die vier neuen Stile sind wie die übrigen Motion-Stile Supporter-Extras (♥) und erscheinen mit Vorschaubild im Effekt-Menü.',
+    ],
     '2.3.0': [
       'Drei Stile, die den Songtext lesen: „Karten“ legt Tarot-/Spielkarten mit Herz für Liebe, Münze für Geld oder Mond für die Nacht; „Revolte“ wird bei Feuer-, Kampf- und Liebeszeilen zum roten Poster mit Stern; „Bilderbogen“ zeichnet eine flache Szene aus der Zeile (Stadt und Auto bei „Drive“, Mond bei „Night“, Herz bei „Love“).',
       'Vier weitere Motion-Stile: „Tagebuch“ (liniertes Papier, Handschrift, eingeklebtes Cover und eine Kritzelei), „Zeitung“ (Schlagzeile, Spalten, Rasterfoto), „Terminal“ (CRT-Fenster mit Prompt und Befehl) und „Tunnel“ (Neonringe in die Tiefe). Auch sie nehmen ihr Motiv aus der Zeile.',
@@ -6436,7 +6440,7 @@
     if (lyricsState.lines.length) {
       host.innerHTML =
         lyricsState.lines.map((line, index) => `<p data-ly="${index}">${esc(line.text) || '♪'}</p>`).join('') +
-        '<p class="lyrics-note">Songtext: LRCLIB</p>';
+        '<p class="lyrics-note">Songtext: LRCLIB · Zeile antippen, um dorthin zu springen</p>';
       lyricsState.index = -1;
       updateLyricLine(true);
       return;
@@ -6529,11 +6533,15 @@
     ['news', 'Zeitung'],
     ['terminal', 'Terminal'],
     ['tunnel', 'Tunnel'],
+    ['chat', 'Chat'],
+    ['aurora', 'Aurora'],
+    ['concert', 'Bühne'],
+    ['swiss', 'Raster'],
   ];
   // Effects that show one big line instead of the scrolling list.
-  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
+  const BIG_EFFECTS = ['kinetic', 'wave', 'typer', 'zoom', 'lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel', 'chat', 'aurora', 'concert', 'swiss'];
   // Motion styles (lyric-stage.js): fill the whole fullscreen player.
-  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel'];
+  const MOTION_EFFECTS = ['lyricvideo', 'poster', 'brush', 'cinema', 'glitch', 'collage', 'synthwave', 'comic', 'cards', 'revolt', 'story', 'diary', 'news', 'terminal', 'tunnel', 'chat', 'aurora', 'concert', 'swiss'];
 
   function lyricsEffect() {
     return LYRIC_EFFECTS.some(([id]) => id === state.settings.lyricsEffect) ? state.settings.lyricsEffect : 'pop';
@@ -6542,6 +6550,7 @@
   /* --- Effect picker with preview images --------------------------------- */
 
   let lyPickerOpen = false;
+  let lyPickerCat = 'all';
   const LYRIC_THUMB_DIR = 'assets/lyric-styles/';
 
   function lyricEffectLabel(id) {
@@ -6559,16 +6568,52 @@
     return '';
   }
 
+  // 2.3.1: motion styles grouped by look (CMLyricVideo.PICKER_GROUPS); the
+  // chips narrow the menu to one group, "Alle" shows every group with a heading.
+  function lyricPickerGroups() {
+    const groups = (window.CMLyricVideo.PICKER_GROUPS || [])
+      .map((group) => ({ id: group.id, label: group.label, hint: group.hint, styles: group.styles.filter((id) => MOTION_EFFECTS.includes(id)) }))
+      .filter((group) => group.styles.length);
+    const placed = new Set(groups.flatMap((group) => group.styles));
+    const rest = MOTION_EFFECTS.filter((id) => !placed.has(id));
+    if (rest.length) groups.push({ id: 'more', label: 'Weitere', hint: '', styles: rest });
+    return groups;
+  }
+
   function lyricPickerHtml() {
     const current = lyricsEffect();
-    const motion = MOTION_EFFECTS.map((id) => {
+    const groups = lyricPickerGroups();
+    const known = ['all', 'basic', ...groups.map((group) => group.id)];
+    if (!known.includes(lyPickerCat)) lyPickerCat = 'all';
+    const card = (id) => {
       const active = id === current;
       return `<button type="button" class="ly-pick${active ? ' is-active' : ''}" data-ly-pick="${id}" aria-pressed="${active}">
         <span class="ly-pick-art"><img src="${lyricThumb(id)}" alt="" loading="lazy" /></span>
         <span class="ly-pick-name">${esc(lyricEffectLabel(id))}</span>
         ${lyricLockBadge(id)}
       </button>`;
-    }).join('');
+    };
+    const shown = (id) => lyPickerCat === 'all' || lyPickerCat === id;
+    const motion = groups
+      .map(
+        (group) => `<section class="ly-picker-group" data-ly-group="${group.id}"${shown(group.id) ? '' : ' hidden'}>
+        <h3>${esc(group.label)}${group.hint ? `<small>${esc(group.hint)}</small>` : ''}</h3>
+        <div class="ly-picker-grid">${group.styles.map(card).join('')}</div>
+      </section>`
+      )
+      .join('');
+    const basicCount = LYRIC_EFFECTS.filter(([id]) => !MOTION_EFFECTS.includes(id)).length;
+    const tab = (id, label, count) => {
+      const active = lyPickerCat === id;
+      const mark =
+        id !== 'all' &&
+        (id === 'basic' ? !MOTION_EFFECTS.includes(current) : groups.some((group) => group.id === id && group.styles.includes(current)));
+      return `<button type="button" class="ly-picker-tab${active ? ' is-active' : ''}${mark ? ' has-current' : ''}" data-ly-cat="${id}" aria-pressed="${active}">${esc(label)}<span>${count}</span></button>`;
+    };
+    const tabs =
+      tab('all', 'Alle', MOTION_EFFECTS.length + basicCount) +
+      groups.map((group) => tab(group.id, group.label, group.styles.length)).join('') +
+      tab('basic', 'Einfach', basicCount);
     const basic = LYRIC_EFFECTS.filter(([id]) => !MOTION_EFFECTS.includes(id))
       .map(([id, label]) => {
         const active = id === current;
@@ -6580,9 +6625,26 @@
         <div><strong id="ly-picker-title">Songtext-Effekt</strong><small>Vorschau antippen – der Effekt gilt sofort.</small></div>
         <button type="button" class="ly-picker-close" data-ly-picker-close aria-label="Schließen">×</button>
       </header>
-      <div class="ly-picker-grid">${motion}</div>
-      <div class="ly-picker-basic"><span>Einfach</span><div>${basic}</div></div>
+      <div class="ly-picker-tabs" role="group" aria-label="Kategorien">${tabs}</div>
+      <div class="ly-picker-groups">${motion}</div>
+      <div class="ly-picker-basic" data-ly-group="basic"${shown('basic') ? '' : ' hidden'}><span>Einfach</span><div>${basic}</div></div>
     </div>`;
+  }
+
+  function setLyricPickerCat(cat) {
+    const picker = $('#ly-picker');
+    if (!picker) return;
+    lyPickerCat = cat;
+    picker.querySelectorAll('[data-ly-cat]').forEach((button) => {
+      const active = button.dataset.lyCat === cat;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    picker.querySelectorAll('[data-ly-group]').forEach((group) => {
+      group.hidden = !(cat === 'all' || group.dataset.lyGroup === cat);
+    });
+    const card = picker.querySelector('.ly-picker-card');
+    if (card) card.scrollTop = 0;
   }
 
   function openLyricPicker() {
@@ -6632,6 +6694,13 @@
       if (event.target.closest('[data-ly-picker-close]')) {
         event.preventDefault();
         closeLyricPicker();
+        return;
+      }
+      const cat = event.target.closest('[data-ly-cat]');
+      if (cat) {
+        event.preventDefault();
+        event.stopPropagation();
+        setLyricPickerCat(cat.dataset.lyCat);
         return;
       }
       const pick = event.target.closest('[data-ly-pick]');
@@ -6854,6 +6923,29 @@
         lyricsTool(tool.dataset.lyTool);
       });
     }
+    // 2.3.1: tap a synced line → the song jumps there (like Spotify).
+    const host = $('#fs-lyrics');
+    if (host) host.addEventListener('click', (event) => {
+      const line = event.target.closest('p[data-ly]');
+      if (!line || !host.contains(line)) return;
+      const selection = window.getSelection && window.getSelection();
+      if (selection && String(selection).trim()) return; // selecting text, not seeking
+      seekToLyric(Number(line.dataset.ly));
+    });
+  }
+
+  function seekToLyric(index) {
+    const line = lyricsState.lines[index];
+    if (!line || !lyricsSynced() || !audio.src) return false;
+    const item = currentItem();
+    if (item && item.kind === 'radio') return false;
+    const target = CMPlayback.lyricSeekTime(line.time, lyricsOffset(), audio.duration);
+    if (target === null) return false;
+    audio.currentTime = target;
+    if (audio.paused) $('#btn-play').click();
+    updateLyricLine(true);
+    updateFsProgress();
+    return true;
   }
 
   function currentLyric() {
@@ -18142,6 +18234,15 @@ ${updatePanel()}
         if (!state.fullscreen) openFullscreen();
         if (document.fonts && document.fonts.ready) await document.fonts.ready;
         await wait(450); // the player fades in with scale(1.03) for 0.35 s
+        // A hidden smoke window may get no frames at all: then the entrance
+        // animation would stay at scale(1.03) forever. Measure the end state.
+        root.style.animation = 'none';
+        out.rafTicks = await new Promise((resolve) => {
+          let ticks = 0;
+          const tick = () => { ticks += 1; if (ticks < 3) requestAnimationFrame(tick); };
+          requestAnimationFrame(tick);
+          setTimeout(() => resolve(ticks), 300);
+        });
         // Plugin-API v3, "stage": two local test figures behind the words.
         applyStageScene({
           game: 'Smoke',
@@ -18205,17 +18306,21 @@ ${updatePanel()}
           motion: Boolean(beatOn && beatOn !== beatOff),
         };
         const controls = root.querySelector('.fs-controls');
+        // Read the target opacity, not a fade that needs frames to run.
+        controls.style.transition = 'none';
         root.classList.add('idle');
-        await wait(700);
+        await wait(100);
         out.idleOpacity = Number(getComputedStyle(controls).opacity);
         fsActivity();
-        await wait(700);
+        await wait(100);
         out.activeOpacity = Number(getComputedStyle(controls).opacity);
+        controls.style.transition = '';
         state.settings.lyricsEffect = 'karaoke';
         renderLyrics();
         out.plainEffectStage = root.classList.contains('lyrics-stage');
         return out;
       } finally {
+        root.style.animation = '';
         applyStageScene(null);
         lyricsHold = saved.hold;
         state.settings.lyrics = saved.lyrics;
@@ -18258,9 +18363,21 @@ ${updatePanel()}
         const picker = $('#ly-picker');
         const cards = Array.from(picker.querySelectorAll('.ly-pick'));
         const images = Array.from(picker.querySelectorAll('.ly-pick img'));
-        await Promise.all(images.map((img) => (img.decode ? img.decode().catch(() => {}) : Promise.resolve())));
+        // decode() never settles in a window without frames – cap the wait.
+        await Promise.all(images.map((img) => Promise.race([img.decode ? img.decode().catch(() => {}) : Promise.resolve(), wait(2500)])));
         const loaded = images.filter((img) => img.complete && img.naturalWidth > 0).length;
         const open = !picker.hidden;
+        // 2.3.1: categories – a chip narrows the menu, "Alle" shows everything again.
+        const visible = () => Array.from(picker.querySelectorAll('.ly-pick')).filter((el) => el.offsetParent !== null).map((el) => el.dataset.lyPick);
+        const groups = picker.querySelectorAll('.ly-picker-group h3').length;
+        picker.querySelector('[data-ly-cat="night"]').click();
+        const night = visible();
+        const basicHidden = picker.querySelector('.ly-picker-basic').hidden;
+        picker.querySelector('[data-ly-cat="basic"]').click();
+        const basicOnly = visible().length === 0 && !picker.querySelector('.ly-picker-basic').hidden;
+        picker.querySelector('[data-ly-cat="all"]').click();
+        const all = visible().length;
+        const categories = { groups, night: night.length, nightHasCinema: night.includes('cinema'), basicHidden, basicOnly, all };
         const card = picker.querySelector('[data-ly-pick="poster"]');
         if (card) card.click();
         await wait(550);
@@ -18270,6 +18387,7 @@ ${updatePanel()}
           images: images.length,
           loaded,
           applied: $('#fs-lyrics').dataset.fx,
+          categories,
           closed: picker.hidden,
           stage: $('#fullscreen').classList.contains('lyrics-stage'),
         };
@@ -18314,6 +18432,67 @@ ${updatePanel()}
         state.nowMode = saved.mode;
         Object.assign(lyricsState, saved.data);
         renderLyrics();
+      }
+    },
+    // 2.3.1: tapping a synced line seeks there (offset respected, nothing past the end).
+    lyricsSeekTest: async (url) => {
+      const saved = {
+        lyrics: state.settings.lyrics,
+        effect: state.settings.lyricsEffect,
+        offset: state.settings.lyricsOffset,
+        data: Object.assign({}, lyricsState),
+        open: state.fullscreen,
+      };
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const out = {};
+      lyricsHold = true;
+      try {
+        state.settings.lyrics = true;
+        state.settings.lyricsEffect = 'pop';
+        state.settings.lyricsOffset = 0;
+        window.CleanMusic.diagnosticPlay(url, { title: 'Smoke Songtext' });
+        for (let i = 0; i < 60; i += 1) {
+          if (audio.seekable.length && audio.seekable.end(0) > 15 && audio.readyState >= 1) break;
+          await wait(100);
+        }
+        audio.pause();
+        audio.currentTime = 0;
+        Object.assign(lyricsState, {
+          key: 'smoke|seek',
+          lines: [{ time: 0, text: 'Eins' }, { time: 6, text: 'Zwei' }, { time: 12, text: 'Drei' }, { time: 999, text: 'Nach dem Ende' }],
+          plain: '',
+          loading: false,
+          error: null,
+          index: -1,
+        });
+        if (!state.fullscreen) openFullscreen();
+        renderLyrics();
+        const host = $('#fs-lyrics');
+        const line = (index) => host.querySelector(`p[data-ly="${index}"]`);
+        out.lines = host.querySelectorAll('p[data-ly]').length;
+        out.pointer = line(2) ? getComputedStyle(line(2)).cursor : '';
+        line(2).click();
+        out.third = Number(audio.currentTime.toFixed(2));
+        out.on = Boolean(line(2) && line(2).classList.contains('on'));
+        out.playing = !audio.paused;
+        // Offset +1 s: the line shows one second early, so it starts at 5 s.
+        state.settings.lyricsOffset = 1;
+        line(1).click();
+        out.offset = Number(audio.currentTime.toFixed(2));
+        state.settings.lyricsOffset = 0;
+        const before = audio.currentTime;
+        line(3).click();
+        out.pastEnd = Math.abs(audio.currentTime - before) < 0.5;
+        return out;
+      } finally {
+        audio.pause();
+        lyricsHold = false;
+        state.settings.lyrics = saved.lyrics;
+        state.settings.lyricsEffect = saved.effect;
+        state.settings.lyricsOffset = saved.offset;
+        Object.assign(lyricsState, saved.data);
+        renderLyrics();
+        if (!saved.open) closeFullscreen();
       }
     },
     lyricsScrollTest: (index) => {

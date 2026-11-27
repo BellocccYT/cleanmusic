@@ -127,6 +127,22 @@
     return 'follow';
   }
 
+  /**
+   * Tap a synced lyric line → jump there (2.3.1, like Spotify). The lyrics
+   * follow audio time + offset, so the line starts at its time minus the
+   * offset. Returns seconds, or null when there is nothing sensible to seek to
+   * (no time, past the end).
+   */
+  function lyricSeekTime(lineTime, offset, duration) {
+    const at = Number(lineTime);
+    if (lineTime === null || lineTime === undefined || lineTime === '' || !Number.isFinite(at)) return null;
+    const shift = Number(offset);
+    const target = Math.max(0, at - (Number.isFinite(shift) ? shift : 0));
+    const length = Number(duration);
+    if (Number.isFinite(length) && length > 0 && target >= length - 0.25) return null;
+    return Math.round(target * 1000) / 1000;
+  }
+
   window.CMPlayback = {
     REPEAT,
     normalize,
@@ -144,5 +160,6 @@
     REDIRECT_HOPS,
     mediaOrigin,
     redirectDecision,
+    lyricSeekTime,
   };
 })();
