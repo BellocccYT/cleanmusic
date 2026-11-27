@@ -5595,6 +5595,10 @@
     '2.3.1': [
       'Vier neue Motion-Songtexte: „Chat“ (der Songtext als Nachrichtenverlauf mit Sprechblasen und Tipp-Punkten, jede Zeile antwortet von der anderen Seite), „Aurora“ (weiche Farbschleier aus dem Cover, Wörter tauchen aus der Unschärfe auf), „Bühne“ (Lichtkegel schwenken im Takt über ein Publikum) und „Raster“ (Schweizer Plakat-Typografie mit Raster, Zeilennummer und roter Form).',
       'Die vier neuen Stile sind wie die übrigen Motion-Stile Supporter-Extras (♥) und erscheinen mit Vorschaubild im Effekt-Menü.',
+      'Das Effekt-Menü ist nach Kategorien sortiert – Typo & Plakat, Verspielt, Neon & Nacht, Szenen & Licht und Einfach. Ein Chip oben zeigt nur diese Gruppe, der Punkt markiert, wo dein aktueller Effekt liegt.',
+      'Songtext antippen: Im Vollbild-Player springt das Lied zu der Zeile, die du anklickst – wie bei Spotify. Der Zeitversatz wird dabei berücksichtigt.',
+      'Behoben: Manche Titel liefen mit eingeschalteter Klang-Kette (EQ, Bass/Höhen, Angleichen, Boost) stumm oder mit stehendem Spektrum, wenn der Server sie an einen anderen Server weiterleitete. CleanMusic lädt das Ziel jetzt direkt.',
+      'Behoben: Die Hintergründe unter Einstellungen → Darstellung (Aurora, Verlauf, Ozean, Synthwave-Gitter, Partikel-Nebel, Regen auf Glas, eigenes Video) waren verdeckt – jetzt sind sie wieder zu sehen.',
     ],
     '2.3.0': [
       'Drei Stile, die den Songtext lesen: „Karten“ legt Tarot-/Spielkarten mit Herz für Liebe, Münze für Geld oder Mond für die Nacht; „Revolte“ wird bei Feuer-, Kampf- und Liebeszeilen zum roten Poster mit Stern; „Bilderbogen“ zeichnet eine flache Szene aus der Zeile (Stadt und Auto bei „Drive“, Mond bei „Night“, Herz bei „Love“).',
