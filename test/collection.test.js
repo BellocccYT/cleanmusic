@@ -134,4 +134,28 @@ check('lastPlayed builds an id → time map', () => {
   assert.equal(C.lastPlayed(null).size, 0);
 });
 
+check('playlist view: newest first, oldest, title, artist, search – stored indexes stay', () => {
+  const rows = [
+    { id: 'a', title: 'Zebra', artist: 'Björk', addedAt: 3000 },
+    { id: 'b', title: 'apple', artist: 'Adele', addedAt: 1000 },
+    { id: 'c', title: 'Mitte', artist: 'Beyoncé' }, // older playlist: no addedAt
+    { id: 'd', title: 'Échelle', artist: 'Adele', album: 'Live', addedAt: 2000 },
+  ];
+  const ids = (options) => plain(C.playlistView(rows, options).map((row) => row.entry.id));
+  assert.deepEqual(ids({ sort: 'custom' }), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(ids({ sort: 'kaputt' }), ['a', 'b', 'c', 'd'], 'unbekannt = eigene Reihenfolge');
+  assert.deepEqual(ids({ sort: 'added' }), ['a', 'd', 'b', 'c'], 'zuletzt hinzugefügt zuerst, ohne Datum am Ende');
+  assert.deepEqual(ids({ sort: 'oldest' }), ['c', 'b', 'd', 'a']);
+  assert.deepEqual(ids({ sort: 'title' }), ['b', 'd', 'c', 'a'], 'Groß/klein und Akzente egal');
+  assert.deepEqual(ids({ sort: 'artist' }), ['b', 'd', 'c', 'a'], 'Artist, dann Titel');
+  assert.deepEqual(ids({ query: 'adele live' }), ['d'], 'alle Wörter, auch im Album');
+  assert.deepEqual(ids({ query: 'bjork' }), ['a'], 'ohne Akzente');
+  assert.deepEqual(plain(C.playlistView(rows, { sort: 'added', query: 'adele' }).map((row) => row.index)), [3, 1], 'Index in der gespeicherten Liste');
+  assert.equal(rows[0].id, 'a', 'Liste bleibt unverändert');
+  assert.equal(C.playlistViewActive({ sort: 'custom', query: '  ' }), false);
+  assert.equal(C.playlistViewActive({ sort: 'added' }), true);
+  assert.equal(C.playlistViewActive({ sort: 'custom', query: 'x' }), true);
+  assert.deepEqual(plain(C.playlistView(null, {})), []);
+});
+
 console.log(`\n${checks} passed, 0 failed`);

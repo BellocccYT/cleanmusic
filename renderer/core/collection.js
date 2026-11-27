@@ -111,6 +111,52 @@
     return map;
   }
 
+  /* --- Playlist view: sort and search without touching the stored order --- */
+  const PLAYLIST_SORTS = ['custom', 'added', 'oldest', 'title', 'artist'];
+
+  function loose(text) {
+    return String(text == null ? '' : text)
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  /**
+   * The visible order of a playlist. options: { sort, query }.
+   * sort: custom (stored order) | added (newest first) | oldest | title | artist.
+   * query: every word must appear in title, artist or album (accents ignored).
+   * Returns [{ entry, index }] – index is the position in the stored list, so
+   * removing or moving always hits the right title. Entries without addedAt
+   * (older playlists) count as oldest; the stored order breaks ties.
+   */
+  function playlistView(rows, options) {
+    const sort = PLAYLIST_SORTS.includes(options && options.sort) ? options.sort : 'custom';
+    const words = loose(options && options.query).split(/\s+/).filter(Boolean);
+    let view = list(rows)
+      .map((entry, index) => ({ entry, index }))
+      .filter((row) => row.entry);
+    if (words.length) {
+      view = view.filter(({ entry }) => {
+        const hay = loose(`${entry.title || ''} ${entry.artist || ''} ${entry.album || ''}`);
+        return words.every((word) => hay.includes(word));
+      });
+    }
+    const added = (row) => Number(row.entry.addedAt) || 0;
+    const text = (value) => loose(value).trim();
+    const by = (field) => (a, b) => text(a.entry[field]).localeCompare(text(b.entry[field]), 'de');
+    if (sort === 'added') view.sort((a, b) => added(b) - added(a) || b.index - a.index);
+    else if (sort === 'oldest') view.sort((a, b) => added(a) - added(b) || a.index - b.index);
+    else if (sort === 'title') view.sort((a, b) => by('title')(a, b) || a.index - b.index);
+    else if (sort === 'artist') view.sort((a, b) => by('artist')(a, b) || by('title')(a, b) || a.index - b.index);
+    return view;
+  }
+
+  /** True when the view differs from the stored order (then drag & drop is off). */
+  function playlistViewActive(options) {
+    const sort = PLAYLIST_SORTS.includes(options && options.sort) ? options.sort : 'custom';
+    return sort !== 'custom' || Boolean(String((options && options.query) || '').trim());
+  }
+
   window.CMCollection = {
     favoriteIndex,
     isFavorite,
@@ -121,5 +167,8 @@
     moved,
     recordHistory,
     lastPlayed,
+    PLAYLIST_SORTS,
+    playlistView,
+    playlistViewActive,
   };
 })();

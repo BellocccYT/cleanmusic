@@ -45,6 +45,8 @@
     lyricsScroll: true,
     lyricsDim: true,
     lyricsFocus: false, // big lyrics, no cover
+    lyricsHeart: false, // "Kino" style: red heart behind loving lines – off unless switched on
+    playlistSort: 'custom', // playlist view: custom | added | oldest | title | artist (view only)
     vinyl: false, // cover as a spinning record + tonearm
     lyricsEffect: 'pop', // none | pop | karaoke | kinetic
     crossfadeSecs: 6,

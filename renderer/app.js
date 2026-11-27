@@ -291,6 +291,7 @@
     nowLabel: null,
     retry: null,
     favFilter: 'all',
+    playlistQuery: '', // search inside the open playlist (not stored)
     creator: {
       tab: 'ncs',
       category: { foryou: 'mix', ncs: 'top', classics: 'lustig', sfx: 'whoosh', games: 'retro', free: 'cinematic', youtube: 'gaming' },
@@ -1253,7 +1254,9 @@
       default:
         if (key && key.startsWith('playlist:')) {
           const playlist = playlistById(key.slice(9));
-          return playlist ? playlist.items : [];
+          if (!playlist) return [];
+          // The open playlist plays in the order you see (sort/search are a view only).
+          return playlistViewOn(playlist) ? playlistViewRows(playlist).map((row) => row.entry) : playlist.items;
         }
         return [];
     }
@@ -3446,6 +3449,7 @@
   function openPlaylist(id) {
     const playlist = playlistById(id);
     if (!playlist) return;
+    if (state.currentPlaylist !== id) state.playlistQuery = '';
     state.currentPlaylist = id;
     if (playlist.smart && RECIPES.needsRefresh(playlist.smart, 'open')) {
       rebuildSmartPlaylist(playlist, { quiet: true });
@@ -3455,9 +3459,74 @@
     showView('playlist');
   }
 
+  /* Playlist view: sort ("Zuletzt hinzugefügt" …) and search – the stored order
+   * never changes; rows keep the stored index for removing (core/collection.js). */
+  const PLAYLIST_SORT_LABELS = [
+    ['custom', 'Eigene Reihenfolge'],
+    ['added', 'Zuletzt hinzugefügt'],
+    ['oldest', 'Älteste zuerst'],
+    ['title', 'Titel A–Z'],
+    ['artist', 'Artist A–Z'],
+  ];
+
+  function playlistViewOptions() {
+    return { sort: state.settings.playlistSort, query: state.playlistQuery };
+  }
+
+  function playlistViewRows(playlist) {
+    return CMCollection.playlistView(playlist.items, playlistViewOptions());
+  }
+
+  function playlistViewOn(playlist) {
+    return Boolean(playlist) && playlist.id === state.currentPlaylist && CMCollection.playlistViewActive(playlistViewOptions());
+  }
+
+  // Row index in the view → index in the stored list.
+  function playlistStoredIndex(id, index) {
+    const playlist = playlistById(id);
+    if (!playlist || !playlistViewOn(playlist)) return index;
+    const row = playlistViewRows(playlist)[index];
+    return row ? row.index : -1;
+  }
+
+  function playlistRowsHtml(playlist) {
+    const key = `playlist:${playlist.id}`;
+    const smart = Boolean(playlist.smart);
+    const active = playlistViewOn(playlist);
+    const rows = playlistViewRows(playlist);
+    if (!rows.length) return `<p class="muted small playlist-nohit">Keine Titel passen zu „${esc(state.playlistQuery.trim())}“.</p>`;
+    return `<div class="song-list playlist-list">${rows
+      .map((row, index) => songRow(row.entry, index, key, { handle: !smart && !active, removable: !smart }))
+      .join('')}</div>`;
+  }
+
+  function playlistHintText(playlist) {
+    if (playlist.smart) return 'Diese Liste entsteht aus Regeln. „Aktualisieren“ baut sie mit deiner aktuellen Musik neu.';
+    if (playlistViewOn(playlist)) return 'Abspielen folgt dieser Ansicht. Per Drag & Drop sortieren geht unter „Eigene Reihenfolge“ ohne Suche.';
+    return 'Tipp: Titel per Drag & Drop sortieren – oder aus jeder Liste auf eine Playlist in der Seitenleiste ziehen.';
+  }
+
+  function playlistCountText(playlist) {
+    if (!String(state.playlistQuery || '').trim()) return '';
+    return `${playlistViewRows(playlist).length} von ${playlist.items.length}`;
+  }
+
+  // Typing in the search field: only the rows change, the field keeps its focus.
+  function updatePlaylistRows() {
+    const playlist = playlistById(state.currentPlaylist);
+    const host = $('#pl-rows');
+    if (!playlist || !host) return;
+    host.innerHTML = playlistRowsHtml(playlist);
+    const hint = $('#pl-hint');
+    if (hint) hint.textContent = playlistHintText(playlist);
+    const count = $('#pl-count');
+    if (count) count.textContent = playlistCountText(playlist);
+  }
+
   function renderPlaylist() {
     const host = $('#view-playlist');
     if (!host) return;
+    const typing = document.activeElement && document.activeElement.id === 'pl-filter' ? document.activeElement.selectionStart : -1;
 
     const playlist = playlistById(state.currentPlaylist);
     if (!playlist) {
@@ -3470,6 +3539,7 @@
     const smart = Boolean(playlist.smart);
     const total = items.reduce((sum, entry) => sum + (Number(entry.duration) || 0), 0);
     const kinds = new Set(items.map((entry) => entry.sourceLabel).filter(Boolean));
+    const sortId = CMCollection.PLAYLIST_SORTS.includes(state.settings.playlistSort) ? state.settings.playlistSort : 'custom';
 
     host.innerHTML = `
       <div class="page">
@@ -3510,17 +3580,21 @@
         </div>
 
         ${
+          items.length > 1
+            ? `<div class="playlist-tools">
+                 <input id="pl-filter" type="search" placeholder="In „${esc(playlist.name)}“ suchen …" value="${esc(state.playlistQuery)}" spellcheck="false" aria-label="In der Playlist suchen" />
+                 <span class="muted small" id="pl-count">${esc(playlistCountText(playlist))}</span>
+                 <div class="radio-tags" role="group" aria-label="Sortieren">${PLAYLIST_SORT_LABELS.map(
+                   ([id, label]) => `<button class="radio-tag ${sortId === id ? 'active' : ''}" data-pl-sort="${id}">${label}</button>`
+                 ).join('')}</div>
+               </div>`
+            : ''
+        }
+
+        ${
           items.length
-            ? `<div class="song-list playlist-list">${items
-                .map((entry, index) =>
-                  songRow(entry, index, key, { handle: !smart, removable: !smart })
-                )
-                .join('')}</div>
-               <p class="muted small">${
-                 smart
-                   ? 'Diese Liste entsteht aus Regeln. „Aktualisieren“ baut sie mit deiner aktuellen Musik neu.'
-                   : 'Tipp: Titel per Drag & Drop sortieren – oder aus jeder Liste auf eine Playlist in der Seitenleiste ziehen.'
-               }</p>`
+            ? `<div id="pl-rows">${playlistRowsHtml(playlist)}</div>
+               <p class="muted small" id="pl-hint">${esc(playlistHintText(playlist))}</p>`
             : smart
               ? `<div class="empty compact">
                    <div class="empty-icon">${ICONS.spark}</div>
@@ -3538,6 +3612,13 @@
                  </div>`
         }
       </div>`;
+    if (typing >= 0) {
+      const field = $('#pl-filter');
+      if (field) {
+        field.focus();
+        field.setSelectionRange(typing, typing);
+      }
+    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -5592,6 +5673,10 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.3.2': [
+      'Playlists sortieren und durchsuchen: „Zuletzt hinzugefügt“, „Älteste zuerst“, Titel oder Artist A–Z und ein Suchfeld. Das ist nur eine Ansicht – deine eigene Reihenfolge bleibt gespeichert, Abspielen folgt der Ansicht.',
+      'Songtext-Stil „Kino“: Das rote Herz hinter Liebes-Zeilen ist jetzt standardmäßig aus und lässt sich in den Songtext-Einstellungen oder im Vollbild („♥ Herz“) einschalten.',
+    ],
     '2.3.1': [
       'Vier neue Motion-Songtexte: „Chat“ (der Songtext als Nachrichtenverlauf mit Sprechblasen und Tipp-Punkten, jede Zeile antwortet von der anderen Seite), „Aurora“ (weiche Farbschleier aus dem Cover, Wörter tauchen aus der Unschärfe auf), „Bühne“ (Lichtkegel schwenken im Takt über ein Publikum) und „Raster“ (Schweizer Plakat-Typografie mit Raster, Zeilennummer und roter Form).',
       'Die vier neuen Stile sind wie die übrigen Motion-Stile Supporter-Extras (♥) und erscheinen mit Vorschaubild im Effekt-Menü.',
@@ -6781,6 +6866,7 @@
       title: item ? item.title || '' : '',
       size: state.settings.lyricsSize,
       scene: stageScene,
+      heart: state.settings.lyricsHeart === true,
     });
   }
 
@@ -6823,6 +6909,7 @@
       <button data-ly-tool="later" title="Songtext später (wenn er vorausläuft)">später »</button>
       <button data-ly-tool="effect" title="Effekt wechseln">Effekt: ${(LYRIC_EFFECTS.find(([id]) => id === lyricsEffect()) || [])[1]}</button>
       <button data-ly-tool="focus" class="${state.settings.lyricsFocus ? 'on' : ''}" title="Großansicht: nur Songtext">Großansicht</button>
+      ${lyricsEffect() === 'cinema' ? `<button data-ly-tool="heart" class="${state.settings.lyricsHeart === true ? 'on' : ''}" title="Herz hinter Liebes-Zeilen ein/aus">♥ Herz ${state.settings.lyricsHeart === true ? 'an' : 'aus'}</button>` : ''}
       <button data-ly-tool="refresh" title="Songtext neu suchen">Neu suchen</button>`;
   }
 
@@ -6853,6 +6940,9 @@
         return;
       case 'focus':
         setLyricsOption({ lyricsFocus: !state.settings.lyricsFocus });
+        return;
+      case 'heart':
+        setLyricsOption({ lyricsHeart: state.settings.lyricsHeart !== true });
         return;
       case 'effect':
         openLyricPicker();
@@ -6914,6 +7004,10 @@
               <span><strong>Großansicht</strong><small>Im Vollbild-Player nur Songtext, groß und ohne Cover.</small></span>
               <input type="checkbox" id="opt-ly-focus" ${state.settings.lyricsFocus ? 'checked' : ''} />
             </label>
+            ${lyricsEffect() === 'cinema' ? `<label class="toggle-row">
+              <span><strong>Herz im Kino-Stil</strong><small>Rotes Herz hinter Zeilen über Liebe, Herz oder Alleinsein. Standardmäßig aus.</small></span>
+              <input type="checkbox" id="opt-ly-heart" ${state.settings.lyricsHeart === true ? 'checked' : ''} />
+            </label>` : ''}
           </div>`;
   }
 
@@ -16112,6 +16206,7 @@ ${updatePanel()}
 
     const reorderTarget = (event) => {
       if (!drag || drag.list !== `playlist:${state.currentPlaylist}`) return null;
+      if (playlistViewOn(playlistById(state.currentPlaylist))) return null; // sorted/filtered: no reordering
       const row = event.target.closest('.song-row[data-index]');
       if (!row) return null;
       const rect = row.getBoundingClientRect();
@@ -16202,7 +16297,7 @@ ${updatePanel()}
         revealDownload(entry);
         return;
       case 'remove':
-        if (key.startsWith('playlist:')) removeFromPlaylist(key.slice(9), index);
+        if (key.startsWith('playlist:')) removeFromPlaylist(key.slice(9), playlistStoredIndex(key.slice(9), index));
         return;
       default:
         playList(key, index);
@@ -16502,7 +16597,20 @@ ${updatePanel()}
       }
     });
 
+    $('#view-playlist').addEventListener('input', (event) => {
+      if (!event.target || event.target.id !== 'pl-filter') return;
+      state.playlistQuery = event.target.value.slice(0, 80);
+      updatePlaylistRows();
+    });
+
     $('#view-playlist').addEventListener('click', (event) => {
+      const sortButton = event.target.closest('[data-pl-sort]');
+      if (sortButton) {
+        state.settings.playlistSort = sortButton.dataset.plSort;
+        saveSettings();
+        renderPlaylist();
+        return;
+      }
       const action = event.target.closest('[data-pl-action]');
       if (!action || !state.currentPlaylist) return;
       const key = `playlist:${state.currentPlaylist}`;
@@ -17057,8 +17165,8 @@ ${updatePanel()}
         return;
       }
 
-      if (['opt-ly-scroll', 'opt-ly-dim', 'opt-ly-focus'].includes(event.target.id)) {
-        const key = { 'opt-ly-scroll': 'lyricsScroll', 'opt-ly-dim': 'lyricsDim', 'opt-ly-focus': 'lyricsFocus' }[event.target.id];
+      if (['opt-ly-scroll', 'opt-ly-dim', 'opt-ly-focus', 'opt-ly-heart'].includes(event.target.id)) {
+        const key = { 'opt-ly-scroll': 'lyricsScroll', 'opt-ly-dim': 'lyricsDim', 'opt-ly-focus': 'lyricsFocus', 'opt-ly-heart': 'lyricsHeart' }[event.target.id];
         state.settings[key] = event.target.checked;
         saveSettings();
         renderLyrics();

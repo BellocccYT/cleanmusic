@@ -109,7 +109,7 @@ window.CMLyricStage = (function () {
 
   /**
    * opts: { style, lines, index, time: () => seconds, colors: ['#hex', '#hex'] | null,
-   *         artwork, title, size: 's'|'m'|'l'|'xl' }
+   *         artwork, title, size: 's'|'m'|'l'|'xl', heart: boolean (Kino heart, opt-in) }
    */
   function render(stage, opts) {
     const LV = lv();
@@ -430,7 +430,8 @@ window.CMLyricStage = (function () {
       stage.style.setProperty('--lc-fg', c.fg);
       stage.style.setProperty('--lc-key', c.key);
       stage.style.setProperty('--lc-heart', c.heart);
-      stage.classList.toggle('lc-has-heart', !intro && Boolean(line.text) && LV.cinemaHeart(line.text, seedOf(line.text)));
+      // The heart is opt-in (setting "Herz im Kino-Stil", off by default).
+      stage.classList.toggle('lc-has-heart', r.opts.heart === true && !intro && Boolean(line.text) && LV.cinemaHeart(line.text, seedOf(line.text)));
     } else if (r.style === 'glitch') {
       const c = LV.glitchColors(colors);
       r.glitch = c;
