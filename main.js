@@ -35,6 +35,27 @@ const stageScene = require('./lib/stage-scene');
 const QRCode = require('qrcode');
 const { createSocial, createFakeServer } = require('./social-main');
 
+// A packaged app (or a background smoke run) may outlive the console/pipe it
+// writes to. console.log then throws EPIPE inside Node's stream write and the
+// whole main process dies - logging must never do that.
+function installConsoleGuards() {
+  ['log', 'error', 'warn', 'info', 'debug'].forEach((level) => {
+    const original = console[level];
+    if (typeof original !== 'function') return;
+    console[level] = (...args) => {
+      try {
+        original.apply(console, args);
+      } catch {
+        /* stdout/stderr is gone (EPIPE) - ignore the log line */
+      }
+    };
+  });
+  [process.stdout, process.stderr].forEach((stream) => {
+    if (stream && typeof stream.on === 'function') stream.on('error', () => {});
+  });
+}
+installConsoleGuards();
+
 const ROOT = __dirname;
 const isDev = process.argv.includes('--dev');
 const isSmoke = process.argv.includes('--smoke');
@@ -3061,7 +3082,7 @@ function createMainWindow() {
           // Lyrics: a title that turns out to be a 30-s preview gets the static view (and back).
           try {
             const lyricMode = await mainWindow.webContents.executeJavaScript('window.CleanMusic.lyricsModeTest()');
-            if (!(lyricMode && lyricMode.before === 3 && lyricMode.preview && lyricMode.full === 3)) {
+            if (!(lyricMode && lyricMode.before === 3 && lyricMode.preview && lyricMode.full === 3 && lyricMode.sourceNote)) {
               throw new Error(JSON.stringify(lyricMode));
             }
             console.log('SMOKE_LYRICS_MODE:', JSON.stringify(lyricMode));
@@ -3875,6 +3896,12 @@ function createMainWindow() {
           console.log('SMOKE_MIGRATIONS:', JSON.stringify(await smokeMigrations()));
         } catch (error) {
           console.error('SMOKE_MIGRATIONS_FAIL:', error.message);
+        }
+
+        try {
+          console.log('SMOKE_I18N:', JSON.stringify(await smokeI18n()));
+        } catch (error) {
+          console.error('SMOKE_I18N_FAIL:', error.message);
         }
 
         try {
@@ -6941,6 +6968,182 @@ async function smokeMigrations() {
   return summary;
 }
 
+async function smokeI18n() {
+  const result = await mainWindow.webContents.executeJavaScript(`
+    (async () => {
+      const I = window.CMI18n;
+      if (!I) return { error: 'CMI18n fehlt' };
+      const catalogs = window.CM_I18N_CATALOGS || {};
+      if (!catalogs.de || !catalogs.en) return { error: 'Kataloge fehlen' };
+      const deKeys = Object.keys(catalogs.de);
+      const enKeys = Object.keys(catalogs.en);
+      const missingEn = deKeys.filter((key) => !enKeys.includes(key));
+      const label = (view) => {
+        const node = document.querySelector('[data-view="' + view + '"] [data-i18n]');
+        return node ? node.textContent.trim() : '';
+      };
+      const start = {
+        lang: I.lang(),
+        home: label('home'),
+        search: label('search'),
+        next: document.querySelector('#btn-next').getAttribute('title'),
+        placeholder: document.querySelector('#global-search').getAttribute('placeholder'),
+        settings: label('settings'),
+      };
+      I.setLang('en');
+      I.applyStatic();
+      const english = {
+        lang: I.lang(),
+        htmlLang: document.documentElement.lang,
+        dataLang: document.documentElement.getAttribute('data-lang'),
+        home: label('home'),
+        search: label('search'),
+        next: document.querySelector('#btn-next').getAttribute('title'),
+        placeholder: document.querySelector('#global-search').getAttribute('placeholder'),
+        settings: label('settings'),
+        services: I.t('nav.moreServices', { count: 4 }),
+        repeat: window.CMPlayback.repeatLabel('all'),
+      };
+      // Walk every main view in English: a missing key would surface as
+      // "nav.home"-style text, so the sweep checks the rendered output.
+      const views = ['home', 'search', 'mixes', 'radio', 'favorites', 'local', 'presets', 'downloads', 'settings'];
+      const rawKeys = [];
+      for (const view of views) {
+        const item = document.querySelector('[data-view="' + view + '"]');
+        if (!item) continue;
+        item.click();
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        const text = document.body.innerText || '';
+        const hit = text.match(/\b(?:nav|home|player|search|fav|playlist|presets|mixes|radio|local|queue|menu|artist|dl|lyrics|import)\.[a-zA-Z][\w.]*/);
+        if (hit) rawKeys.push(view + ':' + hit[0]);
+      }
+      // Settings are translated while they render: playback first, then the
+      // system tab with the language panel.
+      const settingsEnglish = {};
+      const settingsView = document.querySelector('#view-settings');
+      if (settingsView) {
+        const playbackTab = document.querySelector('[data-settings-tab="playback"]');
+        if (playbackTab) playbackTab.click();
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        const playbackText = document.querySelector('#view-settings').innerText || '';
+        settingsEnglish.playback =
+          playbackText.includes('Open services in the system browser') &&
+          playbackText.includes('Autoplay') &&
+          playbackText.includes('Load lyrics');
+        const lookTab = document.querySelector('[data-settings-tab="look"]');
+        if (lookTab) lookTab.click();
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        const lookText = document.querySelector('#view-settings').innerText || '';
+        settingsEnglish.look =
+          lookText.includes('Appearance') &&
+          lookText.includes('Show visualizer') &&
+          lookText.includes('Fullscreen performance');
+        const systemTab = document.querySelector('[data-settings-tab="system"]');
+        if (systemTab) systemTab.click();
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        const systemText = document.querySelector('#view-settings').innerText || '';
+        settingsEnglish.system =
+          systemText.includes('Language') &&
+          systemText.includes('System & startup') &&
+          systemText.includes('Copy diagnostics');
+      }
+      const untranslated = Array.from(document.querySelectorAll('[data-i18n]')).filter(
+        (node) => node.textContent.trim() === node.getAttribute('data-i18n')
+      ).length;
+      const missing = I.missingKeys();
+      I.setLang(start.lang || 'de');
+      I.applyStatic();
+      const back = {
+        lang: I.lang(),
+        search: label('search'),
+        next: document.querySelector('#btn-next').getAttribute('title'),
+      };
+
+      // The language panel lives in Settings → System; the select must persist
+      // the setting and the restart button must be there.
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      document.querySelector('[data-view="settings"]').click();
+      await wait(120);
+      const tab = document.querySelector('[data-settings-tab="system"]');
+      if (tab) tab.click();
+      await wait(120);
+      const panel = document.querySelector('#language-panel');
+      const select = document.querySelector('#opt-language');
+      const languageUi = {
+        panel: Boolean(panel),
+        select: Boolean(select),
+        options: select ? Array.from(select.options).map((option) => option.value).join(',') : '',
+        value: select ? select.value : '',
+        restart: Boolean(document.querySelector('[data-language-restart]')),
+        saved: '',
+      };
+      if (select) {
+        select.value = 'en';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await wait(80);
+        languageUi.saved = JSON.parse(localStorage.getItem('cleanmusic.settings.v1') || '{}').language;
+        select.value = 'de';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await wait(80);
+        languageUi.restored = JSON.parse(localStorage.getItem('cleanmusic.settings.v1') || '{}').language;
+      }
+      return { start, english, back, untranslated, missing, keys: deKeys.length, missingEn: missingEn.slice(0, 5), languageUi, rawKeys, settingsEnglish };
+    })()
+  `);
+  if (!result || result.error) throw new Error((result && result.error) || 'keine Antwort');
+  const { start, english, back } = result;
+  const languageUi = result.languageUi || {};
+  const rawKeys = result.rawKeys || [];
+  const settingsEnglish = result.settingsEnglish || {};
+  const summary = {
+    start: start.lang,
+    english: english.search,
+    untranslated: result.untranslated,
+    missing: result.missing,
+    keys: result.keys,
+    back: back.search,
+    languagePanel: Boolean(languageUi.panel && languageUi.select && languageUi.restart),
+    settings: Boolean(settingsEnglish.playback && settingsEnglish.look && settingsEnglish.system),
+    views: rawKeys.length ? rawKeys.length : 9,
+  };
+  const untranslatedNext = english.next === start.next;
+  if (
+    start.lang !== 'de' ||
+    start.search !== 'Suche' ||
+    start.settings !== 'Einstellungen' ||
+    english.lang !== 'en' ||
+    english.htmlLang !== 'en' ||
+    english.dataLang !== 'en' ||
+    english.home !== 'Home' ||
+    english.search !== 'Search' ||
+    english.next !== 'Next' ||
+    untranslatedNext ||
+    english.placeholder !== 'Search for a song, artist or album …' ||
+    english.settings !== 'Settings' ||
+    english.services !== 'More services (4)' ||
+    english.repeat !== 'Repeat all' ||
+    result.untranslated !== 0 ||
+    result.missing.length !== 0 ||
+    result.missingEn.length !== 0 ||
+    back.search !== 'Suche' ||
+    back.next !== start.next ||
+    !languageUi.panel ||
+    !languageUi.select ||
+    !languageUi.restart ||
+    languageUi.options !== 'de,en' ||
+    languageUi.value !== 'de' ||
+    languageUi.saved !== 'en' ||
+    languageUi.restored !== 'de' ||
+    !settingsEnglish.playback ||
+    !settingsEnglish.look ||
+    !settingsEnglish.system ||
+    rawKeys.length !== 0
+  ) {
+    throw new Error(JSON.stringify(Object.assign({}, summary, { english, back, languageUi, rawKeys, settingsEnglish })));
+  }
+  return summary;
+}
+
 async function smokeDiagnose() {
   if (!isSmoke) throw new Error('Diagnose-Smoke ist nur im Smoke-Profil erlaubt.');
   const server = http.createServer((request, response) => {
@@ -7161,16 +7364,78 @@ async function smokeRedirect() {
         return result;
       })()
     `);
+    // A lost analyser tap (device change, throttled background frame) must come
+    // back on its own – the overlay path drives this through spectrum().
+    const recovered = await mainWindow.webContents.executeJavaScript(`
+      (async () => {
+        const cm = window.CleanMusic;
+        const viz = window.CMVisualizer;
+        const audio = document.querySelector('#audio');
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const wasEnabled = viz.isEnabled();
+        viz.setEnabled(true);
+        audio.loop = true; // the tone is short; keep it playing during recovery
+        cm.diagnosticPlay(${JSON.stringify(to)}, { title: 'Tap-Recovery' });
+        viz.setEnabled(true);
+        viz.setWatching(true, 'probe'); // independent of the visualizer setting
+        const stateOf = () => ({
+          enabled: viz.isEnabled(),
+          ctx: viz.contextState(),
+          paused: audio.paused,
+          ended: audio.ended,
+          loop: audio.loop,
+          src: (audio.currentSrc || audio.getAttribute('src') || '').slice(-18),
+          time: Number(audio.currentTime.toFixed(2)),
+          signal: viz.signal(),
+        });
+        let before = 0;
+        for (let i = 0; i < 30; i += 1) {
+          await wait(200);
+          const value = viz.signal();
+          if (value !== null && value > 0.02) { before = value; break; }
+        }
+        const snapshot = stateOf();
+        viz._dropTap();
+        const dropped = { analysing: viz.isAnalysing(), signal: viz.signal(), state: stateOf() };
+        let peak = 0;
+        for (let i = 0; i < 50; i += 1) {
+          await wait(200);
+          viz.spectrum(32); // the overlay path also drives the watchdog
+          const value = viz.signal();
+          if (value !== null && value > 0.02) { peak = Math.max(peak, value); break; }
+        }
+        const analysing = viz.isAnalysing();
+        audio.pause();
+        audio.loop = false;
+        audio.removeAttribute('src');
+        audio.load();
+        viz.setWatching(false, 'probe');
+        viz.setEnabled(wasEnabled);
+        return {
+          before: Number(before.toFixed(4)),
+          snapshot,
+          dropped,
+          peak: Number(peak.toFixed(4)),
+          analysing,
+          after: stateOf(),
+        };
+      })()
+    `);
     const text = await diagnosticText();
     const result = {
       ...played,
       pulled: { followed: pulled.followed, peak: pulled.peak, silentBefore: pulled.before.signal === 0 },
+      recovered,
       listed:
         text.includes('Medien-Weiterleitungen auf andere Server (letzte 10)') &&
         text.includes(`127.0.0.1:${originPort} → 127.0.0.1:${targetPort}`),
       hostOnly: !text.includes('/weiter.wav') && !text.includes('/ziel.wav'),
     };
-    if (!result.engine || !result.followed || !(result.peak > 0.05) || !result.listed || !result.hostOnly) {
+    if (
+      !result.engine || !result.followed || !(result.peak > 0.05) || !result.listed || !result.hostOnly ||
+      !(recovered.before > 0.02) || recovered.dropped.analysing || recovered.dropped.signal !== null ||
+      !(recovered.peak > 0.02) || !recovered.analysing
+    ) {
       throw new Error(JSON.stringify(result));
     }
     return result;
@@ -8509,7 +8774,9 @@ ipcMain.handle('plugin-lookup', async (_event, id, url) => {
 
 /* --- Lyrics (1.5): LRCLIB, a free community lyrics database ---------- *
  * Only title, artist, album and length are sent; results are cached for
- * the session. Synced lyrics come as LRC ("[mm:ss.xx] line"). */
+ * the session. Synced lyrics come as LRC ("[mm:ss.xx] line").
+ * When LRCLIB has nothing, lyrics.ovh (another free, key-less database) is
+ * asked for plain lyrics. No API key, no account, no user data. */
 
 const lyricsCache = new Map();
 
@@ -8544,6 +8811,29 @@ function parseLrc(text) {
   return lines.sort((a, b) => a.time - b.time).slice(0, 1500);
 }
 
+async function lyricsOvh(title, artist) {
+  if (!title || !artist) return '';
+  const url = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await net.fetch(url, {
+      signal: controller.signal,
+      headers: { 'user-agent': `CleanMusic/${app.getVersion()} (https://github.com/BellocccYT/cleanmusic)` },
+    });
+    if (!response.ok) return '';
+    const json = await response.json();
+    return cleanText((json && json.lyrics) || '', 20000)
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function lrclibJson(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
@@ -8576,6 +8866,7 @@ ipcMain.handle('lyrics-get', async (_event, query) => {
       ? { lines: parseLrc(entry.syncedLyrics), plain: cleanText(entry.plainLyrics || '', 20000), instrumental: Boolean(entry.instrumental) }
       : null;
   let result = null;
+  let unreachable = false;
   try {
     const params = new URLSearchParams({ track_name: title, artist_name: artist });
     if (input.album) params.set('album_name', cleanText(input.album, 200));
@@ -8588,12 +8879,23 @@ ipcMain.handle('lyrics-get', async (_event, query) => {
       if (best) result = pick(best);
     }
   } catch {
+    unreachable = true;
+  }
+  // Fallback: another free, key-less lyrics database. Only plain lyrics
+  // (no timestamps), and never for a title LRCLIB explicitly calls instrumental.
+  if (!result || (!result.lines.length && !result.plain)) {
+    if (!(result && result.instrumental)) {
+      const plain = await lyricsOvh(title, artist);
+      if (plain) result = { lines: [], plain, instrumental: false, source: 'ovh' };
+    }
+  }
+  if (unreachable && (!result || (!result.lines.length && !result.plain))) {
     return { lines: [], plain: '', error: 'Die Songtext-Suche ist gerade nicht erreichbar.' };
   }
   const out =
     result && (result.lines.length || result.plain)
-      ? { lines: result.lines, plain: result.plain, error: null }
-      : { lines: [], plain: '', error: result && result.instrumental ? 'Instrumental – kein Songtext.' : 'Kein Songtext gefunden.' };
+      ? { lines: result.lines, plain: result.plain, source: result.source || 'lrclib', error: null }
+      : { lines: [], plain: '', source: '', error: result && result.instrumental ? 'Instrumental - kein Songtext.' : 'Kein Songtext gefunden.' };
   lyricsCache.set(key, out);
   if (lyricsCache.size > 200) lyricsCache.delete(lyricsCache.keys().next().value);
   return out;

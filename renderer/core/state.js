@@ -39,6 +39,7 @@
     lyrics: false,
     transition: 'off', // off | gapless | crossfade
     layout: 'advanced', // simple | advanced
+    language: 'de', // de | en – interface language, applies on the next start
     lyricsSize: 'm', // s | m | l | xl
     lyricsAlign: 'left', // left | center
     lyricsOffset: 0, // seconds, + = lines come earlier

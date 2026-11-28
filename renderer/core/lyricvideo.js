@@ -230,10 +230,38 @@
   // 2.3.1: the effect picker groups the motion styles. Every style sits in
   // exactly one group (test/lyricvideo.test.js checks that).
   const PICKER_GROUPS = [
-    { id: 'type', label: 'Typo & Plakat', hint: 'Große Schrift, klare Formen', styles: ['lyricvideo', 'poster', 'swiss', 'revolt', 'news'] },
-    { id: 'play', label: 'Verspielt', hint: 'Papier, Comic, Handschrift, Chat', styles: ['brush', 'collage', 'comic', 'diary', 'chat'] },
-    { id: 'night', label: 'Neon & Nacht', hint: 'Dunkel, Glühen, Retro-Technik', styles: ['cinema', 'glitch', 'synthwave', 'tunnel', 'terminal'] },
-    { id: 'scene', label: 'Szenen & Licht', hint: 'Bilder und Licht zum Songtext', styles: ['aurora', 'concert', 'cards', 'story'] },
+    {
+      id: 'type',
+      label: 'Typo & Plakat',
+      labelEn: 'Type & poster',
+      hint: 'Große Schrift, klare Formen',
+      hintEn: 'Big type, clear shapes',
+      styles: ['lyricvideo', 'poster', 'swiss', 'revolt', 'news'],
+    },
+    {
+      id: 'play',
+      label: 'Verspielt',
+      labelEn: 'Playful',
+      hint: 'Papier, Comic, Handschrift, Chat',
+      hintEn: 'Paper, comic, handwriting, chat',
+      styles: ['brush', 'collage', 'comic', 'diary', 'chat'],
+    },
+    {
+      id: 'night',
+      label: 'Neon & Nacht',
+      labelEn: 'Neon & night',
+      hint: 'Dunkel, Glühen, Retro-Technik',
+      hintEn: 'Dark, glow, retro tech',
+      styles: ['cinema', 'glitch', 'synthwave', 'tunnel', 'terminal'],
+    },
+    {
+      id: 'scene',
+      label: 'Szenen & Licht',
+      labelEn: 'Scenes & light',
+      hint: 'Bilder und Licht zum Songtext',
+      hintEn: 'Images and light for the lyrics',
+      styles: ['aurora', 'concert', 'cards', 'story'],
+    },
   ];
 
   function pickerGroupOf(style) {

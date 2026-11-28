@@ -32,6 +32,7 @@
           id="global-search"
           type="search"
           placeholder="Song, Artist oder Album suchen …"
+          data-i18n-placeholder="topbar.searchPlaceholder"
           autocomplete="off"
           spellcheck="false"
         />
@@ -39,113 +40,113 @@
       </div>
 
       <div class="topbar-actions">
-        <button id="btn-open-external" class="btn ghost small" disabled>Im Browser</button>
+        <button id="btn-open-external" class="btn ghost small" disabled data-i18n="topbar.openInBrowser">Im Browser</button>
       </div>
     </header>
 
     <nav id="sidebar">
       <div class="nav-group">
-        <div class="nav-label">Start</div>
+        <div class="nav-label" data-i18n="nav.groupStart">Start</div>
         <button class="nav-item active" data-view="home">
-          <span class="nav-dot"></span>Home
+          <span class="nav-dot"></span><span data-i18n="nav.home">Home</span>
         </button>
         <button class="nav-item" data-view="search">
-          <span class="nav-dot"></span>Suche
+          <span class="nav-dot"></span><span data-i18n="nav.search">Suche</span>
         </button>
         <button class="nav-item" data-view="mixes">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3Z"></path><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"></path></svg>
           </span>
-          <span class="svc-name">Mixes</span>
+          <span class="svc-name" data-i18n="nav.mixes">Mixes</span>
         </button>
         <button class="nav-item" data-view="friends" id="nav-friends" hidden>
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19c.8-3.2 3-5 5.5-5s4.7 1.8 5.5 5"></path><circle cx="17" cy="9" r="2.4"></circle><path d="M16 14.2c2.3.2 3.9 1.8 4.5 4.3"></path></svg>
           </span>
-          <span class="svc-name">Freunde</span>
+          <span class="svc-name" data-i18n="nav.friends">Freunde</span>
           <span class="nav-count" id="friends-count"></span>
         </button>
         <button class="nav-item" data-view="radio">
-          <span class="nav-dot"></span>Radio
+          <span class="nav-dot"></span><span data-i18n="nav.radio">Radio</span>
         </button>
         <button class="nav-item" data-view="creator">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9"></path><path d="M14.5 14.5 20 20"></path><path d="M8.1 8.1 12 12"></path></svg>
           </span>
-          <span class="svc-name">Cutter-Modus</span>
+          <span class="svc-name" data-i18n="nav.creator">Cutter-Modus</span>
         </button>
       </div>
 
       <div class="nav-group">
-        <div class="nav-label">Bibliothek</div>
+        <div class="nav-label" data-i18n="nav.groupLibrary">Bibliothek</div>
         <button class="nav-item" data-view="favorites" data-drop="favorites">
           <span class="nav-ic heart">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.4-9.2-8.9C1.5 8.1 3.4 4.6 6.9 4.6c2.2 0 3.9 1.3 5.1 3 1.2-1.7 2.9-3 5.1-3 3.5 0 5.4 3.5 4.1 6.7-2 4.5-9.2 8.9-9.2 8.9Z"></path></svg>
           </span>
-          <span class="svc-name">Favoriten</span>
+          <span class="svc-name" data-i18n="nav.favorites">Favoriten</span>
           <span class="nav-count" id="fav-count"></span>
         </button>
         <button class="nav-item" data-view="local">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"></path></svg>
           </span>
-          <span class="svc-name">Lokale Musik</span>
+          <span class="svc-name" data-i18n="nav.local">Lokale Musik</span>
         </button>
         <button class="nav-item" data-view="presets">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3Z"></path></svg>
           </span>
-          <span class="svc-name">Vorlagen</span>
+          <span class="svc-name" data-i18n="nav.presets">Vorlagen</span>
         </button>
         <div id="playlist-nav" class="playlist-nav"></div>
-        <button class="nav-item nav-new" id="btn-new-playlist" data-drop="new" title="Neue Playlist (auch per Drag & Drop)">
+        <button class="nav-item nav-new" id="btn-new-playlist" data-drop="new" title="Neue Playlist (auch per Drag &amp; Drop)" data-i18n-title="nav.newPlaylistTitle">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
           </span>
-          <span class="svc-name">Neue Playlist</span>
+          <span class="svc-name" data-i18n="nav.newPlaylist">Neue Playlist</span>
         </button>
-        <button class="nav-item nav-new" id="btn-smart-playlist" title="Smart-Playlist aus Regeln erstellen">
+        <button class="nav-item nav-new" id="btn-smart-playlist" title="Smart-Playlist aus Regeln erstellen" data-i18n-title="nav.smartPlaylistTitle">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3Z"></path></svg>
           </span>
-          <span class="svc-name">Smart-Playlist</span>
+          <span class="svc-name" data-i18n="nav.smartPlaylist">Smart-Playlist</span>
         </button>
-        <button class="nav-item nav-new" id="btn-spotify-import" title="Playlist übertragen">
+        <button class="nav-item nav-new" id="btn-spotify-import" title="Playlist übertragen" data-i18n-title="nav.importPlaylistTitle">
           <span class="nav-ic"><span aria-hidden="true">↗</span></span>
-          <span class="svc-name">Playlist übertragen</span>
+          <span class="svc-name" data-i18n="nav.importPlaylist">Playlist übertragen</span>
         </button>
         <button class="nav-item" data-view="downloads">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path></svg>
           </span>
-          <span class="svc-name">Downloads</span>
+          <span class="svc-name" data-i18n="nav.downloads">Downloads</span>
         </button>
         <button class="nav-item" data-view="review">
           <span class="nav-ic">
             <svg class="ic" viewBox="0 0 24 24"><path d="M5 20V11"></path><path d="M12 20V5"></path><path d="M19 20v-7"></path></svg>
           </span>
-          <span class="svc-name">Dein Rückblick</span>
+          <span class="svc-name" data-i18n="nav.review">Dein Rückblick</span>
         </button>
       </div>
 
       <div class="nav-group grow">
-        <div class="nav-label">Dienste <span class="nav-label-hint" id="service-count"></span></div>
+        <div class="nav-label"><span data-i18n="nav.groupServices">Dienste</span> <span class="nav-label-hint" id="service-count"></span></div>
         <div id="service-nav"></div>
-        <button class="nav-label nav-label-btn creator-label" data-nav-toggle="creator" aria-expanded="false">Creator <span class="nav-chevron">›</span></button>
+        <button class="nav-label nav-label-btn creator-label" data-nav-toggle="creator" aria-expanded="false"><span data-i18n="nav.creatorLabel">Creator</span> <span class="nav-chevron">›</span></button>
         <div id="creator-nav" class="nav-collapse" hidden></div>
       </div>
 
       <div class="sidebar-footer">
-        <button class="nav-item nav-support" id="nav-support" title="CleanMusic auf Ko-fi unterstützen – freiwillig">
+        <button class="nav-item nav-support" id="nav-support" title="CleanMusic auf Ko-fi unterstützen – freiwillig" data-i18n-title="nav.supportTitle">
           <span class="nav-ic heart">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.4-9.2-8.9C1.5 8.1 3.4 4.6 6.9 4.6c2.2 0 3.9 1.3 5.1 3 1.2-1.7 2.9-3 5.1-3 3.5 0 5.4 3.5 4.1 6.7-2 4.5-9.2 8.9-9.2 8.9Z"></path></svg>
           </span>
-          <span class="svc-name">Unterstützen</span>
+          <span class="svc-name" data-i18n="nav.support">Unterstützen</span>
         </button>
         <button class="nav-item" data-view="settings">
-          <span class="nav-dot"></span>Einstellungen
+          <span class="nav-dot"></span><span data-i18n="nav.settings">Einstellungen</span>
         </button>
-        <p class="legal">Offizielle Web-Player, kein DRM-Bypass.<br />Plugins optional und nicht enthalten.</p>
+        <p class="legal"><span data-i18n="nav.legal">Offizielle Web-Player, kein DRM-Bypass.</span><br /><span data-i18n="nav.legal2">Plugins optional und nicht enthalten.</span></p>
       </div>
     </nav>
 
@@ -173,11 +174,11 @@
       <div id="whatsnew-card" class="update-card whatsnew-card" role="status" hidden></div>
       <div id="support-card" class="update-card support-card" role="status" hidden></div>
 
-      <aside id="queue-panel" class="queue-panel" aria-label="Warteschlange" hidden></aside>
+      <aside id="queue-panel" class="queue-panel" aria-label="Warteschlange" data-i18n-aria-label="player.queue" hidden></aside>
 
       <div id="loading" class="loading hidden">
         <div class="spinner"></div>
-        <span id="loading-text">Lädt …</span>
+        <span id="loading-text" data-i18n="common.loading">Lädt …</span>
       </div>
     </main>
 
@@ -188,22 +189,22 @@
           <img id="np-art-img" alt="" hidden />
         </div>
         <div class="np-meta">
-          <div class="np-title" id="np-title">Nichts ausgewählt</div>
-          <div class="np-artist" id="np-artist">Lokale Wiedergabe</div>
+          <div class="np-title" id="np-title" data-i18n="player.nothingSelected">Nichts ausgewählt</div>
+          <div class="np-artist" id="np-artist" data-i18n="player.localPlayback">Lokale Wiedergabe</div>
           <span class="np-badge" id="np-badge" hidden></span>
           <span class="stream-badge" id="stream-badge" hidden></span>
         </div>
         <div class="np-actions">
-          <button class="icon-btn" id="btn-np-why" title="Warum läuft das?" disabled>
+          <button class="icon-btn" id="btn-np-why" title="Warum läuft das?" data-i18n-title="player.why" disabled>
             <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 1 1 4 2c-.9.6-1.5 1.2-1.5 2.5"></path><path d="M12 17h.01"></path></svg>
           </button>
-          <button class="icon-btn" id="btn-lyrics" title="Songtext (öffnet den Vollbild-Player)">
+          <button class="icon-btn" id="btn-lyrics" title="Songtext (öffnet den Vollbild-Player)" data-i18n-title="player.lyrics">
             <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h10"></path><path d="M4 18h13"></path></svg>
           </button>
-          <button class="icon-btn fav" id="btn-np-fav" title="Zu Favoriten" disabled>
+          <button class="icon-btn fav" id="btn-np-fav" title="Zu Favoriten" data-i18n-title="player.favorite" disabled>
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.4-9.2-8.9C1.5 8.1 3.4 4.6 6.9 4.6c2.2 0 3.9 1.3 5.1 3 1.2-1.7 2.9-3 5.1-3 3.5 0 5.4 3.5 4.1 6.7-2 4.5-9.2 8.9-9.2 8.9Z"></path></svg>
           </button>
-          <button class="icon-btn" id="btn-np-add" title="Zur Playlist hinzufügen" disabled>
+          <button class="icon-btn" id="btn-np-add" title="Zur Playlist hinzufügen" data-i18n-title="player.addToPlaylist" disabled>
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
           </button>
         </div>
@@ -211,20 +212,20 @@
 
       <div class="controls">
         <div class="buttons">
-          <button class="icon-btn" id="btn-shuffle" title="Shuffle" disabled>
+          <button class="icon-btn" id="btn-shuffle" title="Shuffle" data-i18n-title="player.shuffle" disabled>
             <svg class="stroke" viewBox="0 0 24 24"><path d="M16 3h5v5"></path><path d="M4 20 21 3"></path><path d="M21 16v5h-5"></path><path d="M15 15l6 6"></path><path d="M4 4l5 5"></path></svg>
           </button>
-          <button class="icon-btn" id="btn-prev" title="Zurück" disabled>
+          <button class="icon-btn" id="btn-prev" title="Zurück" data-i18n-title="player.prev" disabled>
             <svg viewBox="0 0 24 24"><path d="M18 5 8 12l10 7V5Z"></path><rect x="5" y="5" width="2.2" height="14" rx="1"></rect></svg>
           </button>
-          <button class="icon-btn play" id="btn-play" title="Wiedergabe" disabled>
+          <button class="icon-btn play" id="btn-play" title="Wiedergabe" data-i18n-title="player.playPause" disabled>
             <svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5-11-6.5Z"></path></svg>
             <svg class="ic-pause" viewBox="0 0 24 24"><rect x="7" y="5" width="3.6" height="14" rx="1"></rect><rect x="13.4" y="5" width="3.6" height="14" rx="1"></rect></svg>
           </button>
-          <button class="icon-btn" id="btn-next" title="Weiter" disabled>
+          <button class="icon-btn" id="btn-next" title="Weiter" data-i18n-title="player.next" disabled>
             <svg viewBox="0 0 24 24"><path d="M6 5l10 7-10 7V5Z"></path><rect x="16.8" y="5" width="2.2" height="14" rx="1"></rect></svg>
           </button>
-          <button class="icon-btn" id="btn-repeat" title="Wiederholen" disabled>
+          <button class="icon-btn" id="btn-repeat" title="Wiederholen" data-i18n-title="player.repeat" disabled>
             <svg class="stroke" viewBox="0 0 24 24"><path d="M17 3l3 3-3 3"></path><path d="M20 6H8a4 4 0 0 0-4 4"></path><path d="M7 21l-3-3 3-3"></path><path d="M4 18h12a4 4 0 0 0 4-4"></path></svg>
           </button>
         </div>
@@ -242,20 +243,20 @@
 
       <div class="right-controls">
         <canvas id="mini-viz" class="mini-viz" aria-hidden="true"></canvas>
-        <button class="icon-btn" id="btn-queue" title="Warteschlange">
+        <button class="icon-btn" id="btn-queue" title="Warteschlange" data-i18n-title="player.queue">
           <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h12"></path><path d="M4 11h12"></path><path d="M4 16h7"></path><path d="M15 14.5v6l5-3z"></path></svg>
         </button>
-        <button class="icon-btn" id="btn-mini" title="Mini-Player öffnen" aria-label="Mini-Player öffnen">▣</button>
-        <button class="icon-btn" id="btn-sleep" title="Schlaf-Timer">
+        <button class="icon-btn" id="btn-mini" title="Mini-Player öffnen" data-i18n-title="player.miniPlayer" aria-label="Mini-Player öffnen" data-i18n-aria-label="player.miniPlayer">▣</button>
+        <button class="icon-btn" id="btn-sleep" title="Schlaf-Timer" data-i18n-title="player.sleepTimer">
           <svg class="ic" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"></path></svg>
         </button>
-        <button class="icon-btn" id="btn-fullscreen" title="Vollbild-Player (F)">
+        <button class="icon-btn" id="btn-fullscreen" title="Vollbild-Player (F)" data-i18n-title="player.fullscreen">
           <svg class="ic" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
         </button>
-        <button class="icon-btn vol-btn" id="btn-mute" title="Stumm schalten (M)" data-level="high">
+        <button class="icon-btn vol-btn" id="btn-mute" title="Stumm schalten (M)" data-i18n-title="player.mute" data-level="high">
           <svg class="stroke ic-vol" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4H4Z"></path><path class="w1" d="M15.5 9.2a4 4 0 0 1 0 5.6"></path><path class="w2" d="M18.3 6.6a7.6 7.6 0 0 1 0 10.8"></path><path class="x" d="M16 9.6l4.8 4.8M20.8 9.6 16 14.4"></path></svg>
         </button>
-        <input id="volume" type="range" min="0" max="1" step="0.01" value="1" title="Lautstärke – Mausrad, M = stumm, +/−" />
+        <input id="volume" type="range" min="0" max="1" step="0.01" value="1" title="Lautstärke – Mausrad, M = stumm, +/−" data-i18n-title="player.volume" />
         <span class="volume-pct" id="volume-pct">92 %</span>
       </div>
 
@@ -274,24 +275,24 @@
     <header class="fs-top">
       <div class="fs-brand"><img class="logo" src="assets/logo-small.svg" alt="" draggable="false" /> CleanMusic</div>
       <div class="fs-top-actions">
-        <select id="fs-background-mode" class="fs-bg-select" aria-label="Vollbild-Hintergrund">
-          <option value="cover-static">Cover ruhig</option>
-          <option value="cover-moving">Cover bewegt</option>
-          <option value="live">Live-Hintergrund</option>
-          <option value="off">Hintergrund aus</option>
+        <select id="fs-background-mode" class="fs-bg-select" aria-label="Vollbild-Hintergrund" data-i18n-aria-label="fs.background">
+          <option value="cover-static" data-i18n="fs.bg.coverStatic">Cover ruhig</option>
+          <option value="cover-moving" data-i18n="fs.bg.coverMoving">Cover bewegt</option>
+          <option value="live" data-i18n="fs.bg.live">Live-Hintergrund</option>
+          <option value="off" data-i18n="fs.bg.off">Hintergrund aus</option>
         </select>
         <div class="fs-styles" id="fs-styles">
-          <button data-fs-style="radial">Kreis</button>
-          <button data-fs-style="bars">Balken</button>
-          <button data-fs-style="wave">Welle</button>
-          <button data-fs-style="mirror">Spiegel</button>
-          <button data-fs-style="particles">Partikel</button>
-          <button data-fs-style="off">Aus</button>
+          <button data-fs-style="radial" data-i18n="fs.style.radial">Kreis</button>
+          <button data-fs-style="bars" data-i18n="fs.style.bars">Balken</button>
+          <button data-fs-style="wave" data-i18n="fs.style.wave">Welle</button>
+          <button data-fs-style="mirror" data-i18n="fs.style.mirror">Spiegel</button>
+          <button data-fs-style="particles" data-i18n="fs.style.particles">Partikel</button>
+          <button data-fs-style="off" data-i18n="fs.style.off">Aus</button>
         </div>
-        <button class="fs-icon" id="fs-vinyl" data-fs-act="vinyl" title="Plattenspieler an/aus">
+        <button class="fs-icon" id="fs-vinyl" data-fs-act="vinyl" title="Plattenspieler an/aus" data-i18n-title="fs.vinyl">
           <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="2.5"></circle><path d="M12 5.5a6.5 6.5 0 0 1 6.5 6.5"></path></svg>
         </button>
-        <button class="fs-icon" data-fs-act="close" title="Schließen (Esc)">
+        <button class="fs-icon" data-fs-act="close" title="Schließen (Esc)" data-i18n-title="fs.close">
           <svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
         </button>
       </div>
@@ -308,7 +309,7 @@
 
       <section class="fs-meta">
         <span class="fs-badge" id="fs-badge" hidden></span>
-        <h1 class="fs-title" id="fs-title">Nichts ausgewählt</h1>
+        <h1 class="fs-title" id="fs-title" data-i18n="player.nothingSelected">Nichts ausgewählt</h1>
         <div class="fs-artist" id="fs-artist"></div>
         <div class="fs-lyrics-tools" id="fs-lyrics-tools" hidden></div>
         <div class="fs-lyrics" id="fs-lyrics" hidden></div>
@@ -321,39 +322,39 @@
         <div class="fs-live" id="fs-live" hidden><span class="live-dot"></span>LIVE</div>
 
         <div class="fs-controls">
-          <button class="fs-ctrl" id="fs-shuffle" data-fs-act="shuffle" title="Shuffle">
+          <button class="fs-ctrl" id="fs-shuffle" data-fs-act="shuffle" title="Shuffle" data-i18n-title="fs.shuffle">
             <svg class="ic" viewBox="0 0 24 24"><path d="M16 3h5v5"></path><path d="M4 20 21 3"></path><path d="M21 16v5h-5"></path><path d="M15 15l6 6"></path><path d="M4 4l5 5"></path></svg>
           </button>
-          <button class="fs-ctrl" data-fs-act="prev" title="Zurück (P)">
+          <button class="fs-ctrl" data-fs-act="prev" title="Zurück (P)" data-i18n-title="fs.prev">
             <svg class="ic fill" viewBox="0 0 24 24"><path d="M18 5 8 12l10 7V5Z"></path><rect x="5" y="5" width="2.2" height="14" rx="1"></rect></svg>
           </button>
-          <button class="fs-play" id="fs-play" data-fs-act="play" title="Wiedergabe (Leertaste)">
+          <button class="fs-play" id="fs-play" data-fs-act="play" title="Wiedergabe (Leertaste)" data-i18n-title="fs.play">
             <svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5-11-6.5Z"></path></svg>
             <svg class="ic-pause" viewBox="0 0 24 24"><rect x="7" y="5" width="3.6" height="14" rx="1"></rect><rect x="13.4" y="5" width="3.6" height="14" rx="1"></rect></svg>
           </button>
-          <button class="fs-ctrl" data-fs-act="next" title="Weiter (N)">
+          <button class="fs-ctrl" data-fs-act="next" title="Weiter (N)" data-i18n-title="fs.next">
             <svg class="ic fill" viewBox="0 0 24 24"><path d="M6 5l10 7-10 7V5Z"></path><rect x="16.8" y="5" width="2.2" height="14" rx="1"></rect></svg>
           </button>
-          <button class="fs-ctrl" id="fs-repeat" data-fs-act="repeat" title="Wiederholen">
+          <button class="fs-ctrl" id="fs-repeat" data-fs-act="repeat" title="Wiederholen" data-i18n-title="fs.repeat">
             <svg class="ic" viewBox="0 0 24 24"><path d="M17 3l3 3-3 3"></path><path d="M20 6H8a4 4 0 0 0-4 4"></path><path d="M7 21l-3-3 3-3"></path><path d="M4 18h12a4 4 0 0 0 4-4"></path></svg>
           </button>
         </div>
 
         <div class="fs-actions">
-          <button class="fs-ctrl fav" id="fs-fav" data-fs-act="fav" title="Zu Favoriten">
+          <button class="fs-ctrl fav" id="fs-fav" data-fs-act="fav" title="Zu Favoriten" data-i18n-title="fs.fav">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 20.2s-7.2-4.4-9.2-8.9C1.5 8.1 3.4 4.6 6.9 4.6c2.2 0 3.9 1.3 5.1 3 1.2-1.7 2.9-3 5.1-3 3.5 0 5.4 3.5 4.1 6.7-2 4.5-9.2 8.9-9.2 8.9Z"></path></svg>
           </button>
-          <button class="fs-ctrl" id="fs-add" data-fs-act="add" title="Zur Playlist hinzufügen">
+          <button class="fs-ctrl" id="fs-add" data-fs-act="add" title="Zur Playlist hinzufügen" data-i18n-title="fs.add">
             <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
           </button>
-          <button class="fs-ctrl" id="fs-lyrics-btn" data-fs-act="lyrics" title="Songtext ein/aus">
+          <button class="fs-ctrl" id="fs-lyrics-btn" data-fs-act="lyrics" title="Songtext ein/aus" data-i18n-title="fs.lyrics">
             <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h10"></path><path d="M4 18h13"></path></svg>
           </button>
           <div class="fs-volume">
-            <button class="fs-mute vol-btn" id="fs-mute" title="Stumm schalten (M)" data-level="high">
+            <button class="fs-mute vol-btn" id="fs-mute" title="Stumm schalten (M)" data-i18n-title="fs.mute" data-level="high">
               <svg class="ic ic-vol" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4H4Z"></path><path class="w1" d="M15.5 9.2a4 4 0 0 1 0 5.6"></path><path class="w2" d="M18.3 6.6a7.6 7.6 0 0 1 0 10.8"></path><path class="x" d="M16 9.6l4.8 4.8M20.8 9.6 16 14.4"></path></svg>
             </button>
-            <input id="fs-volume" type="range" min="0" max="1" step="0.01" value="1" title="Lautstärke – Mausrad, ↑/↓, M = stumm" />
+            <input id="fs-volume" type="range" min="0" max="1" step="0.01" value="1" title="Lautstärke – Mausrad, ↑/↓, M = stumm" data-i18n-title="fs.volume" />
             <span class="fs-volume-pct" id="fs-volume-pct"></span>
           </div>
         </div>
@@ -361,7 +362,7 @@
     </main>
 
     <aside class="fs-next" id="fs-next" hidden></aside>
-    <div class="fs-hint">F · Leertaste · ← → · ↑ ↓ · N/P · Esc</div>
+    <div class="fs-hint" data-i18n="fs.hint">F · Leertaste · ← → · ↑ ↓ · N/P · Esc</div>
   </div>
 
   <div id="service-menu" class="service-menu" hidden></div>
@@ -376,7 +377,7 @@
       <div id="dialog-text" class="muted small" hidden></div>
       <input id="dialog-input" type="text" maxlength="80" spellcheck="false" />
       <div class="dialog-actions">
-        <button type="button" class="btn ghost small" id="dialog-cancel">Abbrechen</button>
+        <button type="button" class="btn ghost small" id="dialog-cancel" data-i18n="common.cancel">Abbrechen</button>
         <button type="submit" class="btn primary small" id="dialog-ok">OK</button>
       </div>
     </form>
@@ -390,6 +391,9 @@
   <script src="playlist-presets.js"></script>
   <script src="visualizer.js"></script>
   <script src="live-bg.js"></script>
+  <script src="i18n/de.js"></script>
+  <script src="i18n/en.js"></script>
+  <script src="core/i18n.js"></script>
   <script src="core/storage.js"></script>
   <script src="core/persist.js"></script>
   <script src="core/migrations.js"></script>

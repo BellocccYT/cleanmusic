@@ -19,6 +19,16 @@
     one: 'Titel wiederholen',
   };
 
+  // Labels follow the interface language; without i18n (tests, older callers)
+  // the German text stays. Missing keys also fall back, never render a key.
+  function tr(key, fallback) {
+    const i18n = typeof window !== 'undefined' ? window.CMI18n : null;
+    if (i18n && typeof i18n.has === 'function' && typeof i18n.t === 'function' && i18n.has(key)) {
+      return i18n.t(key);
+    }
+    return fallback;
+  }
+
   // Stored playback object → known values only (unknown/olds keys are kept).
   function normalize(raw) {
     const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -51,7 +61,11 @@
   }
 
   function repeatLabel(value) {
-    return LABELS[repeatMode(value)];
+    const mode = repeatMode(value);
+    return tr(
+      { off: 'playback.repeatOff', all: 'playback.repeatAll', one: 'playback.repeatOne' }[mode],
+      LABELS[mode]
+    );
   }
 
   // Autoplay only continues when nothing repeats – the whole list must end.
@@ -60,7 +74,7 @@
   }
 
   function shuffleTitle(on) {
-    return on ? 'Shuffle an' : 'Shuffle aus';
+    return tr(on ? 'playback.shuffleOn' : 'playback.shuffleOff', on ? 'Shuffle an' : 'Shuffle aus');
   }
 
   // "Ein Titel spielt allein": search hits, external links and shared songs start

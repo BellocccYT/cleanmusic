@@ -166,6 +166,24 @@ check('chips and explanation are readable', () => {
   assert.match(R.explain(rules, 'unbekannt'), /gewählten Quellen/);
 });
 
+check('English labels cover every refresh option and the chips', () => {
+  sandbox.window.CMI18n = { lang: () => 'en' };
+  try {
+    assert.equal(R.labelOf('refresh', 'manual'), 'Only via button');
+    assert.equal(R.labelOf('refresh', 'onOpen'), 'Whenever opened');
+    assert.equal(R.labelOf('refresh', 'daily'), 'Once a day');
+    assert.equal(R.labelOf('moods', 'traurig'), 'Sad');
+    assert.equal(R.labelOf('licenses', 'other'), 'Other / unclear');
+    const chips = plain(R.chips(R.normalize({ sources: ['favorites'], refresh: 'daily', moods: ['workout'] })));
+    assert.ok(chips.includes('Refreshed on open') === false);
+    assert.ok(chips.includes('New daily'));
+    assert.ok(chips.includes('Mood: Workout'));
+    assert.match(R.explain(R.normalize({ sources: ['history'], why: { x: 'history' } }), 'x'), /^Fits the recipe: from “History”/);
+  } finally {
+    delete sandbox.window.CMI18n;
+  }
+});
+
 check('system recipes: every Mix has valid, daily rules', () => {
   assert.deepEqual(plain(R.SYSTEM_IDS), ['daily', 'fresh', 'discover', 'again', 'deep']);
   R.SYSTEM_IDS.forEach((id) => {

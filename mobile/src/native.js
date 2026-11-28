@@ -10,6 +10,7 @@
  *     /track, /album, /artist, /search/artist      Charts, Künstlerseiten)
  *   - de1.api.radio-browser.info/json/...         (Radio)
  *   - lrclib.net/api/get, /api/search             (Songtexte)
+ *   - api.lyrics.ovh/v1/...                       (Songtexte, Ausweichquelle)
  *   - api.github.com/repos/BellocccYT/cleanmusic/releases (Update-Suche)
  *
  * Kein Plugin-Lader, kein Cutter, keine Downloads, kein yt-dlp.
@@ -70,6 +71,7 @@
     },
     { host: 'de1.api.radio-browser.info', paths: [/^\/json\/stations\/search$/] },
     { host: 'lrclib.net', paths: [/^\/api\/(?:get|search)$/] },
+    { host: 'api.lyrics.ovh', paths: [/^\/v1\//] },
     {
       host: 'api.github.com',
       paths: [/^\/repos\/BellocccYT\/cleanmusic\/releases(?:\?.*)?$/],
@@ -168,6 +170,15 @@
   function cleanText(value, max = 300) {
     return String(value == null ? '' : value)
       .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .slice(0, max);
+  }
+
+  // Lyrics keep their line breaks (plain lyrics are read line by line).
+  function cleanLyrics(value, max = 20000) {
+    return String(value == null ? '' : value)
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
       .trim()
       .slice(0, max);
   }
@@ -278,7 +289,7 @@
     return out;
   }
 
-  /* --- Songtexte (LRCLIB) -------------------------------------------- */
+  /* --- Songtexte (LRCLIB, Ausweichquelle lyrics.ovh) ------------------ */
 
   function parseLrc(text) {
     const lines = [];
@@ -802,12 +813,13 @@
         entry && typeof entry === 'object'
           ? {
               lines: parseLrc(entry.syncedLyrics),
-              plain: cleanText(entry.plainLyrics || '', 20000),
+              plain: cleanLyrics(entry.plainLyrics || ''),
               instrumental: Boolean(entry.instrumental),
             }
           : null;
 
       let result = null;
+      let unreachable = false;
       try {
         const params = new URLSearchParams({ track_name: title, artist_name: artist });
         if (input.album) params.set('album_name', cleanText(input.album, 200));
@@ -823,14 +835,32 @@
           if (best) result = pick(best);
         }
       } catch {
+        unreachable = true;
+      }
+      // Fallback: another free, key-less lyrics database (plain lyrics only).
+      if (!result || (!result.lines.length && !result.plain)) {
+        if (!(result && result.instrumental) && artist) {
+          try {
+            const ovh = await requestJson(
+              `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`
+            );
+            const plain = cleanLyrics((ovh && ovh.lyrics) || '');
+            if (plain) result = { lines: [], plain, instrumental: false, source: 'ovh' };
+          } catch {
+            /* no fallback lyrics */
+          }
+        }
+      }
+      if (unreachable && (!result || (!result.lines.length && !result.plain))) {
         return { lines: [], plain: '', error: 'Die Songtext-Suche ist gerade nicht erreichbar.' };
       }
       const out =
         result && (result.lines.length || result.plain)
-          ? { lines: result.lines, plain: result.plain, error: null }
+          ? { lines: result.lines, plain: result.plain, source: result.source || 'lrclib', error: null }
           : {
               lines: [],
               plain: '',
+              source: '',
               error: result && result.instrumental ? 'Instrumental – kein Songtext.' : 'Kein Songtext gefunden.',
             };
       lyricsCache.set(key, out);

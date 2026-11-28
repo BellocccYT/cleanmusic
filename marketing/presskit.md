@@ -53,8 +53,18 @@ CleanMusic ist ein inoffizielles Projekt und nicht verbunden mit Spotify, Apple,
 
 ## Credits für Musik in Werbevideos
 
-Für das vorgesehene Promovideo ist **„Fluffing a Duck“ von Kevin MacLeod** (CC BY 4.0) vorgesehen. Credit im Video oder in der Beschreibung:
+Die früher vorgesehene CC-BY-Musik („Fluffing a Duck“) ist ersetzt. Für Promovideo und Shorts werden Titel aus einer eigenen **Artlist**-Lizenz verwendet; die Lizenz steht als `copyright`-Tag in den Dateien („Licensed for video by Artlist.io“).
+
+| Titel | Künstler | Länge | Ausschnitt im Video |
+| --- | --- | --- | --- |
+| Sugarsweet (Short Version) | Zach Sorgen | 0:41 | ab 0:01 — füllt die 30 s komplett |
+| Ritual | BalloonPlanet | 2:35 | ab 1:58 (Drop) |
+| lose my mind | Flint | 3:56 | ab 3:03 |
+
+**Lizenzhinweis:** Artlist verlangt für die Nutzung in eigenen Videos keine Namensnennung. Ein Credit in der Beschreibung ist trotzdem sinnvoll. Die Lizenz gilt für das Konto, mit dem sie abgeschlossen wurde – die Dateien selbst nicht weitergeben.
+
+Ersatzweise weiterhin möglich: freie Musik mit Credit, z. B. „Fluffing a Duck“ von Kevin MacLeod (CC BY 4.0):
 
 > Fluffing a Duck by Kevin MacLeod (https://incompetech.com/) · Licensed under Creative Commons: By Attribution 4.0 License (https://creativecommons.org/licenses/by/4.0/)
 
-Vor einer Veröffentlichung bitte Quelle und Lizenzbedingungen noch einmal prüfen. Keine Musikdatei ist diesem Presskit beigefügt.
+Keine Musikdatei ist diesem Presskit beigefügt.

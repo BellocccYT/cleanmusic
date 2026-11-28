@@ -190,7 +190,12 @@
       groups.get(license).push(credit);
     });
     const credits = Array.from(groups.keys())
-      .sort((a, b) => a.localeCompare(b, 'de'))
+      .sort((a, b) =>
+        a.localeCompare(
+          b,
+          (typeof window !== 'undefined' && window.CMI18n && window.CMI18n.locale && window.CMI18n.locale()) || 'de'
+        )
+      )
       .flatMap((license) => [license, ...groups.get(license), '']);
     const changes = project.clips.filter((clip) => clip.out > clip.in).map(
       (clip) => `- ${clipLabel(clip)} – ${clipChanges(clip)}`

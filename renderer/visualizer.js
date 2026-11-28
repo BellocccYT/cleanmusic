@@ -70,7 +70,9 @@ window.CMVisualizer = (function () {
         }
       });
     }
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    // "suspended" and Windows' "interrupted" both need a nudge; a deliberate
+    // suspend only happens while nothing needs the context (setEnabled/setWatching).
+    if (ctx.state !== 'running') ctx.resume().catch(() => {});
   }
 
   function disconnectSource() {
@@ -311,6 +313,10 @@ window.CMVisualizer = (function () {
     enabled = Boolean(on);
     if (enabled) {
       connect();
+      // A pending frame may never fire (background throttling, returned from
+      // sleep). Reset it so the loop really starts again.
+      cancelAnimationFrame(raf);
+      raf = 0;
       loop();
     } else {
       // Keep the analyser alive while a plugin is reading the spectrum.
@@ -343,18 +349,29 @@ window.CMVisualizer = (function () {
   // Log-spaced spectrum for plugins, normalised to 0..1.
   function spectrum(count) {
     const size = Math.max(8, Math.min(64, Math.round(Number(count)) || 32));
-    // Without a drawing loop (visualizer off, only a plugin is watching) the
-    // FFT buffer would never be refreshed – read it here on demand.
-    if (!raf) sampleNow();
+    // The FFT buffer must be fresh even when the drawing loop is throttled in
+    // the background or its pending frame never fires (OBS overlay, plugins).
+    // A stale timestamp is as good as no loop at all.
+    const now = window.performance.now();
+    if (!raf || !analyserAt || now - analyserAt > 250) sampleNow();
     return bands(size);
   }
 
   // Reads the analyser once and updates the smoothed bass level (used when
   // no animation loop is running).
   function sampleNow() {
-    if (!analyser || !(source || tapped)) return false;
+    const now = window.performance.now();
+    if (!analyser || !(source || tapped)) {
+      // The overlay/plugin path has no drawing loop – recover a lost tap here.
+      watchdog(now);
+      return false;
+    }
     analyser.getByteFrequencyData(freq);
     analyser.getByteTimeDomainData(wave);
+    // Keep the same timestamps the drawing loop maintains, so spectrum() can
+    // tell stale samples from fresh ones without a running rAF.
+    noteSilence(now);
+    watchdog(now);
     let bass = 0;
     for (let k = 1; k < 10; k += 1) bass += freq[k];
     const level = bass / 9 / 255;
@@ -372,7 +389,7 @@ window.CMVisualizer = (function () {
       simulate: Boolean(options.simulate),
       levels: [],
     });
-    if (enabled) loop();
+    if (enabled) wake();
   }
 
   function setStyle(canvas, style) {
@@ -682,6 +699,12 @@ window.CMVisualizer = (function () {
   // after a device change or a stream rebuffer) – resume the context and tap again.
   let silentSince = 0;
   let lastRecover = 0;
+  // A lost tap gets reconnected; if the data stays flat after repeated fresh
+  // taps it is probably cross-origin data from a redirected media request
+  // (Web Audio only delivers zeros). app.js then loads the target directly.
+  let tapSrc = '';
+  let flatTaps = 0;
+  let restrictedSrc = '';
   // Separate from the recovery above: exact digital silence while analysing
   // (a stream that carries no audio). Read by app.js ("silence guard").
   let quietSince = 0;
@@ -708,6 +731,15 @@ window.CMVisualizer = (function () {
       silentSince = 0;
       return;
     }
+    // A new source starts a new recovery budget (a silent intro is not a
+    // reason to replace the previous tap forever).
+    const src = audioEl.currentSrc || audioEl.getAttribute('src') || '';
+    if (src !== tapSrc) {
+      tapSrc = src;
+      flatTaps = 0;
+      restrictedSrc = '';
+      silentSince = 0;
+    }
     let flat = !(source || tapped) || !ctx || ctx.state !== 'running';
     if (!flat) {
       let max = 0;
@@ -716,6 +748,7 @@ window.CMVisualizer = (function () {
     }
     if (!flat) {
       silentSince = 0;
+      flatTaps = 0;
       return;
     }
     if (!silentSince) {
@@ -725,9 +758,26 @@ window.CMVisualizer = (function () {
     if (t - silentSince < 1500 || t - lastRecover < 3000) return;
     lastRecover = t;
     if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+    flatTaps += 1;
     // If captureStream has not produced an audio track yet, keep its addtrack
     // listener alive instead of replacing that stream before the track arrives.
-    if (!engine && !captureAddTrackHandler) connect();
+    // A source that is there but flat is a lost tap - reconnect it. With the
+    // audio chain the analyser hangs on the engine source, which needs its own
+    // re-connect after a device change.
+    if (flatTaps <= 3) {
+      if (engine) {
+        if (!tapped) connect();
+      } else if (source || tapped || !captureAddTrackHandler) {
+        connect();
+      }
+    }
+    // Two fresh taps without any signal: the element is probably playing
+    // cross-origin data (redirected CDN). Ask app.js for the target URL once
+    // per source; harmless when there was no redirect.
+    if (flatTaps >= 2 && src && src !== restrictedSrc) {
+      restrictedSrc = src;
+      notifyRestricted();
+    }
   }
 
   function loop() {
@@ -802,7 +852,13 @@ window.CMVisualizer = (function () {
   }
 
   function wake() {
-    if (enabled) loop();
+    if (!enabled) return;
+    // Hidden windows may leave a scheduled frame that never fires; after a
+    // short gap, drop it and start a fresh loop.
+    if (raf && window.performance.now() - lastDraw < 500) return;
+    cancelAnimationFrame(raf);
+    raf = 0;
+    loop();
   }
 
   return {

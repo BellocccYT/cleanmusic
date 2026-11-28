@@ -147,6 +147,11 @@ check('picker groups: every motion style in exactly one group, no strays', () =>
   assert.equal(LV.pickerGroupOf('chat'), 'play');
   assert.equal(LV.pickerGroupOf('cinema'), 'night');
   assert.equal(LV.pickerGroupOf('pop'), '');
+  for (const group of LV.PICKER_GROUPS) {
+    assert.ok(group.labelEn && group.hintEn, `${group.id} needs English label and hint`);
+    assert.notEqual(group.labelEn, group.label);
+    assert.notEqual(group.hintEn, group.hint);
+  }
 });
 
 check('the fifteen motion styles are known, frame styles exclude the stacked one', () => {

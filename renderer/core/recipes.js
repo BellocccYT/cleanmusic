@@ -11,12 +11,27 @@
  */
 (function () {
   const SOURCES = [
-    { id: 'favorites', label: 'Favoriten', help: 'Alles, was du mit ♥ gespeichert hast.' },
-    { id: 'local', label: 'Lokale Musik', help: 'Dateien aus deinen Ordnern.' },
-    { id: 'history', label: 'Verlauf', help: 'Was du zuletzt gehört hast.' },
-    { id: 'playlists', label: 'Meine Playlists', help: 'Titel aus deinen anderen Playlists.' },
-    { id: 'recs', label: 'Vorschläge', help: 'Die zuletzt geladenen Empfehlungen.' },
-    { id: 'charts', label: 'Charts & Neuheiten', help: 'Nur, wenn die Startseite sie schon geladen hat.' },
+    {
+      id: 'favorites',
+      label: 'Favoriten',
+      help: 'Alles, was du mit ♥ gespeichert hast.',
+      helpEn: 'Everything you saved with ♥.',
+    },
+    { id: 'local', label: 'Lokale Musik', help: 'Dateien aus deinen Ordnern.', helpEn: 'Files from your folders.' },
+    { id: 'history', label: 'Verlauf', help: 'Was du zuletzt gehört hast.', helpEn: 'What you listened to recently.' },
+    {
+      id: 'playlists',
+      label: 'Meine Playlists',
+      help: 'Titel aus deinen anderen Playlists.',
+      helpEn: 'Tracks from your other playlists.',
+    },
+    { id: 'recs', label: 'Vorschläge', help: 'Die zuletzt geladenen Empfehlungen.', helpEn: 'The suggestions loaded most recently.' },
+    {
+      id: 'charts',
+      label: 'Charts & Neuheiten',
+      help: 'Nur, wenn die Startseite sie schon geladen hat.',
+      helpEn: 'Only if the home page already loaded them.',
+    },
   ];
   const DAYS = [0, 7, 14, 30, 90];
   const LIMIT_MIN = 5;
@@ -26,9 +41,15 @@
   const WHY_LIMIT = 150;
 
   const REFRESH = [
-    { id: 'manual', label: 'Nur per Knopf', chip: '' },
-    { id: 'onOpen', label: 'Bei jedem Öffnen', chip: 'Aktualisiert beim Öffnen' },
-    { id: 'daily', label: 'Einmal am Tag', chip: 'Täglich neu' },
+    { id: 'manual', label: 'Nur per Knopf', labelEn: 'Only via button', chip: '' },
+    {
+      id: 'onOpen',
+      label: 'Bei jedem Öffnen',
+      labelEn: 'Whenever opened',
+      chip: 'Aktualisiert beim Öffnen',
+      chipEn: 'Refreshed on open',
+    },
+    { id: 'daily', label: 'Einmal am Tag', labelEn: 'Once a day', chip: 'Täglich neu', chipEn: 'New daily' },
   ];
 
   // Entry kinds a recipe can be limited to (radio is never part of a recipe).
@@ -71,6 +92,48 @@
   /** Rules for a system recipe (a fresh copy), or null. */
   function system(id) {
     return Object.prototype.hasOwnProperty.call(SYSTEM, id) ? normalize(SYSTEM[id]) : null;
+  }
+
+  // English labels for the chips and the "why" line. The default language is
+  // German and stays exactly as before; CMI18n only exists in the app.
+  const EN = {
+    sources: {
+      favorites: 'Favorites',
+      local: 'Local music',
+      history: 'History',
+      playlists: 'My playlists',
+      recs: 'Suggestions',
+      charts: 'Charts & new',
+    },
+    kinds: {
+      local: 'Local files',
+      preview: '30 s previews',
+      plugin: 'Full tracks (plugins)',
+      stream: 'Free music',
+    },
+    moods: { chill: 'Chill', party: 'Party', workout: 'Workout', fokus: 'Focus', gaming: 'Gaming', traurig: 'Sad' },
+    licenses: { free: 'CC0 / Public domain', by: 'CC BY', ncs: 'NCS', other: 'Other / unclear' },
+  };
+
+  const inEnglish = () => {
+    const i18n = typeof window !== 'undefined' ? window.CMI18n : null;
+    return Boolean(i18n && typeof i18n.lang === 'function' && i18n.lang() === 'en');
+  };
+
+  function labelOf(group, id) {
+    const list = { sources: SOURCES, refresh: REFRESH, kinds: KINDS, moods: MOODS, licenses: LICENSES }[group] || [];
+    const item = list.find((entry) => entry.id === id);
+    if (inEnglish()) {
+      if (item && item.labelEn) return item.labelEn;
+      if (EN[group] && EN[group][id]) return EN[group][id];
+    }
+    return item ? item.label : id;
+  }
+
+  function helpOf(id) {
+    const source = SOURCES.find((entry) => entry.id === id);
+    if (!source) return '';
+    return inEnglish() && source.helpEn ? source.helpEn : source.help;
   }
 
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -211,37 +274,59 @@
 
   /** Short labels for the rule chips (playlist header, "Warum läuft das?"). */
   function chips(rules) {
+    const en = inEnglish();
     const r = normalize(rules);
-    const out = r.sources.map((id) => (SOURCES.find((source) => source.id === id) || {}).label || id);
-    if (r.kinds.length) out.push(r.kinds.map((id) => KINDS.find((kind) => kind.id === id).label).join(' / '));
-    if (r.moods.length) out.push(`Stimmung: ${r.moods.map((id) => MOODS.find((mood) => mood.id === id).label).join(', ')}`);
+    const out = r.sources.map((id) => labelOf('sources', id));
+    if (r.kinds.length) out.push(r.kinds.map((id) => labelOf('kinds', id)).join(' / '));
+    if (r.moods.length) {
+      const moods = r.moods.map((id) => labelOf('moods', id)).join(', ');
+      out.push(en ? `Mood: ${moods}` : `Stimmung: ${moods}`);
+    }
     if (r.bpmMin && r.bpmMax) out.push(`${r.bpmMin}–${r.bpmMax} BPM`);
-    else if (r.bpmMin) out.push(`ab ${r.bpmMin} BPM`);
-    else if (r.bpmMax) out.push(`bis ${r.bpmMax} BPM`);
-    if (r.streamSafe) out.push('Nur stream-sicher');
-    if (r.withCredit) out.push('Nur mit Credit');
-    if (r.licenses.length) out.push(`Lizenz: ${r.licenses.map((id) => (LICENSES.find((item) => item.id === id) || {}).label || id).join(', ')}`);
-    if (r.notPlayedDays) out.push(`${r.notPlayedDays} Tage nicht gehört`);
-    if (r.excludeDislikes) out.push('Ohne Dislikes');
+    else if (r.bpmMin) out.push(en ? `from ${r.bpmMin} BPM` : `ab ${r.bpmMin} BPM`);
+    else if (r.bpmMax) out.push(en ? `up to ${r.bpmMax} BPM` : `bis ${r.bpmMax} BPM`);
+    if (r.streamSafe) out.push(en ? 'Stream-safe only' : 'Nur stream-sicher');
+    if (r.withCredit) out.push(en ? 'With credit only' : 'Nur mit Credit');
+    if (r.licenses.length) {
+      const licenses = r.licenses.map((id) => labelOf('licenses', id)).join(', ');
+      out.push(en ? `License: ${licenses}` : `Lizenz: ${licenses}`);
+    }
+    if (r.notPlayedDays) {
+      out.push(en ? `Not heard for ${r.notPlayedDays} days` : `${r.notPlayedDays} Tage nicht gehört`);
+    }
+    if (r.excludeDislikes) out.push(en ? 'Without dislikes' : 'Ohne Dislikes');
     out.push(`Max. ${r.limit}`);
     const refresh = REFRESH.find((item) => item.id === r.refresh);
-    if (refresh && refresh.chip) out.push(refresh.chip);
+    if (refresh && refresh.chip) {
+      out.push(en && refresh.chipEn ? refresh.chipEn : refresh.chip);
+    }
     return out;
   }
 
   /** Why is this entry in the recipe? A short, human sentence. */
   function explain(rules, entryId, details = {}) {
+    const en = inEnglish();
     const r = normalize(rules);
     const source = SOURCES.find((item) => item.id === r.why[entryId]);
-    const parts = [source ? `aus „${source.label}“` : 'aus den gewählten Quellen'];
+    const parts = [
+      source
+        ? en
+          ? `from “${labelOf('sources', source.id)}”`
+          : `aus „${source.label}“`
+        : en
+          ? 'from the selected sources'
+          : 'aus den gewählten Quellen',
+    ];
     if ((r.bpmMin || r.bpmMax) && details.bpm) parts.push(`${Math.round(details.bpm)} BPM`);
     if (r.moods.length && details.mood) {
       const mood = MOODS.find((item) => item.id === details.mood);
-      if (mood) parts.push(`Stimmung ${mood.label}`);
+      if (mood) parts.push(en ? `mood ${labelOf('moods', mood.id)}` : `Stimmung ${mood.label}`);
     }
-    if (r.notPlayedDays) parts.push(`seit ${r.notPlayedDays} Tagen nicht gehört`);
-    if (r.streamSafe) parts.push('stream-sicher');
-    return `Passt ins Rezept: ${parts.join(' · ')}`;
+    if (r.notPlayedDays) {
+      parts.push(en ? `not heard for ${r.notPlayedDays} days` : `seit ${r.notPlayedDays} Tagen nicht gehört`);
+    }
+    if (r.streamSafe) parts.push(en ? 'stream-safe' : 'stream-sicher');
+    return en ? `Fits the recipe: ${parts.join(' · ')}` : `Passt ins Rezept: ${parts.join(' · ')}`;
   }
 
   window.CMRecipes = {
@@ -261,6 +346,8 @@
     needsRefresh,
     chips,
     explain,
+    labelOf,
+    helpOf,
     SYSTEM_IDS: Object.keys(SYSTEM),
     system,
   };

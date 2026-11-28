@@ -12,6 +12,10 @@
  * Loaded before app.js as window.CMGroup; tested in test/group.test.js.
  */
 (function () {
+  // Sorting follows the interface language; German when i18n is absent (tests).
+  const sortLocale = () =>
+    (typeof window !== 'undefined' && window.CMI18n && window.CMI18n.locale && window.CMI18n.locale()) || 'de';
+
   const PREFIX = 'CM1';
   const NAME_MAX = 24;
   const ARTIST_MAX = 40;
@@ -160,7 +164,7 @@
       .filter((card) => !ownKey || memberKey(card.name) !== ownKey)
       .map((card) => Object.assign({}, card, { self: false }));
     if (own && own.week === week) list.push(Object.assign({}, own, { self: true }));
-    list.sort((a, b) => b.secs - a.secs || b.plays - a.plays || a.name.localeCompare(b.name, 'de'));
+    list.sort((a, b) => b.secs - a.secs || b.plays - a.plays || a.name.localeCompare(b.name, sortLocale()));
     let rank = 0;
     let previous = null;
     return list.map((row, index) => {

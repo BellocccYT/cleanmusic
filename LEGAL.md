@@ -240,11 +240,13 @@ ob er die Rechte wirklich hatte, und Content-ID-Ansprüche sind trotzdem möglic
 Credit-.txt nennt Titel, Kanal, Link und Lizenz. Ob YouTubes Nutzungsbedingungen das
 Herunterladen erlauben, musst du selbst bewerten.
 
-## Songtexte (LRCLIB)
+## Songtexte (LRCLIB und lyrics.ovh)
 
 CleanMusic zeigt Songtexte aus der freien Datenbank LRCLIB an, nur zur Anzeige beim
-Hören. Songtexte sind meist urheberrechtlich geschützt – sie im Stream (OBS-Stil
-„Songtext“) öffentlich zu zeigen, liegt in deiner Verantwortung.
+Hören. Findet LRCLIB nichts, fragt CleanMusic die freie Ausweichquelle lyrics.ovh
+(nur Titel und Artist, Klartext ohne Zeitangaben). Songtexte sind meist
+urheberrechtlich geschützt – sie im Stream (OBS-Stil „Songtext“) öffentlich zu
+zeigen, liegt in deiner Verantwortung.
 
 ## Ausschnitte (ab 1.7)
 

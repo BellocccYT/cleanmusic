@@ -11,6 +11,10 @@
  * signs every request – this file never sees a key.
  */
 (function () {
+  // Sorting follows the interface language; German when i18n is absent (tests).
+  const sortLocale = () =>
+    (typeof window !== 'undefined' && window.CMI18n && window.CMI18n.locale && window.CMI18n.locale()) || 'de';
+
   const EMOJIS = ['🔥', '❤️', '😂', '🎧', '👀'];
   const REPORT_REASONS = [
     { id: 'name', label: 'Anstößiger Name' },
@@ -251,7 +255,7 @@
   function groupRanking(members) {
     const rows = (Array.isArray(members) ? members : [])
       .map((member) => Object.assign({}, member, { secs: member.week ? member.week.secs : 0 }))
-      .sort((a, b) => b.secs - a.secs || String(a.name).localeCompare(String(b.name), 'de'));
+      .sort((a, b) => b.secs - a.secs || String(a.name).localeCompare(String(b.name), sortLocale()));
     let rank = 0;
     let previous = null;
     rows.forEach((row, index) => {
@@ -310,7 +314,7 @@
     const order = { listening: 0, online: 1, offline: 2 };
     return (Array.isArray(friends) ? friends : [])
       .slice()
-      .sort((a, b) => order[friendStatus(a, now, skew)] - order[friendStatus(b, now, skew)] || String(a.name).localeCompare(String(b.name), 'de'));
+      .sort((a, b) => order[friendStatus(a, now, skew)] - order[friendStatus(b, now, skew)] || String(a.name).localeCompare(String(b.name), sortLocale()));
   }
 
   /**

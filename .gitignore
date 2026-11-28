@@ -11,3 +11,6 @@ Thumbs.db
 extras/browser-extension/preview/build/
 extras/browser-extension/preview/captures/
 extras/browser-extension/*.zip
+
+# Schwere Marketing-Medien (Rohaufnahmen, Master, Exporte) nicht versionieren
+marketing/media/

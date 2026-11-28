@@ -29,6 +29,12 @@
     seededShuffle,
   } = CMText;
 
+  // Interface language (renderer/core/i18n.js + renderer/i18n/*.js).
+  // German is the source language; English falls back to German per key.
+  const CMI18n = window.CMI18n;
+  if (!CMI18n) throw new Error('renderer/core/i18n.js fehlt');
+  const t = CMI18n.t;
+
   const CMStorage = window.CMStorage;
   if (!CMStorage) throw new Error('renderer/core/storage.js fehlt');
   const { readJSON, writeJSON } = CMStorage;
@@ -358,6 +364,12 @@
     return SERVICES.find((service) => service.id === id) || null;
   }
 
+  // Service descriptions are content data in services.js; `note` is German,
+  // `noteEn` the English counterpart.
+  function serviceNote(service) {
+    return CMI18n.lang() === 'en' && service.noteEn ? service.noteEn : service.note;
+  }
+
   function saveSettings() {
     writeJSON(STORAGE.settings, state.settings);
     syncDiagnosticState();
@@ -553,13 +565,13 @@
     if (CMCollection.isFavorite(state.collection.favorites, entry.id)) {
       const result = CMCollection.without(state.collection.favorites, entry.id);
       state.collection.favorites = result.list;
-      toast(`„${entry.title}“ aus Favoriten entfernt`);
+      toast(t('fav.removed', { title: entry.title }));
     } else {
       state.collection.favorites = CMCollection.prepend(
         state.collection.favorites,
         storable(Object.assign({}, entry, { addedAt: 0 }))
       );
-      toast(`♥ „${entry.title}“ in Favoriten`);
+      toast(t('fav.added', { title: entry.title }));
     }
 
     onCollectionChanged({ favorites: true });
@@ -588,7 +600,7 @@
     const playlist = playlistById(id);
     if (!playlist) return;
     if (playlist.smart) {
-      toast('Smart-Playlists entstehen aus Regeln – ändere die Regeln, statt Titel hineinzuziehen.');
+      toast(t('playlist.smartNoDrag'));
       return;
     }
 
@@ -599,9 +611,9 @@
     onCollectionChanged({ playlists: true });
 
     if (options.quiet) return;
-    if (!fresh.length) toast(`Schon in „${playlist.name}“`);
-    else if (fresh.length === 1) toast(`„${fresh[0].title}“ → ${playlist.name}`);
-    else toast(`${fresh.length} Titel → ${playlist.name}`);
+    if (!fresh.length) toast(t('playlist.alreadyIn', { name: playlist.name }));
+    else if (fresh.length === 1) toast(t('playlist.addedOne', { title: fresh[0].title, name: playlist.name }));
+    else toast(t('playlist.addedMany', { count: fresh.length, name: playlist.name }));
   }
 
   function removeFromPlaylist(id, index) {
@@ -612,14 +624,14 @@
     playlist.items = result.list;
     playlist.updatedAt = Date.now();
     onCollectionChanged({ playlists: true });
-    toast(`„${result.removed.title}“ entfernt`);
+    toast(t('playlist.removedOne', { title: result.removed.title }));
   }
 
   function movePlaylistItem(id, from, to) {
     const playlist = playlistById(id);
     if (!playlist) return;
     if (playlist.smart) {
-      toast('Smart-Playlists werden aus Regeln sortiert – nutze „Aktualisieren“.');
+      toast(t('playlist.smartNoSort'));
       return;
     }
     const result = CMCollection.moved(playlist.items, from, to);
@@ -682,7 +694,7 @@
       list.sort(
         (a, b) =>
           score(b) - score(a) ||
-          String(a.title || '').localeCompare(String(b.title || ''), 'de')
+          String(a.title || '').localeCompare(String(b.title || ''), CMI18n.locale())
       );
       groups.push({ source, list });
     };
@@ -749,14 +761,14 @@
 
   function smartUpdatedLabel(value) {
     const at = Number(value) || 0;
-    if (!at) return 'noch nicht aktualisiert';
-    const date = new Date(at).toLocaleString('de-DE', {
+    if (!at) return t('playlist.notUpdated');
+    const date = new Date(at).toLocaleString(CMI18n.locale() === 'en' ? 'en-GB' : 'de-DE', {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
     });
-    return `aktualisiert ${date}`;
+    return t('playlist.updated', { date });
   }
 
   /* Automatic playlist extension: Deezer (and the source plugin, if it can
@@ -794,20 +806,20 @@
 
     const html = `
       <div class="extend-toolbar">
-        <span>${entries.length} passende Titel für „${esc(playlist.name)}“</span>
+        <span>${t('playlist.extendMatches', { count: entries.length, name: esc(playlist.name) })}</span>
         <span class="extend-links">
-          <button type="button" class="link-btn" data-extend-all>Alle</button>
-          <button type="button" class="link-btn" data-extend-none>Keine</button>
+          <button type="button" class="link-btn" data-extend-all>${t('common.all')}</button>
+          <button type="button" class="link-btn" data-extend-none>${t('playlist.none')}</button>
         </span>
       </div>
       <div class="extend-list">${rows}</div>
-      <p class="extend-note">Abgewählte Titel bleiben draußen. Doppelte Titel überspringt CleanMusic weiterhin automatisch.</p>`;
+      <p class="extend-note">${t('playlist.extendNote')}</p>`;
 
     const promise = openDialog({
-      title: 'Playlist erweitern',
+      title: t('playlist.extendTitle'),
       html,
       input: false,
-      confirm: 'Hinzufügen',
+      confirm: t('playlist.add'),
       className: 'extend-dialog',
     });
 
@@ -817,7 +829,7 @@
     const update = () => {
       const count = boxes().filter((box) => box.checked).length;
       ok.disabled = count === 0;
-      ok.textContent = count ? `${count} hinzufügen` : 'Hinzufügen';
+      ok.textContent = count ? t('playlist.addCount', { count }) : t('playlist.add');
     };
     root.querySelector('[data-extend-all]')?.addEventListener('click', () => {
       boxes().forEach((box) => {
@@ -881,17 +893,17 @@
     const playlist = playlistById(id);
     if (!playlist || playlistExtendBusy.has(id)) return;
     if (playlist.smart) {
-      toast('Smart-Playlists werden aus Regeln gebaut – ändere die Regeln.');
+      toast(t('playlist.smartNoExtend'));
       return;
     }
     if (!bridge.recommendations) {
-      toast('Vorschläge sind gerade nicht verfügbar.');
+      toast(t('playlist.extendUnavailable'));
       return;
     }
 
     const seeds = recommendationSeeds(playlist.items);
     if (!seeds.artists.length && !seeds.pluginSeeds.length) {
-      toast('Für diese Playlist fehlen Künstlerangaben – daraus lassen sich keine Vorschläge bauen.');
+      toast(t('playlist.extendNoArtists'));
       return;
     }
 
@@ -920,20 +932,20 @@
       const picked = mergeRecs(tracks, videos).slice(0, 12);
 
       if (!picked.length) {
-        toast('Keine neuen passenden Titel gefunden – die Playlist ist schon gut gefüllt.');
+        toast(t('playlist.extendNoNew'));
         return;
       }
 
       const chosen = await chooseExtendTracks(picked, playlist);
       if (!chosen.length) {
-        toast('Nichts ausgewählt – Playlist unverändert.');
+        toast(t('playlist.extendNothingSelected'));
         return;
       }
 
       addToPlaylist(id, chosen, { quiet: true });
-      toast(`${chosen.length} Titel ergänzt – passend zu „${playlist.name}“`);
+      toast(t('playlist.extended', { count: chosen.length, name: playlist.name }));
     } catch (error) {
-      toast(`Erweitern fehlgeschlagen: ${error.message || error}`);
+      toast(t('playlist.extendFailed', { message: error.message || error }));
     } finally {
       playlistExtendBusy.delete(id);
       if (state.currentPlaylist === id) renderPlaylist();
@@ -942,115 +954,133 @@
 
   async function promptNewPlaylist(entries = []) {
     const name = await askText({
-      title: 'Neue Playlist',
-      text: entries.length === 1 ? `Mit „${entries[0].title}“ als erstem Titel.` : '',
-      value: `Playlist ${state.collection.playlists.length + 1}`,
-      confirm: 'Erstellen',
+      title: t('nav.newPlaylist'),
+      text: entries.length === 1 ? t('playlist.firstTrack', { title: entries[0].title }) : '',
+      value: t('playlist.defaultName', { n: state.collection.playlists.length + 1 }),
+      confirm: t('playlist.create'),
     });
     if (!name) return null;
 
     const playlist = createPlaylist(name);
     if (entries.length) addToPlaylist(playlist.id, entries);
-    else toast(`Playlist „${playlist.name}“ erstellt`);
+    else toast(t('playlist.created', { name: playlist.name }));
     return playlist;
   }
 
   function smartPlaylistDialog(existing) {
     const rules = normalizeSmartRules(existing ? existing.smart : {});
-    const name = existing ? existing.name : uniquePlaylistName('Smart-Playlist', 'Smart-Playlist');
+    const name = existing ? existing.name : uniquePlaylistName(t('nav.smartPlaylist'), t('nav.smartPlaylist'));
     const sourceRows = SMART_SOURCES.map(
       (source) => `
         <label class="smart-check">
           <input type="checkbox" data-smart-source="${source.id}" ${
             rules.sources.includes(source.id) ? 'checked' : ''
           } />
-          <span><strong>${esc(source.label)}</strong><small>${esc(source.help)}</small></span>
+          <span><strong>${esc(RECIPES.labelOf('sources', source.id))}</strong><small>${esc(
+            RECIPES.helpOf(source.id)
+          )}</small></span>
         </label>`
     ).join('');
     const dayOptions = SMART_DAYS.map(
       (days) =>
         `<option value="${days}" ${rules.notPlayedDays === days ? 'selected' : ''}>${
-          days ? `${days} Tagen` : 'Egal'
+          days ? t('smart.days', { count: days }) : t('smart.daysAny')
         }</option>`
     ).join('');
     const html = `
       <div class="smart-form">
         <label class="smart-field">
-          <span>Name</span>
+          <span>${t('smart.name')}</span>
           <input id="smart-name" type="text" maxlength="80" value="${esc(name)}" spellcheck="false" />
         </label>
         <fieldset class="smart-group">
-          <legend>Quellen</legend>
+          <legend>${t('smart.sources')}</legend>
           <div class="smart-checks">${sourceRows}</div>
         </fieldset>
         <div class="smart-row">
           <label class="smart-field">
-            <span>Höchstens</span>
+            <span>${t('smart.limit')}</span>
             <input id="smart-limit" type="number" min="${SMART_LIMIT_MIN}" max="${SMART_LIMIT_MAX}" step="5" value="${rules.limit}" />
           </label>
           <label class="smart-field">
-            <span>Nicht gehört seit</span>
+            <span>${t('smart.notPlayed')}</span>
             <select id="smart-days">${dayOptions}</select>
           </label>
         </div>
         <div class="smart-checks">
           <label class="smart-check">
             <input type="checkbox" id="smart-safe" ${rules.streamSafe ? 'checked' : ''} />
-            <span><strong>Nur stream-sicher</strong><small>NCS, CC0, CC BY und bestätigte Plugin-Lizenzen.</small></span>
+            <span><strong>${t('smart.safeTitle')}</strong><small>${t('smart.safeHelp')}</small></span>
           </label>
           <label class="smart-check">
             <input type="checkbox" id="smart-with-credit" ${rules.withCredit ? 'checked' : ''} />
-            <span><strong>Nur mit Credit</strong><small>Titel, für die eine Lizenz-Notiz vorliegt.</small></span>
+            <span><strong>${t('smart.creditTitle')}</strong><small>${t('smart.creditHelp')}</small></span>
           </label>
           <label class="smart-check">
             <input type="checkbox" id="smart-no-dislikes" ${rules.excludeDislikes ? 'checked' : ''} />
-            <span><strong>Ohne Dislikes</strong><small>„Weniger davon“ und abgelehnte Artists bleiben draußen.</small></span>
+            <span><strong>${t('smart.noDislikesTitle')}</strong><small>${t('smart.noDislikesHelp')}</small></span>
           </label>
         </div>
         <div class="smart-row">
           <label class="smart-field">
-            <span>Aktualisieren</span>
+            <span>${t('smart.refresh')}</span>
             <select id="smart-refresh">${RECIPES.REFRESH.map(
-              (item) => `<option value="${item.id}" ${rules.refresh === item.id ? 'selected' : ''}>${esc(item.label)}</option>`
+              (item) =>
+                `<option value="${item.id}" ${rules.refresh === item.id ? 'selected' : ''}>${esc(
+                  RECIPES.labelOf('refresh', item.id)
+                )}</option>`
             ).join('')}</select>
           </label>
           <label class="smart-field">
-            <span>Tempo (BPM)</span>
+            <span>${t('smart.bpm')}</span>
             <span class="smart-bpm">
-              <input id="smart-bpm-min" type="number" min="0" max="${RECIPES.BPM_MAX}" step="5" placeholder="von" value="${rules.bpmMin || ''}" />
+              <input id="smart-bpm-min" type="number" min="0" max="${RECIPES.BPM_MAX}" step="5" placeholder="${t(
+                'smart.bpmFrom'
+              )}" value="${rules.bpmMin || ''}" />
               <span aria-hidden="true">–</span>
-              <input id="smart-bpm-max" type="number" min="0" max="${RECIPES.BPM_MAX}" step="5" placeholder="bis" value="${rules.bpmMax || ''}" />
+              <input id="smart-bpm-max" type="number" min="0" max="${RECIPES.BPM_MAX}" step="5" placeholder="${t(
+                'smart.bpmTo'
+              )}" value="${rules.bpmMax || ''}" />
             </span>
           </label>
         </div>
         <fieldset class="smart-group">
-          <legend>Stimmung</legend>
+          <legend>${t('smart.mood')}</legend>
           <div class="smart-pills">${RECIPES.MOODS.map(
-            (mood) => `<label class="smart-pill"><input type="checkbox" data-smart-mood="${mood.id}" ${rules.moods.includes(mood.id) ? 'checked' : ''} /><span>${esc(mood.label)}</span></label>`
+            (mood) =>
+              `<label class="smart-pill"><input type="checkbox" data-smart-mood="${mood.id}" ${
+                rules.moods.includes(mood.id) ? 'checked' : ''
+              } /><span>${esc(RECIPES.labelOf('moods', mood.id))}</span></label>`
           ).join('')}</div>
-          <small class="smart-hint">Erkannt an Ordner, Titel und Artist. Leer = egal. Tempo kennt CleanMusic nur von Titeln, die schon analysiert wurden.</small>
+          <small class="smart-hint">${t('smart.moodHint')}</small>
         </fieldset>
         <fieldset class="smart-group">
-          <legend>Art</legend>
+          <legend>${t('smart.kind')}</legend>
           <div class="smart-pills">${RECIPES.KINDS.map(
-            (kind) => `<label class="smart-pill"><input type="checkbox" data-smart-kind="${kind.id}" ${rules.kinds.includes(kind.id) ? 'checked' : ''} /><span>${esc(kind.label)}</span></label>`
+            (kind) =>
+              `<label class="smart-pill"><input type="checkbox" data-smart-kind="${kind.id}" ${
+                rules.kinds.includes(kind.id) ? 'checked' : ''
+              } /><span>${esc(RECIPES.labelOf('kinds', kind.id))}</span></label>`
           ).join('')}</div>
         </fieldset>
         <fieldset class="smart-group">
-          <legend>Lizenz</legend>
+          <legend>${t('smart.license')}</legend>
           <div class="smart-pills">${(RECIPES.LICENSES || []).map(
-            (lic) => `<label class="smart-pill"><input type="checkbox" data-smart-license="${lic.id}" ${rules.licenses.includes(lic.id) ? 'checked' : ''} /><span>${esc(lic.label)}</span></label>`
+            (lic) =>
+              `<label class="smart-pill"><input type="checkbox" data-smart-license="${lic.id}" ${
+                rules.licenses.includes(lic.id) ? 'checked' : ''
+              } /><span>${esc(RECIPES.labelOf('licenses', lic.id))}</span></label>`
           ).join('')}</div>
-          <small class="smart-hint">Leer = jede Lizenz. „Nur stream-sicher“ oben ist strenger (CC0/CC BY/NCS/Plugin-CC).</small>
+          <small class="smart-hint">${t('smart.licenseHint')}</small>
         </fieldset>
         <p class="smart-preview" id="smart-preview"></p>
       </div>`;
 
     const promise = openDialog({
-      title: existing ? 'Regeln bearbeiten' : 'Smart-Playlist',
+      title: existing ? t('smart.editTitle') : t('nav.smartPlaylist'),
       html,
       input: false,
-      confirm: existing ? 'Speichern' : 'Erstellen',
+      confirm: existing ? t('playlist.save') : t('playlist.create'),
       className: 'smart-dialog',
     });
 
@@ -1095,10 +1125,10 @@
       const preview = root.querySelector('#smart-preview');
       if (preview) {
         preview.textContent = !hasSources
-          ? 'Wähle mindestens eine Quelle.'
+          ? t('smart.previewChoose')
           : count
-            ? `${count} Titel passen${count !== safe ? ` · ${safe} davon stream-sicher` : ''}.`
-            : 'Keine Treffer – lockere die Filter oder wähle mehr Quellen.';
+            ? t('smart.previewCount', { count, safe: count !== safe ? t('smart.previewSafe', { safe }) : '' })
+            : t('smart.previewNone');
       }
       ok.disabled = !values.name || !hasSources;
     };
@@ -1125,11 +1155,11 @@
     const answer = await smartPlaylistDialog(existing);
     if (!answer) return null;
     if (!answer.name) {
-      toast('Bitte gib der Smart-Playlist einen Namen.');
+      toast(t('playlist.nameRequired'));
       return null;
     }
     if (!answer.rules.sources.length) {
-      toast('Bitte wähle mindestens eine Quelle.');
+      toast(t('playlist.sourceRequired'));
       return null;
     }
 
@@ -1146,8 +1176,8 @@
     openPlaylist(playlist.id);
     toast(
       existing
-        ? `Regeln gespeichert – ${playlist.items.length} Titel`
-        : `Smart-Playlist „${playlist.name}“ mit ${playlist.items.length} Titeln`
+        ? t('playlist.rulesSaved', { count: playlist.items.length })
+        : t('playlist.smartCreated', { name: playlist.name, count: playlist.items.length })
     );
     return playlist;
   }
@@ -1156,7 +1186,7 @@
     const playlist = playlistById(id);
     if (!playlist || !playlist.smart) return 0;
     const count = rebuildSmartPlaylist(playlist);
-    toast(`Smart-Playlist aktualisiert – ${count} Titel`);
+    toast(t('playlist.smartUpdated', { count }));
     return count;
   }
 
@@ -1168,7 +1198,7 @@
   async function renamePlaylist(id) {
     const playlist = playlistById(id);
     if (!playlist) return;
-    const name = await askText({ title: 'Playlist umbenennen', value: playlist.name, confirm: 'Speichern' });
+    const name = await askText({ title: t('playlist.renameTitle'), value: playlist.name, confirm: t('playlist.save') });
     if (!name || name === playlist.name) return;
     playlist.name = name.slice(0, 80);
     playlist.updatedAt = Date.now();
@@ -1179,9 +1209,9 @@
     const playlist = playlistById(id);
     if (!playlist) return;
     const ok = await askConfirm({
-      title: `„${playlist.name}“ löschen?`,
-      text: `${playlist.items.length} Titel. Die Titel selbst bleiben erhalten (Favoriten, lokale Dateien).`,
-      confirm: 'Löschen',
+      title: t('playlist.deleteTitle', { name: playlist.name }),
+      text: t('playlist.deleteText', { count: playlist.items.length }),
+      confirm: t('playlist.delete'),
       danger: true,
     });
     if (!ok) return;
@@ -1192,7 +1222,7 @@
       showView('favorites');
     }
     onCollectionChanged({ playlists: true });
-    toast(`Playlist „${playlist.name}“ gelöscht`);
+    toast(t('playlist.deleted', { name: playlist.name }));
   }
 
   function updateStoredUrl(id, url, artwork) {
@@ -1311,7 +1341,7 @@
   function favButton(entry, className = 'icon-btn') {
     const on = favIds.has(entry.id);
     return `<button class="${className} fav ${on ? 'on' : ''}" data-act="fav" title="${
-      on ? 'Aus Favoriten entfernen' : 'Zu Favoriten'
+      on ? t('player.favoriteRemove') : t('player.favorite')
     }">${ICONS.heart}</button>`;
   }
 
@@ -1320,13 +1350,13 @@
 
     if (entry.kind === 'preview') {
       return fullMode()
-        ? `<span class="song-preview full" title="Voller Titel über ${esc(matchPlugin().source.label)} (Plugin)">${
-            entry.duration ? fmtTime(entry.duration) : 'Voll'
-          }</span>`
-        : '<span class="song-preview" title="30-Sekunden-Vorschau">30 s</span>';
+        ? `<span class="song-preview full" title="${t('row.fullVia', {
+            source: esc(matchPlugin().source.label),
+          })}">${entry.duration ? fmtTime(entry.duration) : t('row.full')}</span>`
+        : `<span class="song-preview" title="${t('row.previewTitle')}">30 s</span>`;
     }
 
-    if (entry.kind === 'stream' && !entry.duration) return '<span class="song-preview full">Voll</span>';
+    if (entry.kind === 'stream' && !entry.duration) return `<span class="song-preview full">${t('row.full')}</span>`;
 
     return `<span class="song-preview">${entry.duration ? fmtTime(entry.duration) : ''}</span>`;
   }
@@ -1346,20 +1376,17 @@
     return '<span>♪</span>';
   }
 
-  const CONTENT_ID_NOTE =
-    'Nicht lizenzgeprüft – kann auf YouTube, TikTok oder Twitch Content-ID-Ansprüche, Stummschaltung oder Sperren auslösen. Rechte vor der Nutzung selbst klären.';
-
   function licenseBadge(entry) {
     const contentId = entry.contentId
-      ? `<span class="lic-badge" data-lic="cid" title="${esc(CONTENT_ID_NOTE)}">⚠ Content ID möglich</span>`
+      ? `<span class="lic-badge" data-lic="cid" title="${esc(t('row.contentIdNote'))}">⚠ ${t('row.contentId')}</span>`
       : '';
     if (!entry.license) return contentId;
     const title =
       entry.license === 'NCS'
-        ? 'NCS – frei für Videos mit Credit'
+        ? t('row.ncsNote')
         : entry.contentId
-          ? 'Angabe des Uploaders bei YouTube, nicht geprüft – Content ID trotzdem möglich'
-          : `Lizenz: ${entry.license}`;
+          ? t('row.uploaderNote')
+          : t('row.license', { license: entry.license });
     return `<span class="lic-badge" data-lic="${licenseKey(entry.license)}" title="${esc(title)}">${esc(entry.license)}</span>${contentId}`;
   }
 
@@ -1378,14 +1405,14 @@
     const playing = isPlayingId(entry.id);
     const sub =
       [entry.artist, entry.album].filter(Boolean).join(' · ') ||
-      (entry.kind === 'local' ? entry.dir || 'Lokale Datei' : entry.meta || '');
+      (entry.kind === 'local' ? entry.dir || t('row.localFile') : entry.meta || '');
     const searchable = entry.kind !== 'radio' && entry.kind !== 'stream';
 
     return `
       <div class="song-row ${playing ? 'playing' : ''} ${options.handle ? 'has-handle' : ''}"
         data-list="${esc(listKey)}" data-index="${index}" data-track-id="${esc(entry.id)}"
         role="button" tabindex="0" draggable="true">
-        ${options.handle ? `<span class="drag-handle" title="Ziehen zum Sortieren">${ICONS.grip}</span>` : ''}
+        ${options.handle ? `<span class="drag-handle" title="${t('row.dragToSort')}">${ICONS.grip}</span>` : ''}
         <div class="song-art">${songArt(entry)}</div>
         <div class="song-info">
           <div class="song-title">${esc(entry.title)}</div>
@@ -1393,7 +1420,7 @@
             entry.artist && !['local', 'radio', 'stream'].includes(entry.kind)
               ? `<span class="artist-link" data-artist="${esc(entry.artist)}"${
                   entry.source === 'deezer' && entry.artistId ? ` data-artist-deezer="${esc(entry.artistId)}"` : ''
-                } title="Künstlerseite öffnen">${esc(entry.artist)}</span>${entry.album ? ` · ${esc(entry.album)}` : ''}`
+                } title="${t('row.openArtist')}">${esc(entry.artist)}</span>${entry.album ? ` · ${esc(entry.album)}` : ''}`
               : esc(sub)
           }</div>
         </div>
@@ -1408,26 +1435,26 @@
         ${lengthBadge(entry)}
         <div class="song-actions">
           ${downloadButton(entry)}
-          ${listKey === 'creator' ? '<button class="btn ghost small project-add" data-act="project" title="Zum aktiven Cutting-Projekt hinzufügen">Zum Projekt</button>' : ''}
+          ${listKey === 'creator' ? `<button class="btn ghost small project-add" data-act="project" title="${t('row.addToProjectTitle')}">${t('row.addToProject')}</button>` : ''}
           ${
             entry.credit
-              ? `<button class="icon-btn credit-btn" data-act="credit" title="Credit kopieren & in Video-Credits sammeln">${ICONS.copy}</button>`
+              ? `<button class="icon-btn credit-btn" data-act="credit" title="${t('row.copyCredit')}">${ICONS.copy}</button>`
               : ''
           }
           ${favButton(entry)}
-          <button class="icon-btn" data-act="add" title="Zur Playlist hinzufügen">${ICONS.plus}</button>
+          <button class="icon-btn" data-act="add" title="${t('player.addToPlaylist')}">${ICONS.plus}</button>
           ${
             searchable
-              ? `<button class="icon-btn" data-act="services" title="In einem Dienst suchen">${ICONS.service}</button>`
+              ? `<button class="icon-btn" data-act="services" title="${t('row.searchService')}">${ICONS.service}</button>`
               : ''
           }
-          ${entry.link ? '<button class="icon-btn" data-act="link" title="Im Dienst öffnen">↗</button>' : ''}
+          ${entry.link ? `<button class="icon-btn" data-act="link" title="${t('row.openInService')}">↗</button>` : ''}
           ${
             options.removable
-              ? `<button class="icon-btn" data-act="remove" title="Aus der Playlist entfernen">${ICONS.close}</button>`
+              ? `<button class="icon-btn" data-act="remove" title="${t('row.removeFromPlaylist')}">${ICONS.close}</button>`
               : ''
           }
-          <button class="icon-btn song-play" data-act="play" title="Abspielen">${PLAY_SVG}</button>
+          <button class="icon-btn song-play" data-act="play" title="${t('row.play')}">${PLAY_SVG}</button>
         </div>
       </div>`;
   }
@@ -1462,7 +1489,7 @@
       const holder = button.closest('[data-track-id]');
       const on = Boolean(holder && favIds.has(holder.dataset.trackId));
       button.classList.toggle('on', on);
-      button.title = on ? 'Aus Favoriten entfernen' : 'Zu Favoriten';
+      button.title = on ? t('player.favoriteRemove') : t('player.favorite');
     });
   }
 
@@ -1583,7 +1610,7 @@
     }
   }
 
-  const YOUTUBE_PLAYLIST_PLUGIN_MESSAGE = 'Für YouTube-Music-Links brauchst du ein aktives Quellen-Plugin mit Playlist-Import. Alternativ die Playlist auf tunemymusic.com als CSV exportieren und hier über Datei wählen laden.';
+  const YOUTUBE_PLAYLIST_PLUGIN_MESSAGE = () => t('import.youtubeNeedsPlugin');
 
   function uniquePlaylistName(value, fallback) {
     const baseName = String(value || fallback).trim().slice(0, 80) || fallback;
@@ -1642,14 +1669,20 @@
   }
 
   function spotifyImportProgressHtml(progress) {
-    return `<p class="spotify-progress-head">${esc(progress.found)} / ${esc(progress.total)} gefunden …</p>
-      <small class="muted">${esc(progress.processed)} von ${esc(progress.total)} Titeln geprüft</small>
+    return `<p class="spotify-progress-head">${t('import.progressFound', {
+      found: esc(progress.found),
+      total: esc(progress.total),
+    })}</p>
+      <small class="muted">${t('import.progressChecked', {
+        processed: esc(progress.processed),
+        total: esc(progress.total),
+      })}</small>
       <div class="spotify-progress"><i style="width:${progress.total ? Math.round((progress.processed / progress.total) * 100) : 0}%"></i></div>`;
   }
 
   function openPlaylistImportDialog() {
     if (!bridge.isElectron) {
-      toast('Der Playlist-Import ist nur in der Desktop-App verfügbar.');
+      toast(t('import.desktopOnly'));
       return;
     }
     const root = $('#dialog');
@@ -1670,7 +1703,7 @@
       field.hidden = false;
       ok.hidden = false;
       cancel.hidden = false;
-      cancel.textContent = 'Abbrechen';
+      cancel.textContent = t('common.cancel');
       textEl.classList.remove('dialog-rich');
       textEl.classList.remove('spotify-import-body');
       form.classList.remove('spotify-import-dialog');
@@ -1682,7 +1715,7 @@
       root.removeEventListener('mousedown', onBackdrop);
       document.removeEventListener('keydown', onKey, true);
     };
-    const setView = (title, html, cancelLabel = 'Schließen') => {
+    const setView = (title, html, cancelLabel = t('common.close')) => {
       $('#dialog-title').textContent = title;
       textEl.innerHTML = html;
       textEl.hidden = false;
@@ -1695,63 +1728,63 @@
       cancel.textContent = cancelLabel;
       root.hidden = false;
     };
-    const showStart = (message = '') => setView('Playlist übertragen', `
+    const showStart = (message = '') => setView(t('import.title'), `
       ${message ? `<p class="spotify-import-error">${esc(message)}</p>` : ''}
-      <p>Spotify- oder YouTube-Music-Link einfügen – oder eine CSV-/JSON-Datei wählen.</p>
-      <label class="spotify-link-label" for="spotify-playlist-link">Playlist-Link</label>
+      <p>${t('import.intro')}</p>
+      <label class="spotify-link-label" for="spotify-playlist-link">${t('import.linkLabel')}</label>
       <div class="spotify-link-row"><input id="spotify-playlist-link" type="url" placeholder="https://music.youtube.com/playlist?list=…" autocomplete="off" />
-      <button class="btn primary small" data-spotify-action="link">Übertragen</button></div>
-      <div class="spotify-import-divider">oder</div>
-      <button class="btn ghost" data-spotify-action="file">Datei wählen …</button>
-      <p class="muted small">Private Spotify-Playlist? Auf exportify.app als CSV exportieren. YouTube Music kannst du auf tunemymusic.com als CSV exportieren und hier laden.</p>`);
+      <button class="btn primary small" data-spotify-action="link">${t('import.transfer')}</button></div>
+      <div class="spotify-import-divider">${t('import.or')}</div>
+      <button class="btn ghost" data-spotify-action="file">${t('import.chooseFile')}</button>
+      <p class="muted small">${t('import.help')}</p>`);
 
-    const showError = (message) => setView('Playlist übertragen', `
-      <p class="spotify-import-error">${esc(message || 'Der Import ist fehlgeschlagen.')}</p>
-      <button class="btn ghost small" data-spotify-action="back">Zurück</button>`);
+    const showError = (message) => setView(t('import.title'), `
+      <p class="spotify-import-error">${esc(message || t('import.failed'))}</p>
+      <button class="btn ghost small" data-spotify-action="back">${t('import.back')}</button>`);
 
     const showResult = (results) => {
       const allMissing = results.flatMap((result) => result.missing || []);
       const reports = results.map((result) => `
         <section class="spotify-import-result">
           <strong>${esc(result.name)}</strong>
-          <p>${esc(result.imported)} von ${esc(result.requested)} übertragen</p>
-          ${result.limited ? `<p class="muted small">${esc(result.limitMessage || 'Der Import wurde auf 2000 Titel begrenzt.')}</p>` : ''}
-          ${result.missing.length ? `<details><summary>${result.missing.length} nicht gefundene Titel</summary><ul>${result.missing.map((track) => `<li>${esc(track.title)}${track.artist ? ` · ${esc(track.artist)}` : ''}</li>`).join('')}</ul></details>` : ''}
+          <p>${t('import.transferredOf', { imported: esc(result.imported), requested: esc(result.requested) })}</p>
+          ${result.limited ? `<p class="muted small">${esc(result.limitMessage || t('import.limited'))}</p>` : ''}
+          ${result.missing.length ? `<details><summary>${t('import.missingCount', { count: result.missing.length })}</summary><ul>${result.missing.map((track) => `<li>${esc(track.title)}${track.artist ? ` · ${esc(track.artist)}` : ''}</li>`).join('')}</ul></details>` : ''}
         </section>`).join('');
-      setView('Playlist-Import abgeschlossen', `${reports}
-        ${allMissing.length ? '<button class="btn ghost small" data-spotify-action="copy-missing">Kopieren</button>' : ''}
-        <button class="btn primary small" data-spotify-action="done">Fertig</button>`);
+      setView(t('import.doneTitle'), `${reports}
+        ${allMissing.length ? `<button class="btn ghost small" data-spotify-action="copy-missing">${t('import.copy')}</button>` : ''}
+        <button class="btn primary small" data-spotify-action="done">${t('import.done')}</button>`);
       textEl._spotifyMissingText = allMissing.map((track) => `${track.title}${track.artist ? ` – ${track.artist}` : ''}`).join('\n');
     };
 
     const loadYouTubeLink = async (url) => {
       const plugin = readyPlugins('playlist')[0];
       if (!plugin) {
-        showError(YOUTUBE_PLAYLIST_PLUGIN_MESSAGE);
+        showError(YOUTUBE_PLAYLIST_PLUGIN_MESSAGE());
         return;
       }
       const token = ++generation;
       cancelled = false;
-      setView('Playlist wird gelesen …', '<p>Die Playlist wird über das aktive Quellen-Plugin gelesen.</p>', 'Abbrechen');
+      setView(t('import.readingPlaylist'), `<p>${t('import.readingPlaylistText')}</p>`, t('common.cancel'));
       let result;
       try {
         result = await bridge.pluginPlaylist(plugin.id, url);
       } catch (error) {
-        if (!done && !cancelled && token === generation) showError(error && error.message || 'Playlist konnte nicht gelesen werden.');
+        if (!done && !cancelled && token === generation) showError(error && error.message || t('import.cannotRead'));
         return;
       }
       if (done || cancelled || token !== generation) return;
       if (!result || result.error || !Array.isArray(result.items) || !result.items.length) {
-        showError(result && result.error ? result.error : 'Die Playlist enthält keine importierbaren Titel.');
+        showError(result && result.error ? result.error : t('import.noTracks'));
         return;
       }
       const imported = importPluginPlaylist(plugin, result);
-      setView('Playlist-Import abgeschlossen', `
+      setView(t('import.doneTitle'), `
         <section class="spotify-import-result">
           <strong>${esc(imported.name)}</strong>
-          <p>${esc(imported.imported)} Titel übertragen</p>
+          <p>${t('import.transferred', { count: esc(imported.imported) })}</p>
         </section>
-        <button class="btn primary small" data-spotify-action="done">Fertig</button>`);
+        <button class="btn primary small" data-spotify-action="done">${t('import.done')}</button>`);
     };
 
     const startImport = async (playlists, token) => {
@@ -1760,7 +1793,9 @@
       for (const data of playlists) {
         if (done || cancelled || token !== generation) return;
         let progress = { found: 0, processed: 0, total: (data.tracks || []).length };
-        setView(`„${data.name}“ wird übertragen`, `<div class="spotify-progress-box">${spotifyImportProgressHtml(progress)}</div><p class="muted small">Du kannst den Import abbrechen.</p>`, 'Abbrechen');
+        setView(t('import.transferring', { name: data.name }), `<div class="spotify-progress-box">${spotifyImportProgressHtml(progress)}</div><p class="muted small">${t(
+          'import.canCancel'
+        )}</p>`, t('common.cancel'));
         let result;
         try {
           result = await importSpotifyPlaylist(data, () => cancelled || done || token !== generation, (next) => {
@@ -1769,7 +1804,7 @@
             if (box && !done && !cancelled && token === generation) box.innerHTML = spotifyImportProgressHtml(progress);
           });
         } catch (error) {
-          if (!done && !cancelled && token === generation) showError(error && error.message || 'Deezer-Suche fehlgeschlagen.');
+          if (!done && !cancelled && token === generation) showError(error && error.message || t('import.deezerFailed'));
           return;
         }
         if (result.cancelled || done || cancelled || token !== generation) return;
@@ -1791,17 +1826,17 @@
         await loadYouTubeLink(url);
         return;
       }
-      setView('Spotify-Playlist wird geladen …', '<p>Öffentliche Playlist wird abgerufen.</p>', 'Abbrechen');
+      setView(t('import.loadingSpotify'), `<p>${t('import.loadingSpotifyText')}</p>`, t('common.cancel'));
       let result;
       try {
         result = await bridge.spotifyPlaylistLink(url);
       } catch (error) {
-        if (!done && !cancelled && token === generation) showError(error && error.message || 'Spotify-Playlist konnte nicht geladen werden.');
+        if (!done && !cancelled && token === generation) showError(error && error.message || t('import.spotifyFailed'));
         return;
       }
       if (done || cancelled || token !== generation) return;
       if (!result || result.error || !Array.isArray(result.tracks) || !result.tracks.length) {
-        showError(result && result.error ? result.error : 'Spotify-Playlist enthält keine Titel.');
+        showError(result && result.error ? result.error : t('import.spotifyEmpty'));
         return;
       }
       startImport([result], token);
@@ -1810,17 +1845,17 @@
     const loadFile = async () => {
       const token = ++generation;
       cancelled = false;
-      setView('Spotify-Datei wird gelesen …', '<p>CSV oder JSON wird geprüft.</p>', 'Abbrechen');
+      setView(t('import.readingFile'), `<p>${t('import.readingFileText')}</p>`, t('common.cancel'));
       let result;
       try {
         result = await bridge.playlistImportFile();
       } catch (error) {
-        if (!done && !cancelled && token === generation) showError(error && error.message || 'Datei konnte nicht gelesen werden.');
+        if (!done && !cancelled && token === generation) showError(error && error.message || t('import.fileFailed'));
         return;
       }
       if (done || cancelled || token !== generation || (result && result.canceled)) return;
       if (!result || result.error || !Array.isArray(result.playlists) || !result.playlists.length) {
-        showError(result && result.error ? result.error : 'In der Datei wurden keine Playlists gefunden.');
+        showError(result && result.error ? result.error : t('import.noPlaylistsInFile'));
         return;
       }
       if (result.playlists.length === 1) {
@@ -1829,9 +1864,9 @@
       }
       const options = result.playlists.map((playlist, index) => `
         <label class="spotify-playlist-choice"><input type="checkbox" value="${index}" checked />
-          <span><strong>${esc(playlist.name)}</strong><small>${playlist.tracks.length} Titel</small></span></label>`).join('');
-      setView('Playlists auswählen', `<p>Jede ausgewählte Playlist wird separat angelegt.</p><div class="spotify-playlist-choices">${options}</div>
-        <button class="btn primary small" data-spotify-action="selected">Auswahl übertragen</button>`, 'Abbrechen');
+          <span><strong>${esc(playlist.name)}</strong><small>${t('home.trackCount', { count: playlist.tracks.length })}</small></span></label>`).join('');
+      setView(t('import.choosePlaylists'), `<p>${t('import.choosePlaylistsText')}</p><div class="spotify-playlist-choices">${options}</div>
+        <button class="btn primary small" data-spotify-action="selected">${t('import.transferSelection')}</button>`, t('common.cancel'));
       textEl._spotifyPlaylists = result.playlists;
     };
 
@@ -1845,13 +1880,13 @@
       else if (action === 'back') showStart();
       else if (action === 'done') finish();
       else if (action === 'copy-missing') {
-        bridge.copyText(textEl._spotifyMissingText || '').then((ok) => toast(ok ? 'Nicht gefundene Titel kopiert' : 'Kopieren nicht möglich'));
+        bridge.copyText(textEl._spotifyMissingText || '').then((ok) => toast(ok ? t('import.copiedMissing') : t('import.copyFailed')));
       } else if (action === 'selected') {
         const lists = textEl._spotifyPlaylists || [];
         const selected = Array.from(textEl.querySelectorAll('.spotify-playlist-choice input:checked'))
           .map((checkbox) => lists[Number(checkbox.value)]).filter(Boolean);
         if (!selected.length) {
-          toast('Wähle mindestens eine Playlist aus.');
+          toast(t('import.chooseAtLeastOne'));
           return;
         }
         startImport(selected, generation);
@@ -1872,7 +1907,7 @@
 
     hideMenus();
     showStart();
-    cancel.textContent = 'Schließen';
+    cancel.textContent = t('common.close');
     textEl.addEventListener('click', onAction);
     form.addEventListener('submit', onSubmit);
     cancel.addEventListener('click', onCancel);
@@ -1917,7 +1952,9 @@
 
     const menu = $('#ctx-menu');
     const label =
-      entries.length === 1 ? `„${entries[0].title}“ hinzufügen zu` : `${entries.length} Titel hinzufügen zu`;
+      entries.length === 1
+        ? t('menu.addOneTo', { title: entries[0].title })
+        : t('menu.addManyTo', { count: entries.length });
     const playlists = state.collection.playlists;
 
     const current = currentItem();
@@ -1933,7 +1970,7 @@
         entries.length === 1 && entries[0].title
           ? `<button class="service-menu-item" data-ctx-share>
               <span class="menu-ic">${ICONS.copy}</span>
-              <span class="menu-text">Link zum Teilen kopieren</span>
+              <span class="menu-text">${t('menu.copyShare')}</span>
             </button>`
           : ''
       }
@@ -1941,38 +1978,38 @@
         queueable
           ? `<button class="service-menu-item" data-ctx-queue="next">
               <span class="menu-ic">${ICONS.queueNext}</span>
-              <span class="menu-text">Als Nächstes abspielen</span>
+              <span class="menu-text">${t('menu.playNext')}</span>
             </button>
             <button class="service-menu-item" data-ctx-queue="end">
               <span class="menu-ic">${ICONS.list}</span>
-              <span class="menu-text">Zur Warteschlange hinzufügen</span>
+              <span class="menu-text">${t('menu.addToQueue')}</span>
             </button>
             <div class="menu-sep"></div>`
           : ''
       }
       ${
         tasteEntry
-          ? `<div class="service-menu-label">Geschmack</div>
+          ? `<div class="service-menu-label">${t('menu.taste')}</div>
              <button class="service-menu-item" data-ctx-taste="like">
                <span class="menu-ic">${ICONS.like}</span>
-               <span class="menu-text">Mehr davon</span>
+               <span class="menu-text">${t('menu.moreLikeThis')}</span>
                ${trackLiked ? '<span class="menu-count">✓</span>' : ''}
              </button>
              <button class="service-menu-item" data-ctx-taste="dislike">
                <span class="menu-ic">${ICONS.dislike}</span>
-               <span class="menu-text">Weniger davon</span>
+               <span class="menu-text">${t('menu.lessLikeThis')}</span>
                ${trackDisliked ? '<span class="menu-count">✓</span>' : ''}
              </button>
              ${
                tasteArtist
                  ? `<button class="service-menu-item" data-ctx-taste="artist-like">
                       <span class="menu-ic">${ICONS.like}</span>
-                      <span class="menu-text">${esc(tasteArtist)} mehr davon</span>
+                      <span class="menu-text">${t('menu.moreFrom', { artist: esc(tasteArtist) })}</span>
                       ${artistLiked ? '<span class="menu-count">✓</span>' : ''}
                     </button>
                     <button class="service-menu-item" data-ctx-taste="artist-dislike">
                       <span class="menu-ic">${ICONS.dislike}</span>
-                      <span class="menu-text">${esc(tasteArtist)} weniger davon</span>
+                      <span class="menu-text">${t('menu.lessFrom', { artist: esc(tasteArtist) })}</span>
                       ${artistDisliked ? '<span class="menu-count">✓</span>' : ''}
                     </button>`
                  : ''
@@ -1994,7 +2031,7 @@
       ${playlists.length ? '<div class="menu-sep"></div>' : ''}
       <button class="service-menu-item" data-ctx-new>
         <span class="menu-ic">${ICONS.plus}</span>
-        <span class="menu-text">Neue Playlist …</span>
+        <span class="menu-text">${t('menu.newPlaylist')}</span>
       </button>`;
 
     positionMenu(menu, anchor);
@@ -2041,7 +2078,7 @@
     const featured = music.filter((service) => service.featured);
     const extra = music
       .filter((service) => !service.featured)
-      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      .sort((a, b) => a.name.localeCompare(b.name, CMI18n.locale()));
     const host = $('#service-nav');
     if (host) {
       host.innerHTML = `
@@ -2053,7 +2090,7 @@
           extra.length
             ? `<button class="nav-more" id="btn-services-more" aria-expanded="${navState.services}">
                  <span class="nav-more-sign">${navState.services ? '−' : '+'}</span>
-                 <span>${navState.services ? 'Weniger Dienste' : `Weitere Dienste (${extra.length})`}</span>
+                 <span>${navState.services ? t('nav.lessServices') : t('nav.moreServices', { count: extra.length })}</span>
                  <span class="nav-chevron ${navState.services ? 'open' : ''}">›</span>
                </button>`
             : ''
@@ -2091,7 +2128,7 @@
       .sort(
         (a, b) =>
           Number(Boolean(b.smart)) - Number(Boolean(a.smart)) ||
-          a.name.localeCompare(b.name, 'de')
+          a.name.localeCompare(b.name, CMI18n.locale())
       );
     host.innerHTML = playlists
       .map(
@@ -2102,7 +2139,7 @@
             }"
             data-playlist="${esc(playlist.id)}"
             data-drop="playlist:${esc(playlist.id)}"
-            title="${esc(playlist.name)}${playlist.smart ? ' · Smart-Playlist' : ''}"
+            title="${esc(playlist.name)}${playlist.smart ? t('nav.smartSuffix') : ''}"
           >
             <span class="nav-ic">${playlist.smart ? ICONS.spark : ICONS.list}</span>
             <span class="svc-name">${esc(playlist.name)}</span>
@@ -2124,24 +2161,26 @@
     const chips = [
       widevine
         ? `<span class="status-chip ok"><i></i>Widevine ${esc(widevine.version)}</span>`
-        : `<span class="status-chip warn"><i></i>Kein Widevine gefunden</span>`,
+        : `<span class="status-chip warn"><i></i>${t('status.noWidevine')}</span>`,
       `<span class="status-chip ok"><i></i>${
-        state.settings.systemBrowser ? 'System-Browser' : 'Eingebettete Player'
+        state.settings.systemBrowser ? t('status.systemBrowser') : t('status.embedded')
       }</span>`,
-      `<span class="status-chip"><i></i>${state.library.tracks.length} lokale Titel</span>`,
-      `<span class="status-chip"><i></i>${state.collection.favorites.length} Favoriten</span>`,
+      `<span class="status-chip"><i></i>${t('status.localTracks', { count: state.library.tracks.length })}</span>`,
+      `<span class="status-chip"><i></i>${t('status.favorites', { count: state.collection.favorites.length })}</span>`,
     ];
 
     readyPlugins().forEach((plugin) => {
-      chips.push(`<span class="status-chip ok"><i></i>Plugin ${esc(plugin.name)} aktiv</span>`);
+      chips.push(`<span class="status-chip ok"><i></i>${t('status.pluginActive', { name: esc(plugin.name) })}</span>`);
     });
 
     const idle = state.plugins.list.filter((plugin) => !plugin.enabled);
     if (idle.length) {
       chips.push(
         `<button class="status-chip action" data-home-action="settings"><i></i>${
-          idle.length === 1 ? '1 Plugin' : `${idle.length} Plugins`
-        } gefunden · aus</button>`
+          idle.length === 1
+            ? t('status.pluginsIdleOne')
+            : t('status.pluginsIdleMany', { count: idle.length })
+        }</button>`
       );
     }
 
@@ -2394,12 +2433,12 @@
             <span class="svc-badge lg" style="--svc:${service.color}">${esc(service.short)}</span>
             <div>
               <h3>${esc(service.name)}</h3>
-              <p>${esc(service.note)}</p>
+              <p>${esc(serviceNote(service))}</p>
             </div>
           </div>
           <div class="service-card-actions">
-            <button class="btn primary small" data-open="${service.id}">Öffnen</button>
-            <button class="btn ghost small" data-external="${service.id}">Im Browser</button>
+            <button class="btn primary small" data-open="${service.id}">${t('home.open')}</button>
+            <button class="btn ghost small" data-external="${service.id}">${t('topbar.openInBrowser')}</button>
           </div>
         </article>`
     ).join('');
@@ -2412,32 +2451,31 @@
         <section class="hero">
           <div class="hero-copy">
             <div class="eyebrow">The Music Launcher</div>
-            <h1>Alle Dienste.<br /><span class="grad">Ein Startpunkt.</span></h1>
+            <h1>${t('home.heroTitle1')}<br /><span class="grad">${t('home.heroTitle2')}</span></h1>
             <p>
-              Streaming im offiziellen Web-Player, Vorschauen direkt in der App,
-              lokale Musik nativ. Dein Login bleibt, wo er hingehört.
+              ${t('home.heroText')}
             </p>
             <div class="quick-actions">
               <button class="quick-action primary" data-home-action="search">
-                ${ICONS.search} Song suchen <kbd>Strg K</kbd>
+                ${ICONS.search} ${t('home.searchSong')} <kbd>Strg K</kbd>
               </button>
               <button class="quick-action" data-home-action="favorites">
-                ${ICONS.heart} Favoriten
+                ${ICONS.heart} ${t('nav.favorites')}
               </button>
               <button class="quick-action" data-home-action="presets">
-                ${ICONS.spark} Vorlagen
+                ${ICONS.spark} ${t('nav.presets')}
               </button>
               <button class="quick-action" data-home-action="mixes">
-                ${ICONS.star} Mixes
+                ${ICONS.star} ${t('nav.mixes')}
               </button>
               <button class="quick-action" data-home-action="creator">
-                ${ICONS.scissors} Cutter-Modus
+                ${ICONS.scissors} ${t('nav.creator')}
               </button>
               <button class="quick-action" data-home-action="add-folder">
-                ${ICONS.folder} Ordner hinzufügen
+                ${ICONS.folder} ${t('home.addFolder')}
               </button>
               <button class="quick-action" data-home-action="radio">
-                ${ICONS.radio} Radio
+                ${ICONS.radio} ${t('nav.radio')}
               </button>
               <button class="quick-action" data-home-action="musickit">
                 ${ICONS.spark} MusicKit
@@ -2447,7 +2485,7 @@
           <div class="hero-art" aria-hidden="true">
             <div class="hero-eq">${'<span></span>'.repeat(14)}</div>
             <span class="hero-badge">${
-              full ? `Volle Titel · ${esc(fullPlugin.name)}` : '30 s Previews · legal'
+              full ? t('home.badgeFull', { name: esc(fullPlugin.name) }) : t('home.badgePreview')
             }</span>
           </div>
         </section>
@@ -2459,10 +2497,10 @@
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Deine Mixes</h2>
-              <span class="muted small" id="home-mixes-sub">Aus deinem Geschmack – jeden Tag neu</span>
+              <h2>${t('home.mixesTitle')}</h2>
+              <span class="muted small" id="home-mixes-sub">${t('home.mixesSub')}</span>
             </div>
-            <button class="btn ghost small" data-home-action="mixes">${ICONS.star} Alle Mixes</button>
+            <button class="btn ghost small" data-home-action="mixes">${ICONS.star} ${t('home.allMixes')}</button>
           </div>
           <div id="home-mixes" class="mix-row"></div>
         </section>
@@ -2470,10 +2508,10 @@
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Neu für dich</h2>
-              <span class="muted small" id="home-recs-sub">Basierend auf deinen Favoriten und dem, was du hörst</span>
+              <h2>${t('home.recsTitle')}</h2>
+              <span class="muted small" id="home-recs-sub">${t('home.recsSub')}</span>
             </div>
-            <button class="btn ghost small" data-home-action="recs">${ICONS.refresh} Neu mischen</button>
+            <button class="btn ghost small" data-home-action="recs">${ICONS.refresh} ${t('home.remix')}</button>
           </div>
           <div id="home-recs" class="charts-row"></div>
         </section>
@@ -2481,14 +2519,20 @@
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Trending & Neuheiten</h2>
+              <h2>${t('home.trendTitle')}</h2>
               <span class="muted small">${
-                full ? `voller Titel über ${esc(fullPlugin.source.label)}` : '30-Sekunden-Vorschau'
+                full
+                  ? t('home.trendSubFull', { source: esc(fullPlugin.source.label) })
+                  : t('home.trendSubPreview')
               }</span>
             </div>
             <div class="row trend-tabs">
-              <button class="radio-tag ${state.trend === 'charts' ? 'active' : ''}" data-home-action="trend-charts">Charts</button>
-              <button class="radio-tag ${state.trend === 'releases' ? 'active' : ''}" data-home-action="trend-releases">Neuerscheinungen</button>
+              <button class="radio-tag ${state.trend === 'charts' ? 'active' : ''}" data-home-action="trend-charts">${t(
+                'home.charts'
+              )}</button>
+              <button class="radio-tag ${state.trend === 'releases' ? 'active' : ''}" data-home-action="trend-releases">${t(
+                'home.releases'
+              )}</button>
               ${
                 chartsPlugin()
                   ? `<button class="radio-tag ${state.trend === 'plugin' ? 'active' : ''}" data-home-action="trend-plugin">${esc(
@@ -2496,7 +2540,7 @@
                     )}</button>`
                   : ''
               }
-              <button class="btn ghost small" data-home-action="refresh">Neu laden</button>
+              <button class="btn ghost small" data-home-action="refresh">${t('home.reload')}</button>
             </div>
           </div>
           <div id="home-charts" class="charts-row"></div>
@@ -2505,8 +2549,8 @@
         <section class="home-section" id="home-rediscover-section" hidden>
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Wiederentdecken</h2>
-              <span class="muted small">Lange nicht gehört</span>
+              <h2>${t('home.rediscoverTitle')}</h2>
+              <span class="muted small">${t('home.rediscoverSub')}</span>
             </div>
           </div>
           <div id="home-rediscover" class="charts-row"></div>
@@ -2515,8 +2559,8 @@
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Dienste</h2>
-              <span class="muted small">Offizielle Web-Player</span>
+              <h2>${t('home.servicesTitle')}</h2>
+              <span class="muted small">${t('home.servicesSub')}</span>
             </div>
           </div>
           <div class="grid services-grid">${cards}</div>
@@ -2525,17 +2569,15 @@
         <section class="home-split">
           <div class="panel home-local" id="home-local"></div>
           <div class="panel">
-            <h3>So funktioniert's</h3>
+            <h3>${t('home.howTitle')}</h3>
             <ul class="how-list">
-              <li><span><strong>Lokal</strong> läuft nativ in CleanMusic – ohne Login, ohne DRM.</span></li>
-              <li><span><strong>Vorschauen</strong> von Apple Music und Deezer laufen im eigenen Player.</span></li>
-              <li><span><strong>Volle Katalogtitel</strong> im offiziellen Web-Player oder per MusicKit${
-                full ? ' – oder über ein Plugin direkt hier' : ''
-              }.</span></li>
-              <li><span><strong>Favoriten & Playlists</strong> mischen alle Quellen: ♥ oder + an jedem Titel.</span></li>
+              <li><span>${t('home.how1')}</span></li>
+              <li><span>${t('home.how2')}</span></li>
+              <li><span>${t('home.how3', { plugin: full ? t('home.how3Plugin') : '' })}</span></li>
+              <li><span>${t('home.how4')}</span></li>
             </ul>
             <p class="muted small" style="margin-top:12px">
-              Kein DRM-Bypass, keine Werbeblocker. Plugins sind optional und nicht enthalten.
+              ${t('home.legal')}
             </p>
           </div>
         </section>
@@ -2618,8 +2660,8 @@
       if (!charts.items.length) {
         host.innerHTML = `
           <div class="charts-empty">
-            <span>${esc(charts.error || 'Gerade keine Charts vom Plugin.')}</span>
-            <button class="btn ghost small" data-home-action="refresh">Erneut versuchen</button>
+            <span>${esc(charts.error || t('home.chartsErrorPlugin'))}</span>
+            <button class="btn ghost small" data-home-action="refresh">${t('home.retry')}</button>
           </div>`;
         return;
       }
@@ -2637,8 +2679,8 @@
       if (!releases.tracks.length) {
         host.innerHTML = `
           <div class="charts-empty">
-            <span>${esc(releases.error || 'Gerade keine Neuerscheinungen gefunden.')}</span>
-            <button class="btn ghost small" data-home-action="refresh">Erneut versuchen</button>
+            <span>${esc(releases.error || t('home.releasesError'))}</span>
+            <button class="btn ghost small" data-home-action="refresh">${t('home.retry')}</button>
           </div>`;
         return;
       }
@@ -2656,8 +2698,8 @@
     if (!charts.tracks.length) {
       host.innerHTML = `
         <div class="charts-empty">
-          <span>Charts konnten gerade nicht geladen werden.</span>
-          <button class="btn ghost small" data-home-action="refresh">Erneut versuchen</button>
+          <span>${t('home.chartsError')}</span>
+          <button class="btn ghost small" data-home-action="refresh">${t('home.retry')}</button>
         </div>`;
       return;
     }
@@ -2674,11 +2716,11 @@
     const recs = visibleRecs();
 
     if (!seeds.artists.length && !seeds.pluginSeeds.length) {
-      if (sub) sub.textContent = 'Persönliche Vorschläge';
+      if (sub) sub.textContent = t('home.recsSubPersonal');
       host.innerHTML = `
         <div class="charts-empty">
-          <span>Markiere Titel mit ♥ – dann findest du hier Vorschläge passend zu deinen Favoriten.</span>
-          <button class="btn ghost small" data-home-action="search">Songs suchen</button>
+          <span>${t('home.recsEmpty')}</span>
+          <button class="btn ghost small" data-home-action="search">${t('home.searchSongs')}</button>
         </div>`;
       return;
     }
@@ -2693,8 +2735,8 @@
     if (!recs.length) {
       host.innerHTML = `
         <div class="charts-empty">
-          <span>${esc(state.recs.error || 'Gerade keine Vorschläge gefunden.')}</span>
-          <button class="btn ghost small" data-home-action="recs">Erneut versuchen</button>
+          <span>${esc(state.recs.error || t('home.recsError'))}</span>
+          <button class="btn ghost small" data-home-action="recs">${t('home.retry')}</button>
         </div>`;
       return;
     }
@@ -2719,13 +2761,13 @@
       host.innerHTML = `
         <div class="home-local-head">
           <div>
-            <h3>Deine Musik</h3>
-            <p>Lokale Dateien laufen zu 100 % in CleanMusic.</p>
+            <h3>${t('home.yourMusic')}</h3>
+            <p>${t('home.localRuns')}</p>
           </div>
-          <span class="home-local-badge">0 Titel</span>
+          <span class="home-local-badge">${t('home.trackCount', { count: 0 })}</span>
         </div>
         <div class="home-local-empty">
-          <button class="btn primary small" data-home-action="add-folder">Ordner hinzufügen</button>
+          <button class="btn primary small" data-home-action="add-folder">${t('home.addFolder')}</button>
           <span class="muted small">MP3, FLAC, WAV, M4A …</span>
         </div>`;
       return;
@@ -2742,7 +2784,7 @@
             <span class="home-local-idx">${playing ? EQ : index + 1}</span>
             <span class="home-local-meta">
               <span class="home-local-title">${esc(entry.title)}</span>
-              <span class="home-local-sub">${esc(entry.artist || entry.dir || 'Lokale Datei')}</span>
+              <span class="home-local-sub">${esc(entry.artist || entry.dir || t('row.localFile'))}</span>
             </span>
             <span class="home-local-play">${ICONS.play}</span>
           </button>`;
@@ -2752,15 +2794,15 @@
     host.innerHTML = `
       <div class="home-local-head">
         <div>
-          <h3>Deine Musik</h3>
-          <p>${all.length} lokale Titel</p>
+          <h3>${t('home.yourMusic')}</h3>
+          <p>${t('home.localTracks', { count: all.length })}</p>
         </div>
-        <button class="btn ghost small" data-home-action="open-local">Alle ansehen</button>
+        <button class="btn ghost small" data-home-action="open-local">${t('home.seeAll')}</button>
       </div>
-      <div class="home-local-list">${rows || '<p class="muted small home-local-note">Für diese Stimmung gibt es keine Titel.</p>'}</div>
+      <div class="home-local-list">${rows || `<p class="muted small home-local-note">${t('home.noMoodTracks')}</p>`}</div>
       <div class="home-local-foot">
         <span class="muted small">${esc(state.library.folder || '')}</span>
-        <button class="btn ghost small" data-home-action="add-folder">+ Ordner</button>
+        <button class="btn ghost small" data-home-action="add-folder">${t('home.addFolderShort')}</button>
       </div>`;
   }
 
@@ -2806,9 +2848,9 @@
   }
 
   function recsSubtitle() {
-    if (state.recs.loading) return 'Vorschläge werden gemischt …';
-    if (state.recs.seeds.length) return `Weil du ${formatList(state.recs.seeds.slice(0, 3))} magst`;
-    return 'Basierend auf deinen Favoriten';
+    if (state.recs.loading) return t('recs.mixing');
+    if (state.recs.seeds.length) return t('recs.because', { list: formatList(state.recs.seeds.slice(0, 3)) });
+    return t('recs.basedOnFavorites');
   }
 
   function scheduleRecsRefresh(delay = 2500) {
@@ -3092,6 +3134,13 @@
     return MIX_DEFS.find((def) => def.id === id) || null;
   }
 
+  // Mix definitions live in core/mixes.js; `title`/`subtitle`/`desc` are German,
+  // the `…En` fields are the English counterparts.
+  function mixText(def, field) {
+    const key = `${field}En`;
+    return CMI18n.lang() === 'en' && def[key] ? def[key] : def[field];
+  }
+
   function mixArt(list, def) {
     const arts = [];
     list.forEach((entry) => {
@@ -3114,17 +3163,17 @@
           ${mixArt(list, def)}
           <button class="mix-play" data-mix-action="play" data-mix-id="${esc(def.id)}" ${
             empty ? 'disabled' : ''
-          } title="${empty ? 'Noch zu wenig Daten' : 'Mix abspielen'}">${ICONS.play}</button>
+          } title="${empty ? t('mixes.tooLittle') : t('mixes.playMix')}">${ICONS.play}</button>
           <span class="mix-count">${list.length}</span>
         </div>
         <div class="mix-info">
           <div class="mix-heading">
             <span class="mix-ic">${ICONS[def.icon] || ICONS.spark}</span>
-            <h3>${esc(def.title)}</h3>
+            <h3>${esc(mixText(def, 'title'))}</h3>
           </div>
-          <p>${esc(def.desc)}</p>
+          <p>${esc(mixText(def, 'desc'))}</p>
           <span class="mix-sub">${
-            empty ? 'Hör ein paar Titel oder markiere ♥' : `${list.length} Titel · ${esc(def.subtitle)}`
+            empty ? t('mixes.emptyHint') : `${t('home.trackCount', { count: list.length })} · ${esc(mixText(def, 'subtitle'))}`
           }</span>
         </div>
         ${
@@ -3133,14 +3182,16 @@
             : `<div class="mix-actions">
                  <button class="btn primary small mix-play-btn" data-mix-action="play" data-mix-id="${esc(def.id)}" ${
                    empty ? 'disabled' : ''
-                 }>Abspielen</button>
+                 }>${t('row.play')}</button>
                  <button class="btn ghost small mix-icon-btn" data-mix-action="shuffle" data-mix-id="${esc(def.id)}" ${
                    empty ? 'disabled' : ''
-                 } title="Mix in zufälliger Reihenfolge spielen">${ICONS.shuffle}</button>
+                 } title="${t('mixes.shuffleTitle')}">${ICONS.shuffle}</button>
                  <button class="btn ghost small mix-icon-btn" data-mix-action="save" data-mix-id="${esc(def.id)}" ${
                    empty ? 'disabled' : ''
-                 } title="Als Playlist speichern">${ICONS.plus}</button>
-                 <button class="btn ghost small mix-icon-btn" data-mix-action="recipe" data-mix-id="${esc(def.id)}" title="Als Rezept speichern – eigene Smart-Playlist, erneuert sich täglich" aria-label="Als Rezept speichern">${ICONS.spark}</button>
+                 } title="${t('mixes.saveTitle')}">${ICONS.plus}</button>
+                 <button class="btn ghost small mix-icon-btn" data-mix-action="recipe" data-mix-id="${esc(def.id)}" title="${t(
+                   'mixes.recipeTitle'
+                 )}" aria-label="${t('mixes.recipeTitle')}">${ICONS.spark}</button>
                </div>`
         }
       </article>`;
@@ -3153,7 +3204,7 @@
     const visible = MIX_DEFS.filter((def) => (lists[def.id] || []).length);
     host.innerHTML = visible.length
       ? visible.map((def) => mixCard(def, lists[def.id] || [], true)).join('')
-      : '<p class="muted small">Hör ein paar Titel oder markiere ♥ – dann baut CleanMusic hier deine Mixes.</p>';
+      : `<p class="muted small">${t('mixes.homeEmpty')}</p>`;
   }
 
   function renderMixes() {
@@ -3164,31 +3215,30 @@
     const stats = tasteStats();
     const hasTaste = stats.likes + stats.dislikes + stats.skips > 0;
     const tasteCopy = hasTaste
-      ? `${stats.likes}× mehr davon · ${stats.dislikes}× weniger davon · ${stats.skips} Skips in 30 Tagen`
+      ? t('mixes.tasteStats', { likes: stats.likes, dislikes: stats.dislikes, skips: stats.skips })
       : stats.artists.length
-        ? 'Deine Mixes nutzen schon Favoriten und Hörverlauf. Für noch bessere Treffer: Rechtsklick auf einen Titel → „Mehr davon“ oder „Weniger davon“.'
-        : 'Noch kein Feedback gespeichert. Rechtsklick auf einen Titel → „Mehr davon“ oder „Weniger davon“.';
+        ? t('mixes.tasteArtists')
+        : t('mixes.tasteNone');
     const cards = MIX_DEFS.map((def) => mixCard(def, lists[def.id] || [])).join('');
 
     host.innerHTML = `
       <div class="page mixes-page">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Für dich</div>
-            <h2>Deine Mixes</h2>
+            <div class="eyebrow">${t('mixes.eyebrow')}</div>
+            <h2>${t('home.mixesTitle')}</h2>
             <p>
-              Aus deinen Favoriten, Playlists, lokalen Titeln und dem, was du wirklich hörst.
-              „Mehr davon“ und „weniger davon“ (Rechtsklick auf einen Titel) schärfen das Ergebnis.
+              ${t('mixes.intro')}
             </p>
           </div>
           <div class="page-actions">
-            <button class="btn ghost small" data-mix-action="refresh">${ICONS.refresh} Neu mischen</button>
+            <button class="btn ghost small" data-mix-action="refresh">${ICONS.refresh} ${t('home.remix')}</button>
           </div>
         </div>
 
         <div class="mix-taste">
           <div class="mix-taste-copy">
-            <strong>Dein Geschmack</strong>
+            <strong>${t('mixes.tasteTitle')}</strong>
             <p>${tasteCopy}</p>
           </div>
           ${
@@ -3199,14 +3249,13 @@
               : ''
           }
           <button class="btn ghost small" data-mix-action="reset" ${hasTaste ? '' : 'disabled'}>
-            Zurücksetzen
+            ${t('mixes.reset')}
           </button>
         </div>
 
         <div class="mix-grid">${cards}</div>
         <p class="muted small">
-          Mixes werden einmal pro Tag neu gebaut und bleiben bis dahin stabil. „Speichern“ legt eine
-          echte Playlist an; „Mischen“ spielt denselben Mix in zufälliger Reihenfolge.
+          ${t('mixes.footer')}
         </p>
       </div>`;
   }
@@ -3214,7 +3263,7 @@
   function playMix(id, shuffleOrder = false) {
     const list = mixById(id);
     if (!list.length) {
-      toast('Für diesen Mix fehlen noch Titel – hör ein paar Songs oder markiere Favoriten.');
+      toast(t('mixes.notEnough'));
       return;
     }
     const def = mixDef(id);
@@ -3267,7 +3316,7 @@
     renderMixes();
     renderHomeMixes();
     scheduleRecsRefresh(600);
-    toast('Geschmack zurückgesetzt');
+    toast(t('mixes.resetDone'));
   }
 
   function handleMixAction(action, id) {
@@ -3295,18 +3344,18 @@
     const def = mixDef(id);
     const rules = RECIPES.system(id);
     if (!def || !rules) return null;
-    const name = `${def.title} (Rezept)`;
+    const name = `${mixText(def, 'title')} (${t('mixes.recipeSuffix')})`;
     const existing = state.collection.playlists.find((playlist) => playlist.smart && playlist.name === name);
     if (existing) {
       openPlaylist(existing.id);
-      toast(`„${name}“ gibt es schon – hier kannst du die Regeln anpassen.`);
+      toast(t('mixes.recipeExists', { name }));
       return existing;
     }
     const playlist = createPlaylist(name, '', rules);
     rebuildSmartPlaylist(playlist, { quiet: true });
     onCollectionChanged({ playlists: true });
     openPlaylist(playlist.id);
-    toast(`Rezept „${name}“ angelegt – ${playlist.items.length} Titel, erneuert sich täglich. Über „Regeln“ anpassen.`);
+    toast(t('mixes.recipeCreated', { name, count: playlist.items.length }));
     return playlist;
   }
 
@@ -3330,9 +3379,9 @@
       trackCount && radioCount
         ? `<div class="radio-tags">
             ${[
-              ['all', `Alle · ${all.length}`],
-              ['tracks', `Titel · ${trackCount}`],
-              ['radio', `Radio · ${radioCount}`],
+              ['all', t('fav.filterAll', { count: all.length })],
+              ['tracks', t('fav.filterTracks', { count: trackCount })],
+              ['radio', t('fav.filterRadio', { count: radioCount })],
             ]
               .map(
                 ([value, label]) =>
@@ -3346,21 +3395,21 @@
       <div class="page">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Bibliothek</div>
-            <h2>Favoriten</h2>
+            <div class="eyebrow">${t('nav.groupLibrary')}</div>
+            <h2>${t('nav.favorites')}</h2>
             <p>${
               all.length
-                ? `${trackCount} Titel · ${radioCount} Sender – gemischt aus Vorschauen, Plugin-Quellen, lokalen Dateien und Radio.`
-                : 'Alles, was du mit ♥ markierst – Titel, Vorschauen, Plugin-Treffer, lokale Dateien und Radiosender.'
+                ? t('fav.summary', { tracks: trackCount, radio: radioCount })
+                : t('fav.intro')
             }</p>
           </div>
           <div class="page-actions">
-            <button class="btn ghost small" data-fav-action="spotify-import">Playlist übertragen</button>
+            <button class="btn ghost small" data-fav-action="spotify-import">${t('nav.importPlaylist')}</button>
             ${
               list.length
-                ? `<button class="btn ghost small" data-fav-action="add-all">${ICONS.plus} Zur Playlist</button>
-                   <button class="btn ghost small" data-fav-action="shuffle">${ICONS.shuffle} Shuffle</button>
-                   <button class="btn primary small" data-fav-action="play">${ICONS.play} Abspielen</button>`
+                ? `<button class="btn ghost small" data-fav-action="add-all">${ICONS.plus} ${t('fav.toPlaylist')}</button>
+                   <button class="btn ghost small" data-fav-action="shuffle">${ICONS.shuffle} ${t('player.shuffle')}</button>
+                   <button class="btn primary small" data-fav-action="play">${ICONS.play} ${t('row.play')}</button>`
                 : ''
             }
           </div>
@@ -3373,19 +3422,19 @@
             ? `<div class="song-list">${list.map((entry, index) => songRow(entry, index, 'favorites')).join('')}</div>`
             : `<div class="empty compact">
                  <div class="empty-icon">♥</div>
-                 <h3>Noch keine Favoriten</h3>
-                 <p>Tippe bei einem Titel, einer Vorschau oder einem Radiosender auf ♥ – oder zieh ihn auf „Favoriten“ in der Seitenleiste.</p>
-                 <button class="btn primary" data-fav-action="search">Songs suchen</button>
+                 <h3>${t('fav.emptyTitle')}</h3>
+                 <p>${t('fav.emptyText')}</p>
+                 <button class="btn primary" data-fav-action="search">${t('home.searchSongs')}</button>
                </div>`
         }
 
         <section class="home-section">
           <div class="home-section-head">
             <div class="home-section-title">
-              <h2>Mehr wie deine Favoriten</h2>
+              <h2>${t('fav.moreTitle')}</h2>
               <span class="muted small" id="fav-recs-sub"></span>
             </div>
-            <button class="btn ghost small" data-fav-action="recs">${ICONS.refresh} Neu mischen</button>
+            <button class="btn ghost small" data-fav-action="recs">${ICONS.refresh} ${t('home.remix')}</button>
           </div>
           <div id="fav-recs"></div>
         </section>
@@ -3404,8 +3453,7 @@
 
     if (!seeds.artists.length && !seeds.pluginSeeds.length) {
       if (sub) sub.textContent = '';
-      host.innerHTML =
-        '<p class="muted small">Sobald du Titel favorisierst, schlägt CleanMusic hier ähnliche Songs vor.</p>';
+      host.innerHTML = `<p class="muted small">${t('fav.recsEmpty')}</p>`;
       return;
     }
 
@@ -3415,13 +3463,13 @@
       host.innerHTML = `
         <div class="search-status">
           <span class="spinner small"></span>
-          <span>Vorschläge werden gemischt …</span>
+          <span>${t('fav.mixing')}</span>
         </div>`;
       return;
     }
 
     if (!recs.length) {
-      host.innerHTML = `<p class="muted small">${esc(state.recs.error || 'Gerade keine Vorschläge gefunden.')}</p>`;
+      host.innerHTML = `<p class="muted small">${esc(state.recs.error || t('home.recsError'))}</p>`;
       return;
     }
 
@@ -3462,11 +3510,11 @@
   /* Playlist view: sort ("Zuletzt hinzugefügt" …) and search – the stored order
    * never changes; rows keep the stored index for removing (core/collection.js). */
   const PLAYLIST_SORT_LABELS = [
-    ['custom', 'Eigene Reihenfolge'],
-    ['added', 'Zuletzt hinzugefügt'],
-    ['oldest', 'Älteste zuerst'],
-    ['title', 'Titel A–Z'],
-    ['artist', 'Artist A–Z'],
+    ['custom', 'playlist.sortCustom'],
+    ['added', 'playlist.sortAdded'],
+    ['oldest', 'playlist.sortOldest'],
+    ['title', 'playlist.sortTitle'],
+    ['artist', 'playlist.sortArtist'],
   ];
 
   function playlistViewOptions() {
@@ -3494,21 +3542,21 @@
     const smart = Boolean(playlist.smart);
     const active = playlistViewOn(playlist);
     const rows = playlistViewRows(playlist);
-    if (!rows.length) return `<p class="muted small playlist-nohit">Keine Titel passen zu „${esc(state.playlistQuery.trim())}“.</p>`;
+    if (!rows.length) return `<p class="muted small playlist-nohit">${t('playlist.noMatch', { query: esc(state.playlistQuery.trim()) })}</p>`;
     return `<div class="song-list playlist-list">${rows
       .map((row, index) => songRow(row.entry, index, key, { handle: !smart && !active, removable: !smart }))
       .join('')}</div>`;
   }
 
   function playlistHintText(playlist) {
-    if (playlist.smart) return 'Diese Liste entsteht aus Regeln. „Aktualisieren“ baut sie mit deiner aktuellen Musik neu.';
-    if (playlistViewOn(playlist)) return 'Abspielen folgt dieser Ansicht. Per Drag & Drop sortieren geht unter „Eigene Reihenfolge“ ohne Suche.';
-    return 'Tipp: Titel per Drag & Drop sortieren – oder aus jeder Liste auf eine Playlist in der Seitenleiste ziehen.';
+    if (playlist.smart) return t('playlist.hintSmart');
+    if (playlistViewOn(playlist)) return t('playlist.hintView');
+    return t('playlist.hintDrag');
   }
 
   function playlistCountText(playlist) {
     if (!String(state.playlistQuery || '').trim()) return '';
-    return `${playlistViewRows(playlist).length} von ${playlist.items.length}`;
+    return t('playlist.countOf', { shown: playlistViewRows(playlist).length, total: playlist.items.length });
   }
 
   // Typing in the search field: only the rows change, the field keeps its focus.
@@ -3546,9 +3594,9 @@
         <div class="page-head playlist-head">
           <div class="playlist-cover">${coverMosaic(playlist)}</div>
           <div class="playlist-meta">
-            <div class="eyebrow">${smart ? 'Smart-Playlist' : playlist.preset ? 'Vorlage' : 'Playlist'}</div>
+            <div class="eyebrow">${smart ? t('nav.smartPlaylist') : playlist.preset ? t('presets.eyebrow') : t('playlist.eyebrow')}</div>
             <h2>${esc(playlist.name)}</h2>
-            <p>${items.length} Titel${total ? ` · ca. ${fmtLong(total)}` : ''}${
+            <p>${t('home.trackCount', { count: items.length })}${total ? ` · ${t('playlist.approx', { time: fmtLong(total) })}` : ''}${
               kinds.size ? ` · ${esc(Array.from(kinds).join(', '))}` : ''
             }${smart ? ` · ${esc(smartUpdatedLabel(playlist.smart.updatedAt))}` : ''}</p>
             ${smart ? `<div class="smart-chips">${smartRuleChips(playlist.smart)}</div>` : ''}
@@ -3556,13 +3604,13 @@
           <div class="page-actions">
             ${
               smart
-                ? `<button class="btn ghost small" data-pl-action="smart-rules">${ICONS.edit} Regeln</button>
-                   <button class="btn ghost small" data-pl-action="smart-refresh">${ICONS.refresh} Aktualisieren</button>`
+                ? `<button class="btn ghost small" data-pl-action="smart-rules">${ICONS.edit} ${t('playlist.rules')}</button>
+                   <button class="btn ghost small" data-pl-action="smart-refresh">${ICONS.refresh} ${t('playlist.refresh')}</button>`
                 : ''
             }
-            ${items.length ? `<button class="btn ghost small" data-pl-action="share" title="Link kopieren – Freunde öffnen die Playlist in CleanMusic">${ICONS.copy} Teilen</button>` : ''}
-            <button class="btn ghost small" data-pl-action="rename">${ICONS.edit} Umbenennen</button>
-            <button class="btn ghost small danger" data-pl-action="delete">${ICONS.trash} Löschen</button>
+            ${items.length ? `<button class="btn ghost small" data-pl-action="share" title="${t('playlist.shareTitle')}">${ICONS.copy} ${t('playlist.share')}</button>` : ''}
+            <button class="btn ghost small" data-pl-action="rename">${ICONS.edit} ${t('playlist.rename')}</button>
+            <button class="btn ghost small danger" data-pl-action="delete">${ICONS.trash} ${t('playlist.delete')}</button>
             ${
               items.length
                 ? `${
@@ -3570,10 +3618,10 @@
                       ? ''
                       : `<button class="btn ghost small" data-pl-action="extend" ${
                           playlistExtendBusy.has(playlist.id) ? 'disabled' : ''
-                        }>${ICONS.plus} ${playlistExtendBusy.has(playlist.id) ? 'Sucht …' : 'Erweitern'}</button>`
+                        }>${ICONS.plus} ${playlistExtendBusy.has(playlist.id) ? t('playlist.extending') : t('playlist.extend')}</button>`
                   }
-                   <button class="btn ghost small" data-pl-action="shuffle">${ICONS.shuffle} Shuffle</button>
-                   <button class="btn primary small" data-pl-action="play">${ICONS.play} Abspielen</button>`
+                   <button class="btn ghost small" data-pl-action="shuffle">${ICONS.shuffle} ${t('player.shuffle')}</button>
+                   <button class="btn primary small" data-pl-action="play">${ICONS.play} ${t('row.play')}</button>`
                 : ''
             }
           </div>
@@ -3582,10 +3630,12 @@
         ${
           items.length > 1
             ? `<div class="playlist-tools">
-                 <input id="pl-filter" type="search" placeholder="In „${esc(playlist.name)}“ suchen …" value="${esc(state.playlistQuery)}" spellcheck="false" aria-label="In der Playlist suchen" />
+                 <input id="pl-filter" type="search" placeholder="${t('playlist.searchIn', {
+                   name: esc(playlist.name),
+                 })}" value="${esc(state.playlistQuery)}" spellcheck="false" aria-label="${t('playlist.searchAria')}" />
                  <span class="muted small" id="pl-count">${esc(playlistCountText(playlist))}</span>
-                 <div class="radio-tags" role="group" aria-label="Sortieren">${PLAYLIST_SORT_LABELS.map(
-                   ([id, label]) => `<button class="radio-tag ${sortId === id ? 'active' : ''}" data-pl-sort="${id}">${label}</button>`
+                 <div class="radio-tags" role="group" aria-label="${t('playlist.sortAria')}">${PLAYLIST_SORT_LABELS.map(
+                   ([id, key]) => `<button class="radio-tag ${sortId === id ? 'active' : ''}" data-pl-sort="${id}">${t(key)}</button>`
                  ).join('')}</div>
                </div>`
             : ''
@@ -3598,17 +3648,15 @@
             : smart
               ? `<div class="empty compact">
                    <div class="empty-icon">${ICONS.spark}</div>
-                   <h3>Keine Treffer</h3>
-                   <p>Keine Titel passen gerade zu den Regeln. Lockere die Filter oder nimm eine Quelle dazu.</p>
-                   <button class="btn primary" data-pl-action="smart-rules">Regeln bearbeiten</button>
+                   <h3>${t('search.noHits')}</h3>
+                   <p>${t('playlist.emptySmart')}</p>
+                   <button class="btn primary" data-pl-action="smart-rules">${t('playlist.editRules')}</button>
                  </div>`
               : `<div class="empty compact">
                    <div class="empty-icon">${ICONS.list}</div>
-                   <h3>Noch leer</h3>
-                   <p>Füge Titel über <strong>+</strong> an jedem Song hinzu oder zieh sie auf „${esc(
-                     playlist.name
-                   )}“ in der Seitenleiste.</p>
-                   <button class="btn primary" data-pl-action="search">Songs suchen</button>
+                   <h3>${t('playlist.emptyTitle')}</h3>
+                   <p>${t('playlist.emptyText', { name: esc(playlist.name) })}</p>
+                   <button class="btn primary" data-pl-action="search">${t('home.searchSongs')}</button>
                  </div>`
         }
       </div>`;
@@ -3752,7 +3800,7 @@
           state.collection.playlists = state.collection.playlists.filter((item) => item.id !== playlist.id);
           onCollectionChanged({ playlists: true });
         }
-        toast(safe ? 'Keine freien Titel gefunden – bitte später erneut versuchen.' : 'Keine Titel gefunden – bitte später erneut versuchen.');
+        toast(safe ? t('presets.noneFree') : t('presets.noneTracks'));
         if (state.view === 'presets') renderPresets();
         return;
       }
@@ -3763,10 +3811,10 @@
       onCollectionChanged({ playlists: true });
       openPlaylist(playlist.id);
 
-      const hint = !safe && streamSafeOn() ? ' · nicht stream-sicher' : '';
-      if (created) toast(`Vorlage „${playlist.name}“ mit ${entries.length} Titeln angelegt${hint}`);
-      else if (fresh.length) toast(`${fresh.length} Titel zu „${playlist.name}“ ergänzt${hint}`);
-      else toast(`„${playlist.name}“ ist schon vollständig${hint}`);
+      const hint = !safe && streamSafeOn() ? t('presets.notSafeHint') : '';
+      if (created) toast(t('presets.created', { name: playlist.name, count: entries.length, hint }));
+      else if (fresh.length) toast(t('presets.added', { count: fresh.length, name: playlist.name, hint }));
+      else toast(t('presets.complete', { name: playlist.name, hint }));
     } finally {
       presetBusy = false;
       if (button) {
@@ -3782,7 +3830,7 @@
 
     const presets = PLAYLIST_PRESETS.presets || [];
     if (!presets.length) {
-      host.innerHTML = '<div class="page"><p class="muted small">Keine Vorlagen verfügbar.</p></div>';
+      host.innerHTML = `<div class="page"><p class="muted small">${t('presets.none')}</p></div>`;
       return;
     }
 
@@ -3801,14 +3849,14 @@
             </div>
             <p class="preset-desc">${esc(preset.description || '')}</p>
             <div class="preset-sources">
-              <span>Stream-sicher: NCS · CC BY · CC0</span>
-              <span>Normal: Katalog · 30-s-Vorschau</span>
+              <span>${t('presets.streamSafeSources')}</span>
+              <span>${t('presets.normalSources')}</span>
             </div>
             ${
               safe || normal
                 ? `<div class="preset-saved">${[
-                    safe ? `✓ ${safe.items.length} freie Titel` : '',
-                    normal ? `${normal.items.length} Katalogtitel` : '',
+                    safe ? t('presets.savedSafe', { count: safe.items.length }) : '',
+                    normal ? t('presets.savedNormal', { count: normal.items.length }) : '',
                   ]
                     .filter(Boolean)
                     .join(' · ')}</div>`
@@ -3816,10 +3864,10 @@
             }
             <div class="preset-actions">
               <button class="btn primary small" data-preset-id="${esc(preset.id)}" data-preset-kind="safe">
-                ${ICONS.plus} ${safe ? 'Stream-sicher ergänzen' : 'Stream-sicher anlegen'}
+                ${ICONS.plus} ${safe ? t('presets.addSafe') : t('presets.createSafe')}
               </button>
               <button class="btn ghost small" data-preset-id="${esc(preset.id)}" data-preset-kind="normal">
-                ${ICONS.plus} ${normal ? 'Normal ergänzen' : 'Normal anlegen'}
+                ${ICONS.plus} ${normal ? t('presets.addNormal') : t('presets.createNormal')}
               </button>
             </div>
           </article>`;
@@ -3830,24 +3878,22 @@
       <div class="page">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Vorlagen</div>
-            <h2>Fertige Playlists</h2>
+            <div class="eyebrow">${t('nav.presets')}</div>
+            <h2>${t('presets.title')}</h2>
             <p>
-              Jede Vorlage gibt es zweimal: <strong>Stream-sicher</strong> nur mit freien Lizenzen
-              (NCS, CC BY, CC0) – und <strong>Normal</strong> aus dem Katalog. Ein Klick legt eine
-              echte Playlist an, die du umbenennen, sortieren und erweitern kannst.
+              ${t('presets.text')}
             </p>
           </div>
           <div class="page-actions">
             <button class="btn ${streamSafeOn() ? 'primary' : 'ghost'} small" data-preset-action="streamsafe">
-              ${streamSafeOn() ? '✓ Stream-sicher-Modus an' : 'Stream-sicher-Modus einschalten'}
+              ${streamSafeOn() ? t('presets.modeOn') : t('presets.modeOff')}
             </button>
           </div>
         </div>
 
         <div class="preset-legend">
-          <span><b>✓ Stream-sicher</b> NCS, CC BY und CC0 – mit Credit im Stream nutzbar.</span>
-          <span><b>Normal</b> Katalogtitel als 30-s-Vorschau – Lizenz nicht garantiert.</span>
+          <span>${t('presets.legendSafe')}</span>
+          <span>${t('presets.legendNormal')}</span>
         </div>
 
         <div class="grid preset-grid">${cards}</div>
@@ -3859,20 +3905,22 @@
    * ---------------------------------------------------------------- */
 
   function buildRadio() {
+    const tagKeys = { classical: 'radio.tagClassical' };
     const tags = RADIO_TAGS.map(
       ([value, label]) =>
-        `<button class="radio-tag" data-radio-tag="${value}">${label}</button>`
+        `<button class="radio-tag" data-radio-tag="${value}">${
+          tagKeys[value] ? t(tagKeys[value]) : label
+        }</button>`
     ).join('');
 
     $('#view-radio').innerHTML = `
       <div class="page">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Live Radio</div>
-            <h2>Radio, das wirklich läuft</h2>
+            <div class="eyebrow">${t('player.liveRadio')}</div>
+            <h2>${t('radio.title')}</h2>
             <p>
-              Öffentliche Streams – volle Songs, kein Login, kein DRM.
-              Läuft direkt in CleanMusic. Mit ♥ landen Sender in deinen Favoriten.
+              ${t('radio.intro')}
             </p>
           </div>
           <div class="page-actions">
@@ -3880,11 +3928,11 @@
               <input
                 id="radio-search-input"
                 type="search"
-                placeholder="Sender suchen …"
+                placeholder="${t('radio.searchPlaceholder')}"
                 autocomplete="off"
                 spellcheck="false"
               />
-              <button class="btn primary small" id="btn-radio-search">Suchen</button>
+              <button class="btn primary small" id="btn-radio-search">${t('radio.search')}</button>
             </div>
           </div>
         </div>
@@ -3969,14 +4017,14 @@
     if (!radio.entries.length) {
       host.innerHTML = `
         <div class="panel empty-search">
-          <h3>Keine Sender gefunden</h3>
+          <h3>${t('radio.emptyTitle')}</h3>
           <p>${
             radio.error
               ? esc(radio.error)
-              : 'Versuche einen anderen Suchbegriff oder ein anderes Genre.'
+              : t('radio.emptyText')
           }</p>
           <div class="row">
-            <button class="btn ghost small" id="btn-radio-retry">Erneut versuchen</button>
+            <button class="btn ghost small" id="btn-radio-retry">${t('home.retry')}</button>
           </div>
         </div>`;
       return;
@@ -4042,7 +4090,7 @@
         <button class="search-target" data-search-service="${service.id}" style="--svc:${service.color}">
           <span class="svc-badge" style="--svc:${service.color}">${esc(service.short)}</span>
           <span class="st-name">${esc(service.name)}</span>
-          <span class="st-go">Suchen →</span>
+          <span class="st-go">${t('search.goTo')}</span>
         </button>`
     ).join('');
 
@@ -4053,39 +4101,40 @@
             <div>
               <strong>${
                 idle.length === 1
-                  ? `Plugin „${esc(idle[0].name)}“ gefunden`
-                  : `${idle.length} Plugins gefunden`
+                  ? t('search.pluginFoundOne', { name: esc(idle[0].name) })
+                  : t('search.pluginsFound', { count: idle.length })
               }</strong>
-              <p>Plugins bleiben aus, bis du sie in den Einstellungen bewusst aktivierst.</p>
+              <p>${t('search.pluginsOff')}</p>
             </div>
-            <button class="btn ghost small" data-search-action="plugins">${ICONS.plug} Zu den Plugins</button>
+            <button class="btn ghost small" data-search-action="plugins">${ICONS.plug} ${t('search.toPlugins')}</button>
           </div>`
         : '';
 
     const sources = finder
-      ? `Apple Music, Deezer und ${esc(finder.source.label)}`
-      : 'Apple Music und Deezer';
+      ? t('search.sourcesWithPlugin', { plugin: esc(finder.source.label) })
+      : t('search.sources');
 
     $('#view-search').innerHTML = `
       <div class="page">
         <div class="page-head">
           <div>
             <div class="eyebrow">Unified Search</div>
-            <h2>${term ? `Suche: „${esc(term)}“` : 'Songs, die hier laufen'}</h2>
+            <h2>${term ? t('search.title', { term: esc(term) }) : t('search.titleIdle')}</h2>
             <p>
               ${
                 full
-                  ? `Treffer aus ${sources} – volle Titel laufen über das Plugin „${esc(
-                      fullPlugin.name
-                    )}“ direkt in CleanMusic.`
+                  ? t('search.subFull', {
+                      sources,
+                      plugin: esc(fullPlugin.name),
+                    })
                   : term
-                    ? 'Vorschauen spielen direkt in CleanMusic. Volle Titel laufen über MusicKit oder als lokale Datei.'
-                    : 'Beliebte Titel mit 30-Sekunden-Vorschau – direkt in der App abspielbar.'
+                    ? t('search.subPreview')
+                    : t('search.subIdle')
               }
             </p>
           </div>
           <div class="page-actions">
-            ${term ? '<button class="btn ghost small" id="btn-refresh-search">Neu laden</button>' : ''}
+            ${term ? `<button class="btn ghost small" id="btn-refresh-search">${t('home.reload')}</button>` : ''}
             <button class="btn primary small" id="btn-musickit-search">MusicKit</button>
           </div>
         </div>
@@ -4097,22 +4146,21 @@
         <div id="search-results" class="search-results"></div>
 
         <div class="panel">
-          <h3>In einem Dienst weitersuchen</h3>
-          <p>Volle Kataloge, deine Bibliothek und Playlists – im offiziellen Web-Player.</p>
+          <h3>${t('search.moreTitle')}</h3>
+          <p>${t('search.moreText')}</p>
           <div class="search-targets" style="margin-top:12px">${targets}</div>
         </div>
 
         <div class="panel hint">
-          <strong>${full ? 'Woher kommen die vollen Titel?' : 'Warum 30-Sekunden-Vorschauen?'}</strong>
+          <strong>${full ? t('search.whyFullTitle') : t('search.whyPreviewTitle')}</strong>
           <p>
             ${
               full
-                ? `Apple Music und Deezer liefern nur Metadaten und Vorschauen. Für den vollen Titel sucht das Plugin „${esc(
-                    fullPlugin.name
-                  )}“ einen passenden Treffer bei ${esc(
-                    fullPlugin.source.label
-                  )}, CleanMusic streamt ihn – ohne etwas zu speichern. Klappt das nicht, läuft die Vorschau.`
-                : 'Apple Music und Deezer stellen Vorschauen offiziell bereit – die laufen legal in CleanMusic. Volle Titel erlauben nur MusicKit (Apple) und lokale Dateien. Alles andere bleibt im Web-Player des Dienstes. Optionale Quellen-Plugins findest du unter Einstellungen → Plugins.'
+                ? t('search.whyFullText', {
+                    plugin: esc(fullPlugin.name),
+                    source: esc(fullPlugin.source.label),
+                  })
+                : t('search.whyPreviewText')
             }
           </p>
         </div>
@@ -4147,7 +4195,7 @@
         query: term,
         tracks: [],
         loading: false,
-        errors: [{ source: 'Suche', message: error.message }],
+        errors: [{ source: t('search.source'), message: error.message }],
         sources: null,
       };
     }
@@ -4213,7 +4261,7 @@
       host.innerHTML = `
         <div class="search-status">
           <span class="spinner small"></span>
-          <span>Suche über das Plugin „${esc(plugin.name)}“ …</span>
+          <span>${t('search.pluginSearching', { name: esc(plugin.name) })}</span>
         </div>`;
       return;
     }
@@ -4222,7 +4270,7 @@
       host.innerHTML = `
         <div class="results-head">
           <span>${esc(plugin.source.label)}</span>
-          <span class="muted small">${esc(result.error ? `${plugin.name}: ${result.error}` : 'Keine Treffer')}</span>
+          <span class="muted small">${esc(result.error ? `${plugin.name}: ${result.error}` : t('search.noHits'))}</span>
         </div>`;
       return;
     }
@@ -4230,7 +4278,10 @@
     host.innerHTML = `
       <div class="results-head">
         <span class="results-title">${ICONS.plug} ${esc(plugin.source.label)}</span>
-        <span class="muted small">${result.results.length} Treffer · volle Titel über das Plugin „${esc(plugin.name)}“</span>
+        <span class="muted small">${t('search.hits', {
+          count: result.results.length,
+          name: esc(plugin.name),
+        })}</span>
       </div>
       <div class="song-list">
         ${result.results.map((entry, index) => songRow(entry, index, 'ext')).join('')}
@@ -4257,7 +4308,7 @@
       host.innerHTML = `
         <div class="search-status">
           <span class="spinner small"></span>
-          <span>${usingCharts ? 'Charts werden geladen …' : 'Suche in Apple Music und Deezer …'}</span>
+          <span>${usingCharts ? t('search.loadingCharts') : t('search.loading')}</span>
         </div>`;
       return;
     }
@@ -4269,22 +4320,22 @@
     if (!tracks.length) {
       host.innerHTML = `
         <div class="panel empty-search">
-          <h3>Keine Vorschau-Treffer</h3>
+          <h3>${t('search.emptyTitle')}</h3>
           <p>
             ${
               usingCharts
-                ? 'Beliebte Titel konnten nicht geladen werden.'
-                : `Für „${esc(search.query)}“ hat keiner der Vorschau-Kataloge etwas geliefert.`
+                ? t('search.emptyCharts')
+                : t('search.emptyTerm', { term: esc(search.query) })
             }
           </p>
           ${errorText ? `<p class="muted small">${esc(errorText)}</p>` : ''}
           <div class="row">
             ${
               usingCharts
-                ? '<button class="btn ghost small" data-home-action="refresh">Charts neu laden</button>'
+                ? `<button class="btn ghost small" data-home-action="refresh">${t('search.reloadCharts')}</button>`
                 : ''
             }
-            <span class="muted small">Volle Titel findest du über die Dienste unten oder im MusicKit-Fenster.</span>
+            <span class="muted small">${t('search.emptyHint')}</span>
           </div>
         </div>`;
       return;
@@ -4296,10 +4347,10 @@
 
     host.innerHTML = `
       <div class="results-head">
-        <span class="results-title">${usingCharts ? 'Charts' : 'Apple Music & Deezer'}</span>
+        <span class="results-title">${usingCharts ? t('home.charts') : 'Apple Music & Deezer'}</span>
         ${sourceText ? `<span class="muted small">${esc(sourceText)}</span>` : ''}
         <span class="muted small">${
-          fullMode() ? `voller Titel über ${esc(matchPlugin().source.label)}` : '30-Sekunden-Vorschau'
+          fullMode() ? t('home.trendSubFull', { source: esc(matchPlugin().source.label) }) : t('home.trendSubPreview')
         }</span>
       </div>
       <div class="song-list">
@@ -4396,7 +4447,7 @@
   function showLoading(show, name) {
     const el = $('#loading');
     if (!el) return;
-    if (show && name) $('#loading-text').textContent = `${name} wird geladen …`;
+    if (show && name) $('#loading-text').textContent = t('common.loadingService', { name });
     el.classList.toggle('hidden', !show);
   }
 
@@ -4518,7 +4569,9 @@
         if (localSort === 'folder' && entry.dir !== lastDir) {
           lastDir = entry.dir;
           const count = entries.filter((item) => item.dir === entry.dir).length;
-          group = `<tr class="local-group"><td colspan="5"><span class="local-group-name">📁 ${esc(entry.dir || 'Ordner')}</span><span class="muted small">${count} Titel</span>${moodSelect(entry.dir || '')}</td></tr>`;
+          group = `<tr class="local-group"><td colspan="5"><span class="local-group-name">📁 ${esc(
+            entry.dir || t('local.folder')
+          )}</span><span class="muted small">${t('home.trackCount', { count })}</span>${moodSelect(entry.dir || '')}</td></tr>`;
         }
         const playing = isPlayingId(entry.id);
         const fav = favIds.has(entry.id);
@@ -4535,9 +4588,9 @@
             <td class="col-act">
               <span class="row-actions">
                 <button class="icon-btn fav ${fav ? 'on' : ''}" data-act="fav" title="${
-                  fav ? 'Aus Favoriten entfernen' : 'Zu Favoriten'
+                  fav ? t('player.favoriteRemove') : t('player.favorite')
                 }">${ICONS.heart}</button>
-                <button class="icon-btn" data-act="add" title="Zur Playlist hinzufügen">${ICONS.plus}</button>
+                <button class="icon-btn" data-act="add" title="${t('player.addToPlaylist')}">${ICONS.plus}</button>
               </span>
             </td>
           </tr>`;
@@ -4548,34 +4601,36 @@
       ? `<div class="table-wrap">
            <table class="track-table">
              <thead>
-               <tr><th class="col-idx">#</th><th class="col-title">Titel</th><th class="col-dir">Ordner</th><th class="col-size">Größe</th><th class="col-act"></th></tr>
+               <tr><th class="col-idx">#</th><th class="col-title">${t('local.colTitle')}</th><th class="col-dir">${t(
+                 'local.colFolder'
+               )}</th><th class="col-size">${t('local.colSize')}</th><th class="col-act"></th></tr>
              </thead>
              <tbody>${rows}</tbody>
            </table>
          </div>`
       : `<div class="empty">
            <div class="empty-icon">♪</div>
-           <h3>Noch keine lokale Musik</h3>
-           <p>Füge einen Ordner mit MP3, FLAC, WAV, M4A, OGG oder OPUS hinzu. Diese Titel spielt CleanMusic komplett selbst ab – ohne Streaming, ohne DRM.</p>
-           <button class="btn primary" id="btn-empty-add">Ordner auswählen</button>
+           <h3>${t('local.emptyTitle')}</h3>
+           <p>${t('local.emptyText')}</p>
+           <button class="btn primary" id="btn-empty-add">${t('local.chooseFolder')}</button>
          </div>`;
 
     $('#view-local').innerHTML = `
       <div class="page">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Bibliothek</div>
-            <h2>Lokale Musik</h2>
+            <div class="eyebrow">${t('nav.groupLibrary')}</div>
+            <h2>${t('nav.local')}</h2>
             <p>${
               entries.length
-                ? `${entries.length} Titel${folder ? ` · ${esc(folder)}` : ''}`
-                : 'Der Teil, der zu 100 % in CleanMusic läuft.'
+                ? `${t('home.trackCount', { count: entries.length })}${folder ? ` · ${esc(folder)}` : ''}`
+                : t('local.intro')
             }</p>
           </div>
           <div class="page-actions">
-            ${entries.length ? `<button class="btn ghost" data-local-action="shuffle">${ICONS.shuffle} Shuffle</button>` : ''}
-            <button class="btn primary" id="btn-add-folder">Ordner hinzufügen</button>
-            ${entries.length ? '<button class="btn ghost" id="btn-clear-lib">Leeren</button>' : ''}
+            ${entries.length ? `<button class="btn ghost" data-local-action="shuffle">${ICONS.shuffle} ${t('player.shuffle')}</button>` : ''}
+            <button class="btn primary" id="btn-add-folder">${t('home.addFolder')}</button>
+            ${entries.length ? `<button class="btn ghost" id="btn-clear-lib">${t('local.clear')}</button>` : ''}
           </div>
         </div>
         ${allEntries.length ? localToolbar() : ''}
@@ -4994,16 +5049,16 @@
 
   function setNowPlaying(item) {
     const fallbackArtist = {
-      local: 'Lokale Wiedergabe',
-      radio: 'Live Radio',
+      local: t('player.localPlayback'),
+      radio: t('player.liveRadio'),
       plugin: 'Plugin',
-      preview: 'Vorschau',
+      preview: t('player.preview'),
     };
 
-    $('#np-title').textContent = item ? item.title : 'Nichts ausgewählt';
+    $('#np-title').textContent = item ? item.title : t('player.nothingSelected');
     $('#np-artist').textContent = item
       ? item.artist || fallbackArtist[item.kind] || ''
-      : 'Lokale Wiedergabe';
+      : t('player.localPlayback');
 
     const letter = $('#np-art-letter');
     const image = $('#np-art-img');
@@ -5071,32 +5126,32 @@
     if (why) why.disabled = !item;
     const on = Boolean(item && favIds.has(item.id));
     fav.classList.toggle('on', on);
-    fav.title = on ? 'Aus Favoriten entfernen' : 'Zu Favoriten';
+    fav.title = on ? t('player.favoriteRemove') : t('player.favorite');
   }
 
   function whyOrigin(item) {
-    if (item.requestedBy) return `Songwunsch von ${item.requestedBy}`;
-    if (item.autoplay) return 'Autoplay – passend zum letzten Titel';
-    if (item.queued) return 'Von dir als Nächstes eingereiht';
+    if (item.requestedBy) return t('why.requestedBy', { name: item.requestedBy });
+    if (item.autoplay) return t('why.autoplay');
+    if (item.queued) return t('why.queued');
     const kind = String(state.queue.kind || '');
     if (kind.startsWith('playlist:')) {
       const playlist = playlistById(kind.slice('playlist:'.length));
       return playlist
-        ? `Aus der Playlist „${playlist.name}“${playlist.smart ? ' (Smart-Playlist)' : ''}`
-        : 'Aus einer Playlist';
+        ? `${t('why.fromPlaylist', { name: playlist.name })}${playlist.smart ? t('why.smartSuffix') : ''}`
+        : t('why.fromAPlaylist');
     }
     if (kind.startsWith('mix:')) {
       const id = kind.slice('mix:'.length);
       const mix = (typeof MIX_DEFS !== 'undefined' ? MIX_DEFS : []).find((entry) => entry.id === id);
-      return mix ? `Aus dem Mix „${mix.title}“` : 'Aus einem Mix';
+      return mix ? t('why.fromMix', { name: mixText(mix, 'title') }) : t('why.fromAMix');
     }
-    if (kind === 'charts') return 'Aus Charts & Neuheiten';
-    if (kind === 'search') return 'Aus deiner Suche';
-    if (kind === 'radio') return 'Live-Radio';
-    if (kind === 'creator') return 'Aus dem Cutter-Modus';
-    if (kind === 'local') return 'Aus deiner lokalen Bibliothek';
-    if (kind === 'queue') return 'Direkt abgespielt oder eingereiht';
-    return 'Aus der aktuellen Liste';
+    if (kind === 'charts') return t('why.charts');
+    if (kind === 'search') return t('why.search');
+    if (kind === 'radio') return t('why.radio');
+    if (kind === 'creator') return t('why.creator');
+    if (kind === 'local') return t('why.local');
+    if (kind === 'queue') return t('why.queue');
+    return t('why.current');
   }
 
   function whyCurrent() {
@@ -5104,38 +5159,42 @@
     if (!item) return;
     const kindLabel =
       {
-        preview: '30-Sekunden-Vorschau',
-        plugin: 'Quelle-Plugin',
-        stream: 'Freier Stream',
-        local: 'Lokale Datei',
-        radio: 'Live-Radio',
+        preview: t('why.kindPreview'),
+        plugin: t('why.kindPlugin'),
+        stream: t('why.kindStream'),
+        local: t('why.kindLocal'),
+        radio: t('why.kindRadio'),
       }[item.kind] || item.sourceLabel || item.kind;
-    const license = item.license || (item.ytLicense === 'cc-by' ? 'CC BY (Plugin bestätigt)' : '');
+    const license = item.license || (item.ytLicense === 'cc-by' ? t('why.ccByPlugin') : '');
     const safe = streamSafe(item);
     const rows = [
-      ['Herkunft', whyOrigin(item)],
-      ['Quelle', [item.sourceLabel, kindLabel].filter(Boolean).join(' · ')],
-      ['Lizenz', license || 'Keine Lizenzangabe'],
-      ['Stream-sicher', safe ? 'Ja – mit Credit im Stream nutzbar' : 'Nein oder unbekannt'],
+      [t('why.origin'), whyOrigin(item)],
+      [t('why.source'), [item.sourceLabel, kindLabel].filter(Boolean).join(' · ')],
+      [t('why.license'), license || t('why.noLicense')],
+      [t('why.streamSafe'), safe ? t('why.safeYes') : t('why.safeNo')],
     ];
     const recipeList = String(state.queue.kind || '').startsWith('playlist:')
       ? playlistById(state.queue.kind.slice('playlist:'.length))
       : null;
     if (recipeList && recipeList.smart) {
-      rows.push(['Rezept', RECIPES.explain(recipeList.smart, item.id, {
+      rows.push([t('why.recipe'), RECIPES.explain(recipeList.smart, item.id, {
         bpm: Number(bpmCache[item.id]) || 0,
         mood: moodOf(item) || '',
       })]);
     }
-    if (item.duration) rows.push(['Länge', fmtLong(item.duration)]);
-    if (item.path) rows.push(['Datei', item.path]);
+    if (item.duration) rows.push([t('why.length'), fmtLong(item.duration)]);
+    if (item.path) rows.push([t('why.file'), item.path]);
 
     const credit = item.credit
-      ? `<div class="why-block"><span>Credit</span><pre class="why-credit">${esc(item.credit)}</pre></div>`
+      ? `<div class="why-block"><span>${t('why.credit')}</span><pre class="why-credit">${esc(item.credit)}</pre></div>`
       : '';
     const actions = [
-      item.credit ? '<button type="button" class="btn ghost small" data-why-copy>Credit kopieren</button>' : '',
-      item.link ? '<button type="button" class="btn ghost small" data-why-link>Im Dienst öffnen</button>' : '',
+      item.credit
+        ? `<button type="button" class="btn ghost small" data-why-copy>${t('why.copyCredit')}</button>`
+        : '',
+      item.link
+        ? `<button type="button" class="btn ghost small" data-why-link>${t('why.openInService')}</button>`
+        : '',
     ]
       .filter(Boolean)
       .join('');
@@ -5160,17 +5219,17 @@
       ${actions ? `<div class="why-actions">${actions}</div>` : ''}`;
 
     const promise = openDialog({
-      title: 'Warum läuft das?',
+      title: t('why.title'),
       html,
       input: false,
-      confirm: 'Schließen',
+      confirm: t('why.close'),
       info: true,
       className: 'why-dialog',
     });
     const root = $('#dialog');
     root.querySelector('[data-why-copy]')?.addEventListener('click', async () => {
       const copied = await bridge.copyText(item.credit);
-      toast(copied ? 'Credit in die Zwischenablage kopiert.' : 'Kopieren fehlgeschlagen.');
+      toast(copied ? t('why.creditCopied') : t('why.creditCopyFailed'));
     });
     root.querySelector('[data-why-link]')?.addEventListener('click', () => {
       if (item.link) bridge.openExternal(item.link);
@@ -5202,10 +5261,14 @@
     repeatButton.classList.toggle('repeat-one', CMPlayback.repeatOne(repeat));
     const fsShuffle = $('#fs-shuffle');
     const fsRepeat = $('#fs-repeat');
-    if (fsShuffle) fsShuffle.classList.toggle('active', Boolean(state.playback.shuffle));
+    if (fsShuffle) {
+      fsShuffle.classList.toggle('active', Boolean(state.playback.shuffle));
+      fsShuffle.title = CMPlayback.shuffleTitle(state.playback.shuffle);
+    }
     if (fsRepeat) {
       fsRepeat.classList.toggle('active', CMPlayback.repeatActive(repeat));
       fsRepeat.classList.toggle('repeat-one', CMPlayback.repeatOne(repeat));
+      fsRepeat.title = CMPlayback.repeatLabel(repeat);
     }
 
     repeatButton.title = CMPlayback.repeatLabel(repeat);
@@ -5673,6 +5736,11 @@
    * ---------------------------------------------------------------- */
 
   const WHATS_NEW = {
+    '2.4.0': [
+      'Englische Oberfläche (Beta): Unter Einstellungen → System → Sprache stellst du die App auf Englisch um – nach einem Neustart. Seitenleiste, Player, Startseite, Suche, Bibliothek, Einstellungen, Songtext-Werkzeuge, Effekt-Menü und „Warum läuft das?“ sind übersetzt; Cutter, Plugins, Social und einige Systemdialoge bleiben vorerst deutsch.',
+      'Stabiles Spektrum: Mit Klang-Kette (EQ, Bass/Höhen, Angleichen, Boost) verbindet sich der Visualizer nach einem Gerätewechsel oder einer Weiterleitung jetzt selbst neu. OBS-Overlays bekommen auch im Hintergrund frische Werte, und eine hängende Zeichenschleife startet nach dem Zurückkehren wieder.',
+      'Songtexte: Findet LRCLIB nichts, fragt CleanMusic die freie Ausweichquelle lyrics.ovh und zeigt den Klartext ohne Zeitangaben an – mit Quellenangabe.',
+    ],
     '2.3.2': [
       'Playlists sortieren und durchsuchen: „Zuletzt hinzugefügt“, „Älteste zuerst“, Titel oder Artist A–Z und ein Suchfeld. Das ist nur eine Ansicht – deine eigene Reihenfolge bleibt gespeichert, Abspielen folgt der Ansicht.',
       'Songtext-Stil „Kino“: Das rote Herz hinter Liebes-Zeilen ist jetzt standardmäßig aus und lässt sich in den Songtext-Einstellungen oder im Vollbild („♥ Herz“) einschalten.',
@@ -6260,19 +6328,23 @@
    * ---------------------------------------------------------------- */
 
   const BACKGROUNDS = [
-    { id: 'none', label: 'Keiner' },
-    { id: 'aurora', label: 'Aurora' },
-    { id: 'gradient', label: 'Verlauf' },
-    { id: 'mesh', label: 'Farbwolken' },
-    { id: 'cover', label: 'Cover' },
-    { id: 'stars', label: 'Sternenhimmel' },
-    { id: 'lava', label: 'Lava-Lampe', live: true },
-    { id: 'waves', label: 'Wellen', live: true },
-    { id: 'synthwave', label: 'Synthwave-Gitter', live: true },
-    { id: 'nebula', label: 'Partikel-Nebel', live: true },
-    { id: 'rain', label: 'Regen auf Glas', live: true },
-    { id: 'custom', label: 'Eigenes Video …', live: true, custom: true },
+    { id: 'none', label: 'Keiner', labelEn: 'None' },
+    { id: 'aurora', label: 'Aurora', labelEn: 'Aurora' },
+    { id: 'gradient', label: 'Verlauf', labelEn: 'Gradient' },
+    { id: 'mesh', label: 'Farbwolken', labelEn: 'Color clouds' },
+    { id: 'cover', label: 'Cover', labelEn: 'Cover' },
+    { id: 'stars', label: 'Sternenhimmel', labelEn: 'Starry sky' },
+    { id: 'lava', label: 'Lava-Lampe', labelEn: 'Lava lamp', live: true },
+    { id: 'waves', label: 'Wellen', labelEn: 'Waves', live: true },
+    { id: 'synthwave', label: 'Synthwave-Gitter', labelEn: 'Synthwave grid', live: true },
+    { id: 'nebula', label: 'Partikel-Nebel', labelEn: 'Particle nebula', live: true },
+    { id: 'rain', label: 'Regen auf Glas', labelEn: 'Rain on glass', live: true },
+    { id: 'custom', label: 'Eigenes Video …', labelEn: 'Custom video …', live: true, custom: true },
   ];
+
+  function backgroundLabel(bg) {
+    return CMI18n.lang() === 'en' && bg.labelEn ? bg.labelEn : bg.label;
+  }
 
   let bgCoverUrl = '';
 
@@ -6338,32 +6410,32 @@
     const active = state.settings.background || 'none';
     return `
         <div class="bg-picker">
-          <strong>Hintergrund</strong>
+          <strong>${t('settings.look.background')}</strong>
           <div class="radio-tags">${BACKGROUNDS.map(
-            (bg) => `<button class="radio-tag ${bg.id === active ? 'active' : ''}${lockedClass('background', bg.id)}" data-bg-id="${bg.id}">${esc(bg.label)}</button>`
+            (bg) => `<button class="radio-tag ${bg.id === active ? 'active' : ''}${lockedClass('background', bg.id)}" data-bg-id="${bg.id}">${esc(backgroundLabel(bg))}</button>`
           ).join('')}</div>
         </div>
         <label class="toggle-row advanced-only" style="margin-top:10px">
           <span>
-            <strong>Hintergrund bewegen</strong>
-            <small>Langsame Animation. Aus = ruhiges Standbild, spart Leistung.</small>
+            <strong>${t('settings.look.bgMotion')}</strong>
+            <small>${t('settings.look.bgMotionHelp')}</small>
           </span>
           <input type="checkbox" id="opt-bg-motion" ${state.settings.bgMotion !== false ? 'checked' : ''} />
         </label>
         <label class="toggle-row advanced-only" style="margin-top:10px">
-          <span><strong>Mit der Musik pulsieren</strong><small>Leichter Zoom oder Helligkeitsimpuls aus geglätteter Bass-Energie, ohne den Ton umzuleiten.</small></span>
+          <span><strong>${t('settings.look.bgPulse')}</strong><small>${t('settings.look.bgPulseHelp')}</small></span>
           <input type="checkbox" id="opt-bg-pulse" ${state.settings.bgPulse ? 'checked' : ''} />
         </label>
         <label class="toggle-row advanced-only" style="margin-top:10px">
-          <span><strong>Im Akkubetrieb anhalten</strong><small>Pausiert Live-Animation, wenn das Gerät nicht lädt (falls die Browser-API verfügbar ist).</small></span>
+          <span><strong>${t('settings.look.bgBattery')}</strong><small>${t('settings.look.bgBatteryHelp')}</small></span>
           <input type="checkbox" id="opt-bg-battery" ${state.settings.bgBatteryStop !== false ? 'checked' : ''} />
         </label>
-        <label class="toggle-row advanced-only" style="margin-top:10px"><span><strong>Vollbild-Hintergrund</strong><small>Cover, Live-Hintergrund oder dunkle Fläche.</small></span>
+        <label class="toggle-row advanced-only" style="margin-top:10px"><span><strong>${t('settings.look.fsBackground')}</strong><small>${t('settings.look.fsBackgroundHelp')}</small></span>
           <select id="opt-fs-background" class="select-input">
-            <option value="cover-static" ${state.settings.fsBackground === 'cover-static' ? 'selected' : ''}>Cover ruhig</option>
-            <option value="cover-moving" ${(!state.settings.fsBackground || state.settings.fsBackground === 'cover-moving') ? 'selected' : ''}>Cover bewegt</option>
-            <option value="live" ${state.settings.fsBackground === 'live' ? 'selected' : ''}>Live-Hintergrund</option>
-            <option value="off" ${state.settings.fsBackground === 'off' ? 'selected' : ''}>Aus</option>
+            <option value="cover-static" ${state.settings.fsBackground === 'cover-static' ? 'selected' : ''}>${t('settings.look.fsCoverStatic')}</option>
+            <option value="cover-moving" ${(!state.settings.fsBackground || state.settings.fsBackground === 'cover-moving') ? 'selected' : ''}>${t('settings.look.fsCoverMoving')}</option>
+            <option value="live" ${state.settings.fsBackground === 'live' ? 'selected' : ''}>${t('settings.look.fsLive')}</option>
+            <option value="off" ${state.settings.fsBackground === 'off' ? 'selected' : ''}>${t('settings.look.fsOff')}</option>
           </select>
         </label>`;
   }
@@ -6438,7 +6510,16 @@
   /* --- Lyrics (LRCLIB) ------------------------------------------------- */
 
   // shownSynced: which view renderLyrics drew last (running list or static preview text).
-  const lyricsState = { key: '', lines: [], plain: '', loading: false, error: null, index: -1, shownSynced: null };
+  const lyricsState = {
+    key: '',
+    lines: [],
+    plain: '',
+    source: '',
+    loading: false,
+    error: null,
+    index: -1,
+    shownSynced: null,
+  };
   // Plugin-API v3, "stage": figures from a plugin (only in memory, never saved).
   let stageScene = null;
 
@@ -6459,14 +6540,22 @@
     // lyrics instead of leaving them (and the remote's lyric) on screen.
     if (!lyricsOn() || !item || item.kind === 'radio' || !bridge.lyricsGet) {
       if (lyricsState.key) {
-        Object.assign(lyricsState, { key: '', lines: [], plain: '', loading: false, error: null, index: -1 });
+        Object.assign(lyricsState, {
+          key: '',
+          lines: [],
+          plain: '',
+          source: '',
+          loading: false,
+          error: null,
+          index: -1,
+        });
         renderLyrics();
       }
       return;
     }
     const key = matchKey(item);
     if (!key || (!refresh && key === lyricsState.key)) return;
-    Object.assign(lyricsState, { key, lines: [], plain: '', loading: true, error: null, index: -1 });
+    Object.assign(lyricsState, { key, lines: [], plain: '', source: '', loading: true, error: null, index: -1 });
     renderLyrics();
     let result;
     try {
@@ -6484,6 +6573,7 @@
     Object.assign(lyricsState, {
       lines: Array.isArray(result.lines) ? result.lines : [],
       plain: result.plain || '',
+      source: result.source || '',
       loading: false,
       error: result.error || null,
       index: -1,
@@ -6539,7 +6629,10 @@
         lyricsState.plain
           .split('\n')
           .map((line) => `<p>${esc(line) || '&nbsp;'}</p>`)
-          .join('') + '<p class="lyrics-note">Songtext: LRCLIB (ohne Zeitangaben)</p>';
+          .join('') +
+        `<p class="lyrics-note">${t('lyrics.sourceNote', {
+          source: lyricsState.source === 'ovh' ? 'lyrics.ovh' : 'LRCLIB',
+        })}</p>`;
       return;
     }
     host.innerHTML = `<p class="lyrics-note">${esc(lyricsState.error || 'Kein Songtext gefunden.')}</p>`;
@@ -6642,8 +6735,41 @@
   let lyPickerCat = 'all';
   const LYRIC_THUMB_DIR = 'assets/lyric-styles/';
 
+  // Effect names are German in LYRIC_EFFECTS; only the differing ones have an
+  // English label here (the rest are the same word in both languages).
+  const FX_LABELS_EN = {
+    none: 'None',
+    pop: 'Pop',
+    karaoke: 'Karaoke',
+    kinetic: 'Motion',
+    neon: 'Neon',
+    wave: 'Wave',
+    typer: 'Typewriter',
+    zoom: 'Zoom',
+    lyricvideo: 'Lyric video',
+    poster: 'Poster',
+    brush: 'Brush',
+    cinema: 'Cinema',
+    glitch: 'Glitch',
+    collage: 'Collage',
+    synthwave: 'Synthwave',
+    comic: 'Comic',
+    cards: 'Cards',
+    revolt: 'Revolt',
+    story: 'Storyboard',
+    diary: 'Diary',
+    news: 'Newspaper',
+    terminal: 'Terminal',
+    tunnel: 'Tunnel',
+    chat: 'Chat',
+    aurora: 'Aurora',
+    concert: 'Stage',
+    swiss: 'Grid',
+  };
+
   function lyricEffectLabel(id) {
     const entry = LYRIC_EFFECTS.find(([effect]) => effect === id);
+    if (CMI18n.lang() === 'en' && FX_LABELS_EN[id]) return FX_LABELS_EN[id];
     return entry ? entry[1] : id;
   }
 
@@ -6653,19 +6779,27 @@
 
   function lyricLockBadge(id) {
     // During the trial every motion style is open – no hearts in the gallery.
-    if (extraLocked('lyricsEffect', id)) return '<span class="ly-pick-lock" title="Supporter-Extra">♥</span>';
+    if (extraLocked('lyricsEffect', id)) {
+      return `<span class="ly-pick-lock" title="${t('lyrics.supporterExtra')}">♥</span>`;
+    }
     return '';
   }
 
   // 2.3.1: motion styles grouped by look (CMLyricVideo.PICKER_GROUPS); the
   // chips narrow the menu to one group, "Alle" shows every group with a heading.
   function lyricPickerGroups() {
+    const english = CMI18n.lang() === 'en';
     const groups = (window.CMLyricVideo.PICKER_GROUPS || [])
-      .map((group) => ({ id: group.id, label: group.label, hint: group.hint, styles: group.styles.filter((id) => MOTION_EFFECTS.includes(id)) }))
+      .map((group) => ({
+        id: group.id,
+        label: english && group.labelEn ? group.labelEn : group.label,
+        hint: english && group.hintEn ? group.hintEn : group.hint,
+        styles: group.styles.filter((id) => MOTION_EFFECTS.includes(id)),
+      }))
       .filter((group) => group.styles.length);
     const placed = new Set(groups.flatMap((group) => group.styles));
     const rest = MOTION_EFFECTS.filter((id) => !placed.has(id));
-    if (rest.length) groups.push({ id: 'more', label: 'Weitere', hint: '', styles: rest });
+    if (rest.length) groups.push({ id: 'more', label: t('lyrics.pickerMore'), hint: '', styles: rest });
     return groups;
   }
 
@@ -6700,9 +6834,9 @@
       return `<button type="button" class="ly-picker-tab${active ? ' is-active' : ''}${mark ? ' has-current' : ''}" data-ly-cat="${id}" aria-pressed="${active}">${esc(label)}<span>${count}</span></button>`;
     };
     const tabs =
-      tab('all', 'Alle', MOTION_EFFECTS.length + basicCount) +
+      tab('all', t('lyrics.pickerAll'), MOTION_EFFECTS.length + basicCount) +
       groups.map((group) => tab(group.id, group.label, group.styles.length)).join('') +
-      tab('basic', 'Einfach', basicCount);
+      tab('basic', t('lyrics.pickerBasic'), basicCount);
     const basic = LYRIC_EFFECTS.filter(([id]) => !MOTION_EFFECTS.includes(id))
       .map(([id, label]) => {
         const active = id === current;
@@ -6711,12 +6845,14 @@
       .join('');
     return `<div class="ly-picker-card" role="dialog" aria-modal="true" aria-labelledby="ly-picker-title">
       <header class="ly-picker-head">
-        <div><strong id="ly-picker-title">Songtext-Effekt</strong><small>Vorschau antippen – der Effekt gilt sofort.</small></div>
-        <button type="button" class="ly-picker-close" data-ly-picker-close aria-label="Schließen">×</button>
+        <div><strong id="ly-picker-title">${t('lyrics.pickerTitle')}</strong><small>${t('lyrics.pickerHint')}</small></div>
+        <button type="button" class="ly-picker-close" data-ly-picker-close aria-label="${t('lyrics.pickerClose')}">×</button>
       </header>
-      <div class="ly-picker-tabs" role="group" aria-label="Kategorien">${tabs}</div>
+      <div class="ly-picker-tabs" role="group" aria-label="${t('lyrics.pickerCategories')}">${tabs}</div>
       <div class="ly-picker-groups">${motion}</div>
-      <div class="ly-picker-basic" data-ly-group="basic"${shown('basic') ? '' : ' hidden'}><span>Einfach</span><div>${basic}</div></div>
+      <div class="ly-picker-basic" data-ly-group="basic"${shown('basic') ? '' : ' hidden'}><span>${t(
+        'lyrics.pickerBasic'
+      )}</span><div>${basic}</div></div>
     </div>`;
   }
 
@@ -6767,7 +6903,7 @@
 
   async function chooseLyricEffect(id) {
     if (!LYRIC_EFFECTS.some(([effect]) => effect === id)) return;
-    const ok = await guardExtra('lyricsEffect', id, `Songtext-Effekt „${lyricEffectLabel(id)}“`);
+    const ok = await guardExtra('lyricsEffect', id, t('lyrics.effectName', { name: lyricEffectLabel(id) }));
     if (!ok) return;
     setLyricsOption({ lyricsEffect: id });
     closeLyricPicker();
@@ -6892,7 +7028,10 @@
 
   function offsetLabel() {
     const value = lyricsOffset();
-    return value ? `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(1).replace('.', ',')} s` : '±0 s';
+    const sep = CMI18n.locale() === 'en' ? '.' : ',';
+    return value
+      ? `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(1).replace('.', sep)} s`
+      : '±0 s';
   }
 
   function renderLyricsTools() {
@@ -6901,16 +7040,28 @@
     tools.hidden = !lyricsOn();
     if (tools.hidden) return;
     tools.innerHTML = `
-      <button data-ly-tool="smaller" title="Schrift kleiner">A−</button>
-      <button data-ly-tool="bigger" title="Schrift größer">A+</button>
-      <button data-ly-tool="align" title="Ausrichtung">${state.settings.lyricsAlign === 'center' ? 'Mitte' : 'Links'}</button>
-      <button data-ly-tool="earlier" title="Songtext früher (wenn er hinterherhinkt)">« früher</button>
-      <span class="ly-offset" title="Zeitversatz">${offsetLabel()}</span>
-      <button data-ly-tool="later" title="Songtext später (wenn er vorausläuft)">später »</button>
-      <button data-ly-tool="effect" title="Effekt wechseln">Effekt: ${(LYRIC_EFFECTS.find(([id]) => id === lyricsEffect()) || [])[1]}</button>
-      <button data-ly-tool="focus" class="${state.settings.lyricsFocus ? 'on' : ''}" title="Großansicht: nur Songtext">Großansicht</button>
-      ${lyricsEffect() === 'cinema' ? `<button data-ly-tool="heart" class="${state.settings.lyricsHeart === true ? 'on' : ''}" title="Herz hinter Liebes-Zeilen ein/aus">♥ Herz ${state.settings.lyricsHeart === true ? 'an' : 'aus'}</button>` : ''}
-      <button data-ly-tool="refresh" title="Songtext neu suchen">Neu suchen</button>`;
+      <button data-ly-tool="smaller" title="${t('lyrics.smaller')}">A−</button>
+      <button data-ly-tool="bigger" title="${t('lyrics.bigger')}">A+</button>
+      <button data-ly-tool="align" title="${t('lyrics.align')}">${
+        state.settings.lyricsAlign === 'center' ? t('lyrics.center') : t('lyrics.left')
+      }</button>
+      <button data-ly-tool="earlier" title="${t('lyrics.earlierTitle')}">${t('lyrics.earlier')}</button>
+      <span class="ly-offset" title="${t('lyrics.offsetTitle')}">${offsetLabel()}</span>
+      <button data-ly-tool="later" title="${t('lyrics.laterTitle')}">${t('lyrics.later')}</button>
+      <button data-ly-tool="effect" title="${t('lyrics.effectTitle')}">${t('lyrics.effect', {
+        name: lyricEffectLabel(lyricsEffect()),
+      })}</button>
+      <button data-ly-tool="focus" class="${state.settings.lyricsFocus ? 'on' : ''}" title="${t(
+        'lyrics.focusTitle'
+      )}">${t('lyrics.focus')}</button>
+      ${
+        lyricsEffect() === 'cinema'
+          ? `<button data-ly-tool="heart" class="${state.settings.lyricsHeart === true ? 'on' : ''}" title="${t(
+              'lyrics.heartTitle'
+            )}">${t('lyrics.heart', { state: state.settings.lyricsHeart === true ? t('lyrics.on') : t('lyrics.off') })}</button>`
+          : ''
+      }
+      <button data-ly-tool="refresh" title="${t('lyrics.refreshTitle')}">${t('lyrics.refresh')}</button>`;
   }
 
   function setLyricsOption(patch) {
@@ -6957,55 +7108,57 @@
   function lyricsSettingsHtml() {
     const size = LYRIC_SIZES.includes(state.settings.lyricsSize) ? state.settings.lyricsSize : 'm';
     const sizes = [
-      ['s', 'Klein'],
-      ['m', 'Normal'],
-      ['l', 'Groß'],
-      ['xl', 'Sehr groß'],
+      ['s', t('lyrics.settings.sizeSmall')],
+      ['m', t('lyrics.settings.sizeNormal')],
+      ['l', t('lyrics.settings.sizeLarge')],
+      ['xl', t('lyrics.settings.sizeXl')],
     ];
     return `
           <div class="lyrics-settings ${lyricsOn() ? '' : 'is-off'}">
             <div class="setting-line">
-              <strong>Schriftgröße</strong>
+              <strong>${t('lyrics.settings.size')}</strong>
               <div class="radio-tags">${sizes
                 .map(([id, label]) => `<button class="radio-tag ${size === id ? 'active' : ''}" data-ly-size="${id}">${label}</button>`)
                 .join('')}</div>
             </div>
             <div class="setting-line">
-              <strong>Effekt</strong>
+              <strong>${t('lyrics.settings.effect')}</strong>
               <button type="button" class="ly-effect-open${lockedClass('lyricsEffect', lyricsEffect())}" data-ly-open-picker>
                 <span class="ly-effect-thumb">${lyricThumb(lyricsEffect()) ? `<img src="${lyricThumb(lyricsEffect())}" alt="" loading="lazy" />` : '<i></i>'}</span>
-                <span class="ly-effect-text"><strong>${esc(lyricEffectLabel(lyricsEffect()))}</strong><small>Aus dem Menü mit Vorschau wählen</small></span>
-                <span class="ly-effect-change">Ändern</span>
+                <span class="ly-effect-text"><strong>${esc(lyricEffectLabel(lyricsEffect()))}</strong><small>${t(
+                  'lyrics.pickerFromMenu'
+                )}</small></span>
+                <span class="ly-effect-change">${t('common.change')}</span>
               </button>
             </div>
             <div class="setting-line">
-              <strong>Ausrichtung</strong>
+              <strong>${t('lyrics.settings.align')}</strong>
               <div class="radio-tags">
-                <button class="radio-tag ${state.settings.lyricsAlign !== 'center' ? 'active' : ''}" data-ly-align="left">Links</button>
-                <button class="radio-tag ${state.settings.lyricsAlign === 'center' ? 'active' : ''}" data-ly-align="center">Mitte</button>
+                <button class="radio-tag ${state.settings.lyricsAlign !== 'center' ? 'active' : ''}" data-ly-align="left">${t('lyrics.left')}</button>
+                <button class="radio-tag ${state.settings.lyricsAlign === 'center' ? 'active' : ''}" data-ly-align="center">${t('lyrics.center')}</button>
               </div>
             </div>
             <label class="toggle-row">
               <span>
-                <strong>Zeitversatz: <span id="ly-offset-value">${offsetLabel()}</span></strong>
-                <small>Wenn der Songtext hinterherhinkt: nach rechts (früher). Läuft er voraus: nach links.</small>
+                <strong>${t('lyrics.settings.offset', { value: offsetLabel() })}</strong>
+                <small>${t('lyrics.settings.offsetHelp')}</small>
               </span>
               <input type="range" id="opt-ly-offset" min="-5" max="5" step="0.1" value="${lyricsOffset()}" />
             </label>
             <label class="toggle-row">
-              <span><strong>Automatisch mitscrollen</strong><small>Die aktuelle Zeile bleibt in der Mitte.</small></span>
+              <span><strong>${t('lyrics.settings.scrollTitle')}</strong><small>${t('lyrics.settings.scrollHelp')}</small></span>
               <input type="checkbox" id="opt-ly-scroll" ${state.settings.lyricsScroll !== false ? 'checked' : ''} />
             </label>
             <label class="toggle-row">
-              <span><strong>Gesungene Zeilen abdunkeln</strong><small>Was schon dran war, wird blasser.</small></span>
+              <span><strong>${t('lyrics.settings.dimTitle')}</strong><small>${t('lyrics.settings.dimHelp')}</small></span>
               <input type="checkbox" id="opt-ly-dim" ${state.settings.lyricsDim !== false ? 'checked' : ''} />
             </label>
             <label class="toggle-row">
-              <span><strong>Großansicht</strong><small>Im Vollbild-Player nur Songtext, groß und ohne Cover.</small></span>
+              <span><strong>${t('lyrics.settings.focusTitle')}</strong><small>${t('lyrics.settings.focusHelp')}</small></span>
               <input type="checkbox" id="opt-ly-focus" ${state.settings.lyricsFocus ? 'checked' : ''} />
             </label>
             ${lyricsEffect() === 'cinema' ? `<label class="toggle-row">
-              <span><strong>Herz im Kino-Stil</strong><small>Rotes Herz hinter Zeilen über Liebe, Herz oder Alleinsein. Standardmäßig aus.</small></span>
+              <span><strong>${t('lyrics.settings.heartTitle')}</strong><small>${t('lyrics.settings.heartHelp')}</small></span>
               <input type="checkbox" id="opt-ly-heart" ${state.settings.lyricsHeart === true ? 'checked' : ''} />
             </label>` : ''}
           </div>`;
@@ -7155,10 +7308,15 @@
     { id: 'chill', label: 'Chill', words: ['chill', 'lofi', 'lo-fi', 'relax', 'ambient', 'calm', 'sleep', 'entspann', 'acoustic', 'jazz'] },
     { id: 'party', label: 'Party', words: ['party', 'dance', 'club', 'edm', 'house', 'techno', 'hits', 'feier', 'remix', 'mallorca'] },
     { id: 'workout', label: 'Workout', words: ['workout', 'gym', 'training', 'sport', 'running', 'cardio', 'power', 'hardstyle'] },
-    { id: 'fokus', label: 'Fokus', words: ['focus', 'fokus', 'study', 'lernen', 'homework', 'arbeit', 'concentration', 'piano', 'classical', 'klassik'] },
+    { id: 'fokus', label: 'Fokus', labelEn: 'Focus', words: ['focus', 'fokus', 'study', 'lernen', 'homework', 'arbeit', 'concentration', 'piano', 'classical', 'klassik'] },
     { id: 'gaming', label: 'Gaming', words: ['game', 'gaming', 'ost', 'soundtrack', '8bit', '8-bit', 'chiptune', 'phonk'] },
-    { id: 'traurig', label: 'Traurig', words: ['sad', 'traurig', 'melanchol', 'heartbreak', 'emotional', 'ballad'] },
+    { id: 'traurig', label: 'Traurig', labelEn: 'Sad', words: ['sad', 'traurig', 'melanchol', 'heartbreak', 'emotional', 'ballad'] },
   ];
+
+  // Mood names are display data; `labelEn` only exists where the word differs.
+  function moodLabel(mood) {
+    return CMI18n.lang() === 'en' && mood.labelEn ? mood.labelEn : mood.label;
+  }
 
   let localSort = readJSON(STORAGE.localView, {}).sort === 'folder' ? 'folder' : 'list';
   let localMood = 'all';
@@ -7183,7 +7341,7 @@
     }
     if (localSort === 'folder') {
       order = order.slice().sort((a, b) => {
-        const dir = String(entries[a].dir || '').localeCompare(String(entries[b].dir || ''), 'de');
+        const dir = String(entries[a].dir || '').localeCompare(String(entries[b].dir || ''), CMI18n.locale());
         return dir || a - b;
       });
     }
@@ -7201,28 +7359,33 @@
       const mood = moodOf(entry) || 'none';
       counts[mood] = (counts[mood] || 0) + 1;
     });
-    const chips = [{ id: 'all', label: 'Alle' }, ...LOCAL_MOODS, { id: 'none', label: 'Ohne Stimmung' }]
+    const chips = [{ id: 'all', label: t('common.all') }, ...LOCAL_MOODS, { id: 'none', label: t('local.noMood') }]
       .filter((mood) => mood.id === 'all' || counts[mood.id])
       .map(
         (mood) =>
-          `<button class="radio-tag ${localMood === mood.id ? 'active' : ''}" data-local-mood="${mood.id}">${esc(mood.label)} <small>${counts[mood.id] || 0}</small></button>`
+          `<button class="radio-tag ${localMood === mood.id ? 'active' : ''}" data-local-mood="${mood.id}">${esc(
+            mood.id === 'all' || mood.id === 'none' ? mood.label : moodLabel(mood)
+          )} <small>${counts[mood.id] || 0}</small></button>`
       )
       .join('');
     return `
       <div class="local-toolbar">
         <div class="radio-tags">${chips}</div>
         <div class="local-sort">
-          <button class="radio-tag ${localSort === 'list' ? 'active' : ''}" data-local-sort="list">Liste</button>
-          <button class="radio-tag ${localSort === 'folder' ? 'active' : ''}" data-local-sort="folder">Nach Ordner</button>
+          <button class="radio-tag ${localSort === 'list' ? 'active' : ''}" data-local-sort="list">${t('local.list')}</button>
+          <button class="radio-tag ${localSort === 'folder' ? 'active' : ''}" data-local-sort="folder">${t('local.byFolder')}</button>
         </div>
       </div>`;
   }
 
   function moodSelect(dir) {
     const current = localMoods[dir] || '';
-    return `<select class="local-mood-select" data-local-mood-dir="${esc(dir)}" title="Stimmung für diesen Ordner">
-      <option value="" ${current ? '' : 'selected'}>Stimmung: automatisch</option>
-      ${LOCAL_MOODS.map((mood) => `<option value="${mood.id}" ${current === mood.id ? 'selected' : ''}>Stimmung: ${esc(mood.label)}</option>`).join('')}
+    return `<select class="local-mood-select" data-local-mood-dir="${esc(dir)}" title="${t('local.moodTitle')}">
+      <option value="" ${current ? '' : 'selected'}>${t('local.moodAuto')}</option>
+      ${LOCAL_MOODS.map((mood) => `<option value="${mood.id}" ${current === mood.id ? 'selected' : ''}>${t(
+        'local.moodOption',
+        { label: esc(moodLabel(mood)) }
+      )}</option>`).join('')}
     </select>`;
   }
 
@@ -7304,16 +7467,19 @@
     if (!host) return;
     const page = state.artistPage || {};
     if (page.loading) {
-      host.innerHTML = `<div class="page"><div class="search-status"><span class="spinner small"></span><span>${esc(page.name || 'Künstler')} wird geladen …</span></div></div>`;
+      host.innerHTML = `<div class="page"><div class="search-status"><span class="spinner small"></span><span>${t(
+        'artist.loading',
+        { name: esc(page.name || t('artist.eyebrow')) }
+      )}</span></div></div>`;
       return;
     }
     if (page.error || !page.data) {
       host.innerHTML = `
         <div class="page">
           <div class="panel empty-search">
-            <h3>${esc(page.name || 'Künstler')}</h3>
-            <p>${esc(page.error || 'Nichts gefunden.')}</p>
-            <div class="row"><button class="btn ghost small" data-artist-action="back">Zurück</button></div>
+            <h3>${esc(page.name || t('artist.eyebrow'))}</h3>
+            <p>${esc(page.error || t('artist.notFound'))}</p>
+            <div class="row"><button class="btn ghost small" data-artist-action="back">${t('common.back')}</button></div>
           </div>
         </div>`;
       return;
@@ -7321,41 +7487,59 @@
     const { artist, top, albums, related } = page.data;
     const album = page.album;
     const artistTaste = tasteArtistValue(top[0] || { artist: artist.name, kind: 'preview' });
-    const kind = (type) => (type === 'single' ? 'Single' : type === 'ep' ? 'EP' : type === 'compile' ? 'Compilation' : 'Album');
+    const kind = (type) =>
+      type === 'single'
+        ? t('artist.kindSingle')
+        : type === 'ep'
+          ? t('artist.kindEp')
+          : type === 'compile'
+            ? t('artist.kindCompilation')
+            : t('artist.kindAlbum');
     host.innerHTML = `
       <div class="page artist-page">
         <div class="artist-hero">
           ${artist.picture ? `<img class="artist-photo" src="${esc(artist.picture)}" alt="" />` : '<div class="artist-photo">♪</div>'}
           <div class="artist-head">
-            <button class="link-btn artist-back" data-artist-action="back">← Zurück</button>
-            <div class="eyebrow">Künstler</div>
+            <button class="link-btn artist-back" data-artist-action="back">${t('artist.back')}</button>
+            <div class="eyebrow">${t('artist.eyebrow')}</div>
             <h2>${esc(artist.name)}</h2>
-            <p>${[artist.fans ? `${artist.fans.toLocaleString('de-DE')} Fans auf Deezer` : '', artist.albums ? `${artist.albums} Veröffentlichungen` : '']
+            <p>${[
+              artist.fans ? t('artist.fans', { count: artist.fans.toLocaleString(CMI18n.locale() === 'en' ? 'en-GB' : 'de-DE') }) : '',
+              artist.albums ? t('artist.releases', { count: artist.albums }) : '',
+            ]
               .filter(Boolean)
               .join(' · ')}</p>
             <div class="row">
-              ${top.length ? `<button class="btn primary" data-artist-action="play">${ICONS.play} Top-Titel abspielen</button>` : ''}
-              ${top.length ? `<button class="btn ghost" data-artist-action="shuffle">${ICONS.shuffle} Shuffle</button>` : ''}
-              <button class="btn ghost small" data-artist-action="taste-like">${ICONS.like} Mehr davon${
-                artistTaste > 0 ? ' ✓' : ''
-              }</button>
-              <button class="btn ghost small" data-artist-action="taste-dislike">${ICONS.dislike} Weniger davon${
-                artistTaste < 0 ? ' ✓' : ''
-              }</button>
+              ${top.length ? `<button class="btn primary" data-artist-action="play">${ICONS.play} ${t('artist.playTop')}</button>` : ''}
+              ${top.length ? `<button class="btn ghost" data-artist-action="shuffle">${ICONS.shuffle} ${t('player.shuffle')}</button>` : ''}
+              <button class="btn ghost small" data-artist-action="taste-like">${ICONS.like} ${t(
+                'menu.moreLikeThis'
+              )}${artistTaste > 0 ? ' ✓' : ''}</button>
+              <button class="btn ghost small" data-artist-action="taste-dislike">${ICONS.dislike} ${t(
+                'menu.lessLikeThis'
+              )}${artistTaste < 0 ? ' ✓' : ''}</button>
             </div>
           </div>
         </div>
         ${
           album
-            ? `<div class="artist-section-head" id="artist-album"><h3>${esc(album.title)}</h3><button class="link-btn" data-artist-action="close-album">Schließen</button></div>
-               <div class="song-list">${album.tracks.map((entry, index) => songRow(entry, index, 'album')).join('') || '<p class="muted">Keine Vorschauen.</p>'}</div>`
+            ? `<div class="artist-section-head" id="artist-album"><h3>${esc(
+                album.title
+              )}</h3><button class="link-btn" data-artist-action="close-album">${t('common.close')}</button></div>
+               <div class="song-list">${
+                 album.tracks.map((entry, index) => songRow(entry, index, 'album')).join('') ||
+                 `<p class="muted">${t('artist.noPreviews')}</p>`
+               }</div>`
             : ''
         }
-        <div class="artist-section-head"><h3>Beliebteste Titel</h3></div>
-        <div class="song-list">${top.map((entry, index) => songRow(entry, index, 'artist')).join('') || '<p class="muted">Keine Vorschauen gefunden.</p>'}</div>
+        <div class="artist-section-head"><h3>${t('artist.topTracks')}</h3></div>
+        <div class="song-list">${
+          top.map((entry, index) => songRow(entry, index, 'artist')).join('') ||
+          `<p class="muted">${t('artist.noPreviewsFound')}</p>`
+        }</div>
         ${
           albums.length
-            ? `<div class="artist-section-head"><h3>Alben & Singles</h3></div>
+            ? `<div class="artist-section-head"><h3>${t('artist.albums')}</h3></div>
                <div class="artist-albums">${albums
                  .map(
                    (item) => `<button class="artist-album" data-album-id="${item.id}" title="${esc(item.title)}">
@@ -7369,7 +7553,7 @@
         }
         ${
           related.length
-            ? `<div class="artist-section-head"><h3>Ähnliche Künstler</h3></div>
+            ? `<div class="artist-section-head"><h3>${t('artist.relatedArtists')}</h3></div>
                <div class="artist-related">${related
                  .map(
                    (item) => `<button class="artist-chip" data-artist-id="${item.id}" data-artist-name="${esc(item.name)}">
@@ -7379,14 +7563,14 @@
                  .join('')}</div>`
             : ''
         }
-        <p class="muted small artist-note">Daten: Deezer. Titel spielen als 30-Sekunden-Vorschau – mit Quellen-Plugin und „volle Titel“ in voller Länge.</p>
+        <p class="muted small artist-note">${t('artist.note')}</p>
       </div>`;
   }
 
   async function openArtistAlbum(id) {
     const page = state.artistPage;
     if (!page || !page.data || !bridge.albumTracks) return;
-    page.album = { id, title: 'Album wird geladen …', tracks: [] };
+    page.album = { id, title: t('artist.albumLoading'), tracks: [] };
     renderArtist();
     let result;
     try {
@@ -7502,9 +7686,13 @@
 
   async function shareEntry(entry) {
     if (!entry || !entry.title) return;
-    const text = `„${entry.title}“${entry.artist ? ` von ${entry.artist}` : ''} – in CleanMusic anhören: ${shareUrl(entry)}`;
+    const text = t('share.songText', {
+      title: entry.title,
+      artist: entry.artist ? t('share.songBy', { artist: entry.artist }) : '',
+      link: shareUrl(entry),
+    });
     const ok = await bridge.copyText(text);
-    toast(ok ? 'Link kopiert – in Discord, WhatsApp & Co. einfügen' : 'Kopieren nicht möglich');
+    toast(ok ? t('share.songCopied') : t('common.copyFailed'));
   }
 
   // A shared link was opened (cleanmusic://play?…): find the song and play it.
@@ -7818,16 +8006,19 @@
     if (!playlist || !window.CMShare) return null;
     const result = await window.CMShare.encodePlaylist(playlist.name, playlist.items);
     if (!result.code) {
-      toast('In dieser Playlist ist nichts Teilbares – lokale Dateien und Radio bleiben bei dir.');
+      toast(t('share.nothing'));
       return result;
     }
     const link = `${PLAYLIST_PAGE}#${result.code}`;
-    const text = `🎶 Playlist „${playlist.name}“ (${result.shared} Titel) – in CleanMusic öffnen:\n${link}`;
+    const text = t('share.text', { name: playlist.name, count: result.shared, link });
     const ok = await bridge.copyText(text);
     toast(
       ok
-        ? `Link kopiert – ${result.shared} Titel${result.skipped ? `, ${result.skipped} lokale/Radio-Titel bleiben bei dir` : ''}.`
-        : 'Kopieren nicht möglich'
+        ? t('share.copied', {
+            count: result.shared,
+            skipped: result.skipped ? t('share.skipped', { count: result.skipped }) : '',
+          })
+        : t('common.copyFailed')
     );
     return Object.assign({ link }, result);
   }
@@ -7841,13 +8032,13 @@
     }
     if (!options.confirm) {
       const ok = await askConfirm({
-        title: 'Geteilte Playlist übernehmen?',
-        message: `„${data.name}“ mit ${data.tracks.length} Titeln. CleanMusic sucht die Titel bei Deezer, Apple Music oder über dein Quellen-Plugin – das dauert einen Moment.`,
-        confirm: 'Übernehmen',
+        title: t('share.importTitle'),
+        message: t('share.importText', { name: data.name, count: data.tracks.length }),
+        confirm: t('share.importConfirm'),
       });
       if (!ok) return null;
     }
-    toast(`„${data.name}“ wird übernommen …`);
+    toast(t('share.importing', { name: data.name }));
     const found = new Array(data.tracks.length).fill(null);
     let next = 0;
     let done = 0;
@@ -7857,19 +8048,21 @@
         next += 1;
         found[index] = await findSharedEntry(data.tracks[index]);
         done += 1;
-        if (done % 10 === 0 && done < data.tracks.length) toast(`${done} von ${data.tracks.length} Titeln geprüft …`);
+        if (done % 10 === 0 && done < data.tracks.length) {
+          toast(t('share.progress', { done, total: data.tracks.length }));
+        }
       }
     };
     await Promise.all([worker(), worker(), worker()]);
     const entries = found.filter(Boolean);
     if (!entries.length) {
-      toast('Keiner der geteilten Titel wurde gefunden.');
+      toast(t('share.noneFound'));
       return { id: null, count: 0, total: data.tracks.length };
     }
-    const playlist = createPlaylist(uniquePlaylistName(data.name, 'Geteilte Playlist'));
+    const playlist = createPlaylist(uniquePlaylistName(data.name, t('share.defaultName')));
     addToPlaylist(playlist.id, entries, { quiet: true });
     openPlaylist(playlist.id);
-    toast(`„${playlist.name}“ übernommen: ${entries.length} von ${data.tracks.length} Titeln gefunden.`);
+    toast(t('share.imported', { name: playlist.name, found: entries.length, total: data.tracks.length }));
     return { id: playlist.id, count: entries.length, total: data.tracks.length };
   }
 
@@ -10254,19 +10447,19 @@
     return `
           <label class="toggle-row">
             <span>
-              <strong>Übergang zwischen Titeln</strong>
-              <small>Crossfade blendet weich über, „Lückenlos“ lädt den nächsten Titel vor. Nicht bei Radio und „Titel wiederholen“.</small>
+              <strong>${t('settings.transition.title')}</strong>
+              <small>${t('settings.transition.help')}</small>
             </span>
             <select id="opt-transition" class="select-input">
-              <option value="off" ${mode === 'off' ? 'selected' : ''}>Aus</option>
-              <option value="gapless" ${mode === 'gapless' ? 'selected' : ''}>Lückenlos</option>
-              <option value="crossfade" ${mode === 'crossfade' ? 'selected' : ''}>Crossfade</option>
+              <option value="off" ${mode === 'off' ? 'selected' : ''}>${t('settings.transition.off')}</option>
+              <option value="gapless" ${mode === 'gapless' ? 'selected' : ''}>${t('settings.transition.gapless')}</option>
+              <option value="crossfade" ${mode === 'crossfade' ? 'selected' : ''}>${t('settings.transition.crossfade')}</option>
             </select>
           </label>
           <label class="toggle-row" ${mode === 'crossfade' ? '' : 'hidden'}>
             <span>
-              <strong>Crossfade-Länge: <span id="crossfade-value">${crossfadeSecs()} s</span></strong>
-              <small>2 bis 12 Sekunden.</small>
+              <strong>${t('settings.transition.lengthLabel')} <span id="crossfade-value">${crossfadeSecs()} s</span></strong>
+              <small>${t('settings.transition.lengthHelp')}</small>
             </span>
             <input type="range" id="opt-crossfade" min="2" max="12" step="1" value="${crossfadeSecs()}" />
           </label>`;
@@ -11557,7 +11750,7 @@
     return items
       .map((item, index) => {
         const playing = isPlayingId(item.id);
-        const date = item.at ? new Date(item.at).toLocaleDateString('de-DE') : '';
+        const date = item.at ? new Date(item.at).toLocaleDateString(CMI18n.locale() === 'en' ? 'en-GB' : 'de-DE') : '';
         return `
           <div class="dl-row song-row ${playing ? 'playing' : ''}" data-list="downloads" data-index="${index}" title="${esc(item.path)}">
             <span class="dl-ic">${playing ? EQ : '♪'}</span>
@@ -11567,9 +11760,9 @@
             </span>
             ${item.license ? `<span class="lic-badge" data-lic="${licenseKey(item.license)}">${esc(item.license)}</span>` : ''}
             <span class="dl-actions">
-              <button class="icon-btn dl-btn done" data-dl-file="${esc(item.path)}" data-dl-act="reveal" data-index="${index}" draggable="true" title="In dein Schnittprogramm ziehen – Klick zeigt die Datei">${ICONS.file}</button>
-              ${item.credit ? `<button class="icon-btn" data-dl-act="credit" data-index="${index}" title="Credit kopieren">${ICONS.copy}</button>` : ''}
-              <button class="icon-btn" data-dl-act="reveal" data-index="${index}" title="Im Ordner zeigen">${ICONS.folder || '📁'}</button>
+              <button class="icon-btn dl-btn done" data-dl-file="${esc(item.path)}" data-dl-act="reveal" data-index="${index}" draggable="true" title="${t('dl.dragHint')}">${ICONS.file}</button>
+              ${item.credit ? `<button class="icon-btn" data-dl-act="credit" data-index="${index}" title="${t('dl.copyCredit')}">${ICONS.copy}</button>` : ''}
+              <button class="icon-btn" data-dl-act="reveal" data-index="${index}" title="${t('dl.showInFolder')}">${ICONS.folder || '📁'}</button>
             </span>
           </div>`;
       })
@@ -11579,29 +11772,29 @@
   function renderDownloads() {
     const host = $('#view-downloads');
     if (!host) return;
-    const folders = Array.from(new Set(dlView.files.map((item) => item.dir).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'de'));
+    const folders = Array.from(new Set(dlView.files.map((item) => item.dir).filter(Boolean))).sort((a, b) => a.localeCompare(b, CMI18n.locale()));
     const items = visibleDownloads();
     const focused = document.activeElement && document.activeElement.id === 'dl-search';
     host.innerHTML = `
       <div class="page downloads-page">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Cutting-Ordner</div>
-            <h2>Downloads</h2>
-            <p>${dlView.base ? esc(dlView.base) : 'Alles, was CleanMusic für deine Videos gespeichert hat.'}</p>
+            <div class="eyebrow">${t('dl.eyebrow')}</div>
+            <h2>${t('nav.downloads')}</h2>
+            <p>${dlView.base ? esc(dlView.base) : t('dl.intro')}</p>
           </div>
           <div class="page-actions">
-            <button class="btn ghost small" data-dl-page="pick" title="Wunschordner für alle Downloads wählen">Ordner ändern …</button>
-            <button class="btn ghost small" data-dl-page="refresh">Aktualisieren</button>
-            <button class="btn ghost small" data-dl-page="open">Ordner öffnen</button>
+            <button class="btn ghost small" data-dl-page="pick" title="${t('dl.changeFolderTitle')}">${t('dl.changeFolder')}</button>
+            <button class="btn ghost small" data-dl-page="refresh">${t('playlist.refresh')}</button>
+            <button class="btn ghost small" data-dl-page="open">${t('dl.openFolder')}</button>
           </div>
         </div>
         <div class="radio-search dl-search">
-          <input id="dl-search" type="search" value="${esc(dlView.query)}" placeholder="In Downloads suchen – Titel, Künstler, Lizenz, Credit …" autocomplete="off" spellcheck="false" />
+          <input id="dl-search" type="search" value="${esc(dlView.query)}" placeholder="${t('dl.searchPlaceholder')}" autocomplete="off" spellcheck="false" />
         </div>
         ${
           folders.length > 1
-            ? `<div class="radio-tags dl-folders">${[['all', 'Alle'], ...folders.map((name) => [name, name])]
+            ? `<div class="radio-tags dl-folders">${[['all', t('common.all')], ...folders.map((name) => [name, name])]
                 .map(
                   ([id, label]) =>
                     `<button class="radio-tag ${dlView.folder === id ? 'active' : ''}" data-dl-folder="${esc(id)}">${esc(label)} <small>${
@@ -11613,15 +11806,16 @@
         }
         ${
           dlView.loading && !dlView.files.length
-            ? '<div class="search-status"><span class="spinner small"></span><span>Downloads werden gelesen …</span></div>'
+            ? `<div class="search-status"><span class="spinner small"></span><span>${t('dl.loading')}</span></div>`
             : !dlView.files.length
-              ? `<div class="panel empty-search"><h3>Noch keine Downloads</h3><p>${esc(
-                  dlView.error ||
-                    'Schalte unter Einstellungen → Downloads „Nur Cutting“ ein und lade im Cutter-Modus freie Titel herunter – sie erscheinen dann hier.'
+              ? `<div class="panel empty-search"><h3>${t('dl.emptyTitle')}</h3><p>${esc(
+                  dlView.error || t('dl.emptyText')
                 )}</p></div>`
               : !items.length
-                ? '<div class="panel empty-search"><h3>Nichts gefunden</h3><p>Kein Download passt zu deiner Suche.</p></div>'
-                : `<div class="results-head"><span>${items.length} ${items.length === 1 ? 'Datei' : 'Dateien'}</span><span class="muted small">Klick spielt ab · Symbol ziehen ins Schnittprogramm</span></div>
+                ? `<div class="panel empty-search"><h3>${t('dl.nothingFound')}</h3><p>${t('dl.nothingFoundText')}</p></div>`
+                : `<div class="results-head"><span>${
+                    items.length === 1 ? t('dl.filesOne') : t('dl.filesMany', { count: items.length })
+                  }</span><span class="muted small">${t('dl.hint')}</span></div>
                    <div class="song-list">${downloadRows(items)}</div>`
         }
       </div>`;
@@ -11638,12 +11832,12 @@
     const item = visibleDownloads()[Number(button.dataset.index)];
     if (!item) return;
     if (button.dataset.dlAct === 'reveal') {
-      if (!(await bridge.cuttingReveal(item.path))) toast('Datei nicht mehr vorhanden.');
+      if (!(await bridge.cuttingReveal(item.path))) toast(t('dl.fileGone'));
       return;
     }
     if (button.dataset.dlAct === 'credit') {
       const ok = await bridge.copyText(item.credit);
-      toast(ok ? 'Credit kopiert' : 'Kopieren nicht möglich');
+      toast(ok ? t('dl.creditCopied') : t('common.copyFailed'));
     }
   }
 
@@ -11670,12 +11864,12 @@
     const mode = layoutMode();
     return `
         <div class="bg-picker">
-          <strong>Ansicht</strong>
+          <strong>${t('settings.look.view')}</strong>
           <div class="radio-tags">
-            <button class="radio-tag ${mode === 'simple' ? 'active' : ''}" data-layout-id="simple">Einfach</button>
-            <button class="radio-tag ${mode === 'advanced' ? 'active' : ''}" data-layout-id="advanced">Erweitert</button>
+            <button class="radio-tag ${mode === 'simple' ? 'active' : ''}" data-layout-id="simple">${t('settings.look.simple')}</button>
+            <button class="radio-tag ${mode === 'advanced' ? 'active' : ''}" data-layout-id="advanced">${t('settings.look.advanced')}</button>
           </div>
-          <small class="muted">Einfach blendet Cutter-Modus, Downloads, Plugins, Discord und Profi-Schalter aus. Nichts geht verloren – zurück jederzeit hier.</small>
+          <small class="muted">${t('settings.look.layoutHelp')}</small>
         </div>`;
   }
 
@@ -11930,7 +12124,7 @@
     schedulePrefetch();
     renderQueuePanel();
     if (state.fullscreen) renderUpNext();
-    toast(removed ? `${removed} Titel entfernt` : 'Nichts zum Entfernen');
+    toast(removed ? t('queue.removed', { count: removed }) : t('queue.nothingToRemove'));
   }
 
   function queueRow(entry, position, options = {}) {
@@ -11940,10 +12134,10 @@
         <span class="queue-meta">
           <span class="queue-title">${esc(entry.title)}</span>
           <span class="queue-sub">${esc(entry.artist || entry.sourceLabel || '')}${
-            entry.requestedBy ? ` · <em class="queue-by">Wunsch von ${esc(entry.requestedBy)}</em>` : ''
+            entry.requestedBy ? ` · <em class="queue-by">${t('queue.requestBy', { name: esc(entry.requestedBy) })}</em>` : ''
           }</span>
         </span>
-        ${options.current ? `<span class="queue-now">${EQ}</span>` : `<button class="icon-btn queue-remove" data-q-remove="${position}" title="Aus der Warteschlange entfernen">${ICONS.close}</button>`}
+        ${options.current ? `<span class="queue-now">${EQ}</span>` : `<button class="icon-btn queue-remove" data-q-remove="${position}" title="${t('queue.remove')}">${ICONS.close}</button>`}
       </div>`;
   }
 
@@ -11959,17 +12153,19 @@
     const current = items[index];
     const seed = current && current.autoplay ? null : current;
     const labels = {
-      queued: 'Von dir eingereiht',
-      request: 'Songwünsche aus dem Chat',
-      context: 'Weiter aus der Liste',
-      autoplay: `Autoplay${seed && seed.artist ? ` · passend zu ${esc(primaryArtist(seed.artist))}` : ''}`,
+      queued: t('queue.queued'),
+      request: t('queue.request'),
+      context: t('queue.context'),
+      autoplay: seed && seed.artist
+        ? t('queue.autoplayFor', { artist: esc(primaryArtist(seed.artist)) })
+        : t('queue.autoplayBase'),
     };
 
     let body = '';
     if (!current) {
-      body = '<p class="queue-empty">Noch nichts in der Warteschlange. Spiel einen Titel ab oder wähle bei einem Titel „Als Nächstes abspielen“.</p>';
+      body = `<p class="queue-empty">${t('queue.empty')}</p>`;
     } else {
-      body += '<div class="queue-label">Läuft gerade</div>' + queueRow(current, index, { current: true });
+      body += `<div class="queue-label">${t('queue.nowPlaying')}</div>` + queueRow(current, index, { current: true });
       const upcoming = items.slice(index + 1, index + 1 + 60);
       let group = null;
       upcoming.forEach((entry, offset) => {
@@ -11981,30 +12177,30 @@
         body += queueRow(entry, index + 1 + offset);
       });
       if (items.length - index - 1 > 60) {
-        body += `<p class="queue-more">… und ${items.length - index - 61} weitere</p>`;
+        body += `<p class="queue-more">${t('queue.more', { count: items.length - index - 61 })}</p>`;
       }
       if (!upcoming.length) {
         body += `<p class="queue-empty">${
           autoplayTask
-            ? 'Autoplay sucht passende Titel …'
+            ? t('queue.searching')
             : autoplayOn() && CMPlayback.repeatOff(state.playback.repeat)
-              ? 'Danach geht es mit passenden Vorschlägen weiter.'
-              : 'Danach ist Schluss.'
+              ? t('queue.continues')
+              : t('queue.end')
         }</p>`;
       }
       if (state.playback.shuffle) {
-        body += '<p class="queue-hint">Zufall ist an: Die Reihenfolge ist gemischt, kein Titel kommt doppelt. Von dir eingereihte Titel und Songwünsche bleiben vorn.</p>';
+        body += `<p class="queue-hint">${t('queue.shuffleHint')}</p>`;
       }
     }
 
     panel.innerHTML = `
       <div class="queue-head">
-        <h3>Warteschlange</h3>
-        <button class="icon-btn" data-q-action="close" title="Schließen">${ICONS.close}</button>
+        <h3>${t('player.queue')}</h3>
+        <button class="icon-btn" data-q-action="close" title="${t('queue.close')}">${ICONS.close}</button>
       </div>
       <div class="queue-tools">
-        <label class="queue-autoplay"><input type="checkbox" data-q-action="autoplay" ${autoplayOn() ? 'checked' : ''} /> Autoplay</label>
-        <button class="btn ghost small" data-q-action="clear">Eingereihte entfernen</button>
+        <label class="queue-autoplay"><input type="checkbox" data-q-action="autoplay" ${autoplayOn() ? 'checked' : ''} /> ${t('queue.autoplay')}</label>
+        <button class="btn ghost small" data-q-action="clear">${t('queue.clear')}</button>
       </div>
       <div class="queue-list">${body}</div>`;
   }
@@ -12180,16 +12376,20 @@
 
   const EQ_BANDS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
   const EQ_PRESETS = [
-    { id: 'neutral', label: 'Neutral', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-    { id: 'bass', label: 'Bass-Boost', gains: [6, 6, 4, 2, 0, 0, -1, -1, 1, 1] },
-    { id: 'voice', label: 'Stimme/Podcast', gains: [0, 0, -2, 0, 3, 4, 3, 1, -1, -2] },
-    { id: 'bright', label: 'Hell', gains: [0, 0, 0, -1, 0, 1, 3, 5, 4, 2] },
-    { id: 'warm', label: 'Warm', gains: [3, 3, 2, 1, 0, -1, -1, -2, -2, -2] },
-    { id: 'laptop', label: 'Laptop-Lautsprecher', gains: [5, 5, 3, 0, -1, 1, 3, 2, 0, -1] },
-    { id: 'headphones', label: 'Kopfhörer', gains: [3, 2, 0, -1, 0, 1, 2, 2, 1, 0] },
-    { id: 'electronic', label: 'Elektronisch', gains: [4, 3, 1, -1, -2, 1, 2, 3, 3, 2] },
-    { id: 'acoustic', label: 'Akustik', gains: [1, 1, 0, 0, 2, 3, 3, 2, 1, 0] },
+    { id: 'neutral', label: 'Neutral', labelEn: 'Neutral', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    { id: 'bass', label: 'Bass-Boost', labelEn: 'Bass boost', gains: [6, 6, 4, 2, 0, 0, -1, -1, 1, 1] },
+    { id: 'voice', label: 'Stimme/Podcast', labelEn: 'Voice/podcast', gains: [0, 0, -2, 0, 3, 4, 3, 1, -1, -2] },
+    { id: 'bright', label: 'Hell', labelEn: 'Bright', gains: [0, 0, 0, -1, 0, 1, 3, 5, 4, 2] },
+    { id: 'warm', label: 'Warm', labelEn: 'Warm', gains: [3, 3, 2, 1, 0, -1, -1, -2, -2, -2] },
+    { id: 'laptop', label: 'Laptop-Lautsprecher', labelEn: 'Laptop speaker', gains: [5, 5, 3, 0, -1, 1, 3, 2, 0, -1] },
+    { id: 'headphones', label: 'Kopfhörer', labelEn: 'Headphones', gains: [3, 2, 0, -1, 0, 1, 2, 2, 1, 0] },
+    { id: 'electronic', label: 'Elektronisch', labelEn: 'Electronic', gains: [4, 3, 1, -1, -2, 1, 2, 3, 3, 2] },
+    { id: 'acoustic', label: 'Akustik', labelEn: 'Acoustic', gains: [1, 1, 0, 0, 2, 3, 3, 2, 1, 0] },
   ];
+
+  function eqPresetLabel(preset) {
+    return CMI18n.lang() === 'en' && preset.labelEn ? preset.labelEn : preset.label;
+  }
 
   function eqGains(values) {
     return EQ_BANDS.map((_frequency, index) => {
@@ -12282,21 +12482,21 @@
     const customSelected = eqState.preset.startsWith('custom:');
     return `
       <div class="panel eq-panel" id="eq-panel">
-        <h3>10-Band-Equalizer</h3>
-        <p class="muted small">Peaking-Filter mit Q 1,1 · ±12 dB. Die Filter verwenden dieselbe dauerhafte Audio-Kette wie Bass/Höhen.</p>
+        <h3>${t('settings.eq.title')}</h3>
+        <p class="muted small">${t('settings.eq.help')}</p>
         <label class="toggle-row">
-          <span><strong>Equalizer einschalten</strong><small>Schaltet die Web-Audio-Kette ein, ohne den Ton umzuleiten oder den AudioContext später zu pausieren.</small></span>
+          <span><strong>${t('settings.eq.on')}</strong><small>${t('settings.eq.onHelp')}</small></span>
           <input type="checkbox" id="opt-eq-enabled" ${eqState.enabled ? 'checked' : ''} />
         </label>
-        <label class="eq-preset-row"><strong>Preset</strong><select id="opt-eq-preset" class="select-input">
-          ${EQ_PRESETS.map((preset) => `<option value="${preset.id}" ${eqState.preset === preset.id ? 'selected' : ''}>${esc(preset.label)}</option>`).join('')}
-          <option value="custom" ${eqState.preset === 'custom' ? 'selected' : ''}>Eigene Einstellung</option>
+        <label class="eq-preset-row"><strong>${t('settings.eq.preset')}</strong><select id="opt-eq-preset" class="select-input">
+          ${EQ_PRESETS.map((preset) => `<option value="${preset.id}" ${eqState.preset === preset.id ? 'selected' : ''}>${esc(eqPresetLabel(preset))}</option>`).join('')}
+          <option value="custom" ${eqState.preset === 'custom' ? 'selected' : ''}>${t('settings.eq.custom')}</option>
           ${eqState.custom.map((preset) => `<option value="custom:${esc(preset.name)}" ${eqState.preset === `custom:${preset.name}` ? 'selected' : ''}>${esc(preset.name)}</option>`).join('')}
         </select></label>
         <div class="eq-advanced advanced-only">
-          <canvas id="eq-curve" height="128" aria-label="Equalizer-Kurve"></canvas>
-          <div class="eq-bands">${EQ_BANDS.map((frequency, index) => `<label><span>${frequency >= 1000 ? `${frequency / 1000}k` : frequency} Hz</span><input type="range" min="-12" max="12" step="1" data-eq-band="${index}" value="${eqState.gains[index]}" aria-label="Equalizer ${frequency} Hertz" /><output data-eq-value="${index}">${eqState.gains[index]} dB</output></label>`).join('')}</div>
-          <div class="row"><button class="btn ghost small" data-eq-action="save">Eigenes Preset speichern</button>${customSelected ? '<button class="btn ghost small danger" data-eq-action="delete">Preset löschen</button>' : ''}</div>
+          <canvas id="eq-curve" height="128" aria-label="${t('settings.eq.curveAlt')}"></canvas>
+          <div class="eq-bands">${EQ_BANDS.map((frequency, index) => `<label><span>${frequency >= 1000 ? `${frequency / 1000}k` : frequency} Hz</span><input type="range" min="-12" max="12" step="1" data-eq-band="${index}" value="${eqState.gains[index]}" aria-label="${t('settings.eq.bandAlt', { hz: frequency })}" /><output data-eq-value="${index}">${eqState.gains[index]} dB</output></label>`).join('')}</div>
+          <div class="row"><button class="btn ghost small" data-eq-action="save">${t('settings.eq.save')}</button>${customSelected ? `<button class="btn ghost small danger" data-eq-action="delete">${t('settings.eq.delete')}</button>` : ''}</div>
         </div>
       </div>`;
   }
@@ -12467,7 +12667,7 @@
       const button = $(selector);
       if (!button) return;
       button.dataset.level = stage;
-      button.title = vol.muted ? 'Ton an (M)' : 'Stumm schalten (M)';
+      button.title = vol.muted ? t('player.unmute') : t('player.mute');
     });
   }
 
@@ -12708,11 +12908,11 @@
     const done = downloads[entry.id];
     if (done) {
       return `<button class="icon-btn dl-btn done" data-act="reveal" data-dl-file="${esc(done.path)}" draggable="true"
-        title="Heruntergeladen – in dein Schnittprogramm ziehen, Klick zeigt die Datei">${ICONS.file}</button>`;
+        title="${t('dl.downloadedTitle')}">${ICONS.file}</button>`;
     }
     const busy = downloading.has(entry.id);
     return `<button class="icon-btn dl-btn ${busy ? 'busy' : ''}" data-act="download" ${busy ? 'disabled' : ''}
-      title="Herunterladen (mit Credit-Datei)">${ICONS.download}</button>`;
+      title="${t('dl.downloadTitle')}">${ICONS.download}</button>`;
   }
 
   function downloadCategory(entry) {
@@ -12767,9 +12967,11 @@
       writeJSON(STORAGE.downloads, downloads);
       if (state.settings.downloads === 'cutting') addEntryToCutProject(entry, true);
       if (state.view === 'downloads') loadDownloads();
-      toast(`${result.existed ? 'Schon vorhanden' : 'Gespeichert'}: ${result.name} – zum Schnittprogramm ziehen`);
+      toast(
+        t(result.existed ? 'dl.savedExisting' : 'dl.saved', { name: result.name })
+      );
     } else {
-      toast((result && result.error) || 'Download fehlgeschlagen');
+      toast((result && result.error) || t('dl.failed'));
     }
     refreshDownloadButtons();
     return result;
@@ -12782,7 +12984,7 @@
     if (!ok) {
       delete downloads[entry.id];
       writeJSON(STORAGE.downloads, downloads);
-      toast('Datei nicht mehr da – du kannst sie neu herunterladen.');
+      toast(t('dl.fileGoneCanReload'));
       refreshDownloadButtons();
     }
   }
@@ -13589,8 +13791,8 @@
     if (modeSelect) modeSelect.value = mode;
 
     const item = currentItem();
-    $('#fs-title').textContent = item ? item.title : 'Nichts ausgewählt';
-    $('#fs-artist').textContent = item ? item.artist || item.sourceLabel || '' : 'Wähl einen Titel, Sender oder Sound';
+    $('#fs-title').textContent = item ? item.title : t('player.nothingSelected');
+    $('#fs-artist').textContent = item ? item.artist || item.sourceLabel || '' : t('fs.nothingSelected');
 
     const badge = $('#np-badge');
     const fsBadge = $('#fs-badge');
@@ -13764,18 +13966,29 @@
 
   const PERFORMANCE_PROFILES = {
     saver: {
-      id: 'saver', label: 'Sparmodus', fps: 15, pixelRatio: 0.75, liveResolution: 0.65,
-      detail: 0.5, shadow: 0, hint: '15 fps, kleinere Canvas-Auflösung, keine großen Schatten oder Blur-Effekte.',
+      id: 'saver', label: 'Sparmodus', labelEn: 'Saver', fps: 15, pixelRatio: 0.75, liveResolution: 0.65,
+      detail: 0.5, shadow: 0,
+      hint: '15 fps, kleinere Canvas-Auflösung, keine großen Schatten oder Blur-Effekte.',
+      hintEn: '15 fps, smaller canvas resolution, no large shadows or blur effects.',
     },
     balanced: {
-      id: 'balanced', label: 'Ausgewogen', fps: 24, pixelRatio: 1, liveResolution: 0.85,
-      detail: 0.8, shadow: 0.55, hint: '24 fps, volle CSS-Auflösung und deutlich reduzierte Blur-/Blend-Effekte. Empfohlen.',
+      id: 'balanced', label: 'Ausgewogen', labelEn: 'Balanced', fps: 24, pixelRatio: 1, liveResolution: 0.85,
+      detail: 0.8, shadow: 0.55,
+      hint: '24 fps, volle CSS-Auflösung und deutlich reduzierte Blur-/Blend-Effekte. Empfohlen.',
+      hintEn: '24 fps, full CSS resolution and clearly reduced blur/blend effects. Recommended.',
     },
     quality: {
-      id: 'quality', label: 'Qualität', fps: 30, pixelRatio: 1, liveResolution: 1,
-      detail: 1, shadow: 1, hint: 'Maximal 30 fps mit vollen Effekten. Braucht die meiste GPU-Leistung.',
+      id: 'quality', label: 'Qualität', labelEn: 'Quality', fps: 30, pixelRatio: 1, liveResolution: 1,
+      detail: 1, shadow: 1,
+      hint: 'Maximal 30 fps mit vollen Effekten. Braucht die meiste GPU-Leistung.',
+      hintEn: 'Up to 30 fps with full effects. Needs the most GPU power.',
     },
   };
+
+  function performanceText(profile, field) {
+    const key = `${field}En`;
+    return CMI18n.lang() === 'en' && profile[key] ? profile[key] : profile[field];
+  }
 
   function performanceProfile() {
     return PERFORMANCE_PROFILES[state.settings.performance] || PERFORMANCE_PROFILES.balanced;
@@ -13957,7 +14170,7 @@
     const active = currentTheme();
     return `
       <div class="panel" id="theme-panel">
-        <h3>Aussehen</h3>
+        <h3>${t('settings.look.appearance')}</h3>
         <div class="theme-grid">
           ${THEMES.map((theme) => {
             const c = theme.colors;
@@ -13968,30 +14181,27 @@
                   <i class="tp-side"></i><i class="tp-line"></i><i class="tp-line short"></i><i class="tp-dot"></i><i class="tp-dot two"></i>
                 </span>
                 <strong>${esc(theme.name)}</strong>
-                <small>${theme.light ? 'Hell' : 'Dunkel'}</small>
+                <small>${theme.light ? t('settings.look.light') : t('settings.look.dark')}</small>
               </button>`;
           }).join('')}
         </div>
         <label class="toggle-row" style="margin-top:14px">
           <span>
-            <strong>Akzentfarbe aus dem Cover</strong>
-            <small>Knöpfe, Regler und Markierungen übernehmen die Farbe des laufenden Titels.</small>
+            <strong>${t('settings.look.coverAccent')}</strong>
+            <small>${t('settings.look.coverAccentHelp')}</small>
           </span>
           <input type="checkbox" id="opt-cover-accent" ${state.settings.coverAccent ? 'checked' : ''} />
         </label>
         ${layoutPanelHtml()}
         <label class="toggle-row" style="margin-top:14px">
           <span>
-            <strong>Plattenspieler</strong>
-            <small>Das Cover dreht sich als Schallplatte – im Vollbild-Player mit Tonarm, der beim Abspielen aufsetzt. Auch im Vollbild oben rechts umschaltbar.</small>
+            <strong>${t('settings.look.vinyl')}</strong>
+            <small>${t('settings.look.vinylHelp')}</small>
           </span>
           <input type="checkbox" id="opt-vinyl" ${state.settings.vinyl ? 'checked' : ''} />
         </label>
         ${backgroundPanelHtml()}
-        <p class="muted small" style="margin-top:10px">
-          Farbpaletten von Catppuccin, Dracula, Nord, Tokyo Night, Rosé Pine, Gruvbox und Everforest,
-          jeweils unter MIT-Lizenz (siehe THIRD-PARTY-NOTICES.md).
-        </p>
+        <p class="muted small" style="margin-top:10px">${t('settings.look.credits')}</p>
       </div>`;
   }
 
@@ -15147,26 +15357,26 @@
 
   function visualizerPanel() {
     const styles = [
-      ['radial', 'Kreis ums Cover'],
-      ['bars', 'Balken'],
-      ['wave', 'Welle'],
-      ['mirror', 'Spiegel'],
-      ['particles', 'Partikel'],
+      ['radial', t('settings.look.vizRadial')],
+      ['bars', t('settings.look.vizBars')],
+      ['wave', t('settings.look.vizWave')],
+      ['mirror', t('settings.look.vizMirror')],
+      ['particles', t('settings.look.vizParticles')],
     ];
     return `
       <div class="panel" id="viz-panel">
-        <h3>Visualizer <span class="tag">optional</span></h3>
+        <h3>${t('settings.look.vizTitle')} <span class="tag">${t('common.optional')}</span></h3>
         <label class="toggle-row">
           <span>
-            <strong>Visualizer anzeigen</strong>
-            <small>Analysiert, was gerade läuft, und tanzt im Vollbild-Player mit – Farben kommen aus dem Cover.</small>
+            <strong>${t('settings.look.vizShow')}</strong>
+            <small>${t('settings.look.vizShowHelp')}</small>
           </span>
           <input type="checkbox" id="opt-viz" ${state.settings.visualizer ? 'checked' : ''} />
         </label>
         <label class="toggle-row ${state.settings.visualizer ? '' : 'disabled'}" style="margin-top:6px">
           <span>
-            <strong>Visualizer im Vollbild</strong>
-            <small>Der große Effekt hinter Cover und Songtext. Aus spart die meiste GPU-Leistung, der Mini-Visualizer bleibt unabhängig.</small>
+            <strong>${t('settings.look.vizFullscreen')}</strong>
+            <small>${t('settings.look.vizFullscreenHelp')}</small>
           </span>
           <input type="checkbox" id="opt-fs-viz" ${fsVisualizerOn() ? 'checked' : ''} ${
             state.settings.visualizer ? '' : 'disabled'
@@ -15184,8 +15394,8 @@
         </div>
         <label class="toggle-row ${state.settings.visualizer ? '' : 'disabled'}" style="margin-top:12px">
           <span>
-            <strong>Mini-Visualizer in der Player-Leiste</strong>
-            <small>Kleine Balken neben der Lautstärke.</small>
+            <strong>${t('settings.look.vizMini')}</strong>
+            <small>${t('settings.look.vizMiniHelp')}</small>
           </span>
           <input type="checkbox" id="opt-mini-viz" ${state.settings.miniViz ? 'checked' : ''} ${
             state.settings.visualizer ? '' : 'disabled'
@@ -15198,23 +15408,24 @@
     const profile = performanceProfile();
     return `
       <div class="panel" id="performance-panel">
-        <h3>Leistung im Vollbild</h3>
-        <p>
-          Begrenzt Bildrate, Auflösung und Effekte von Visualizer, bewegtem Cover und
-          Live-Hintergrund. Der Ton und die Audio-Kette sind davon nicht betroffen.
-        </p>
+        <h3>${t('settings.look.performance')}</h3>
+        <p>${t('settings.look.performanceText')}</p>
         <label class="performance-row">
-          <span><strong>Leistungsstufe</strong><small id="performance-hint">${esc(profile.hint)}</small></span>
+          <span><strong>${t('settings.look.performanceLevel')}</strong><small id="performance-hint">${esc(
+            performanceText(profile, 'hint')
+          )}</small></span>
           <select id="opt-performance" class="select-input">
             ${Object.values(PERFORMANCE_PROFILES)
-              .map((item) => `<option value="${item.id}" ${profile.id === item.id ? 'selected' : ''}>${esc(item.label)}</option>`)
+              .map(
+                (item) =>
+                  `<option value="${item.id}" ${profile.id === item.id ? 'selected' : ''}>${esc(
+                    performanceText(item, 'label')
+                  )}</option>`
+              )
               .join('')}
           </select>
         </label>
-        <p class="muted small performance-note">
-          Standard ist „Ausgewogen“. Bei hoher GPU-Last oder im Akkubetrieb „Sparmodus“ wählen.
-          Im Hintergrund und bei reduzierter Bewegung pausieren die Animationen automatisch.
-        </p>
+        <p class="muted small performance-note">${t('settings.look.performanceNote')}</p>
       </div>`;
   }
 
@@ -15653,12 +15864,42 @@
 
   let settingsTab = 'playback';
   const SETTINGS_TABS = [
-    { id: 'playback', label: 'Wiedergabe', icon: 'play', text: 'Autoplay, Songtexte, Übergänge und Web-Player.' },
-    { id: 'sound', label: 'Klang', icon: 'wave', text: 'Lautstärke, Bass, Höhen und Equalizer.' },
-    { id: 'look', label: 'Darstellung', icon: 'spark', text: 'Theme, Hintergrund, Visualizer und Leistung.' },
-    { id: 'plugins', label: 'Plugins', icon: 'plug', text: 'Quellen, OBS-Overlays und Streamer.bot.' },
-    { id: 'connections', label: 'Verbindungen', icon: 'service', text: 'Handy-Fernbedienung, Discord und MusicKit.' },
-    { id: 'system', label: 'System', icon: 'file', text: 'Updates, Backups, Downloads, Dienst-Sessions und Diagnose.' },
+    {
+      id: 'playback',
+      labelKey: 'settings.tab.playback',
+      textKey: 'settings.tab.playbackText',
+      icon: 'play',
+    },
+    {
+      id: 'sound',
+      labelKey: 'settings.tab.sound',
+      textKey: 'settings.tab.soundText',
+      icon: 'wave',
+    },
+    {
+      id: 'look',
+      labelKey: 'settings.tab.look',
+      textKey: 'settings.tab.lookText',
+      icon: 'spark',
+    },
+    {
+      id: 'plugins',
+      labelKey: 'settings.tab.plugins',
+      textKey: 'settings.tab.pluginsText',
+      icon: 'plug',
+    },
+    {
+      id: 'connections',
+      labelKey: 'settings.tab.connections',
+      textKey: 'settings.tab.connectionsText',
+      icon: 'service',
+    },
+    {
+      id: 'system',
+      labelKey: 'settings.tab.system',
+      textKey: 'settings.tab.systemText',
+      icon: 'file',
+    },
   ];
 
   function settingsMeta() {
@@ -15699,6 +15940,27 @@
     refreshStartMenu();
   }
 
+  // Language lives in settings and takes effect on the next start; the button
+  // reloads the renderer once the user confirms that playback stops.
+  function languagePanel() {
+    const current = CMI18n.normalize(state.settings.language);
+    return `
+    <div class="panel" id="language-panel">
+      <h3>${t('settings.language.title')}</h3>
+      <p>${t('settings.language.text')}</p>
+      <div class="row" style="align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">
+        <label class="muted small" for="opt-language">${t('settings.language.label')}</label>
+        <select id="opt-language">
+          <option value="de" ${current === 'de' ? 'selected' : ''}>${t('lang.de')}</option>
+          <option value="en" ${current === 'en' ? 'selected' : ''}>${t('lang.en')}</option>
+        </select>
+        <button class="btn ghost small" data-language-restart>${t('settings.language.restart')}</button>
+      </div>
+      <p class="muted small">${t('settings.language.note')}</p>
+      <p class="muted small">${t('settings.language.partial')}</p>
+    </div>`;
+  }
+
   function renderSettings() {
     const host = $('#view-settings');
     if (!host) return;
@@ -15712,18 +15974,21 @@
       ['CleanMusic', info.version || '–'],
       ['Electron', info.electron || '–'],
       ['Chromium', info.chrome || '–'],
-      ['Plattform', info.platform || '–'],
-      ['Widevine', widevine ? `${widevine.version}` : 'nicht gefunden'],
-      ['Plugins', `${readyPlugins().length} aktiv · ${state.plugins.list.length} gefunden`],
+      [t('settings.fact.platform'), info.platform || '–'],
+      ['Widevine', widevine ? `${widevine.version}` : t('settings.fact.notFound')],
+      [
+        'Plugins',
+        t('settings.fact.plugins', { ready: readyPlugins().length, found: state.plugins.list.length }),
+      ],
     ];
 
     host.innerHTML = `
       <div class="page narrow settings-page">
         <div class="page-head">
           <div>
-            <div class="eyebrow">Einstellungen</div>
-            <h2>${activeTab.label}</h2>
-            <p>${activeTab.text}</p>
+            <div class="eyebrow">${t('settings.eyebrow')}</div>
+            <h2>${t(activeTab.labelKey)}</h2>
+            <p>${t(activeTab.textKey)}</p>
           </div>
         </div>
 
@@ -15731,45 +15996,45 @@
           ${SETTINGS_TABS.map(
             (tab) => `<button class="settings-tab ${tab.id === settingsTab ? 'active' : ''}" role="tab" aria-selected="${
               tab.id === settingsTab
-            }" data-settings-tab="${tab.id}">${ICONS[tab.icon] || ''}<span>${tab.label}</span></button>`
+            }" data-settings-tab="${tab.id}">${ICONS[tab.icon] || ''}<span>${t(tab.labelKey)}</span></button>`
           ).join('')}
         </div>
 
         ${settingsTab === 'playback' ? `
         <div class="panel">
-          <h3>Wiedergabe</h3>
+          <h3>${t('settings.playback.title')}</h3>
           <label class="toggle-row">
             <span>
-              <strong>Dienste im System-Browser öffnen</strong>
-              <small>Standard: eingebetteter Web-Player direkt in CleanMusic.</small>
+              <strong>${t('settings.playback.systemBrowser')}</strong>
+              <small>${t('settings.playback.systemBrowserHelp')}</small>
             </span>
             <input type="checkbox" id="opt-system" ${state.settings.systemBrowser ? 'checked' : ''} />
           </label>
           <label class="toggle-row">
             <span>
-              <strong>Autoplay</strong>
-              <small>Wenn die Warteschlange zu Ende ist, laufen passende Vorschläge weiter – auch nach Songwünschen. Von dir Eingereihtes kommt immer zuerst.</small>
+              <strong>${t('settings.playback.autoplay')}</strong>
+              <small>${t('settings.playback.autoplayHelp')}</small>
             </span>
             <input type="checkbox" id="opt-autoplay" ${autoplayOn() ? 'checked' : ''} />
           </label>
           <label class="toggle-row advanced-only">
             <span>
-              <strong>KI-Songs markieren</strong>
-              <small>Titel mit KI-Hinweis (z. B. „AI Cover“, „Suno“, „KI-generiert“) bekommen ein „KI?“. Erkennt nur, was gekennzeichnet ist.</small>
+              <strong>${t('settings.playback.markAi')}</strong>
+              <small>${t('settings.playback.markAiHelp')}</small>
             </span>
             <input type="checkbox" id="opt-markai" ${state.settings.markAi !== false ? 'checked' : ''} />
           </label>
           <label class="toggle-row advanced-only">
             <span>
-              <strong>Stream-sicher-Modus (Ich streame)</strong>
-              <small>Zeigt in der Player-Leiste, ob der Titel frei lizenziert ist (NCS, CC0, CC BY), und Songwünsche kommen nur noch aus freier Musik.</small>
+              <strong>${t('settings.playback.streamSafe')}</strong>
+              <small>${t('settings.playback.streamSafeHelp')}</small>
             </span>
             <input type="checkbox" id="opt-streamsafe" ${streamSafeOn() ? 'checked' : ''} />
           </label>
           <label class="toggle-row">
             <span>
-              <strong>Songtexte laden</strong>
-              <small>Mitlaufender Songtext im Vollbild-Player (und im OBS-Overlay-Stil „Songtext“). Fragt Titel und Artist bei der freien Datenbank LRCLIB an.</small>
+              <strong>${t('settings.playback.lyrics')}</strong>
+              <small>${t('settings.playback.lyricsHelp')}</small>
             </span>
             <input type="checkbox" id="opt-lyrics" ${lyricsOn() ? 'checked' : ''} />
           </label>
@@ -15780,41 +16045,41 @@
 
         ${settingsTab === 'sound' ? `
         <div class="panel">
-          <h3>Klang &amp; Lautstärke</h3>
+          <h3>${t('settings.sound.title')}</h3>
           <label class="toggle-row">
             <span>
-              <strong>Lautstärke angleichen</strong>
-              <small>Gleicht laute und leise Titel sanft an, damit du nicht ständig nachregeln musst.</small>
+              <strong>${t('settings.sound.normalize')}</strong>
+              <small>${t('settings.sound.normalizeHelp')}</small>
             </span>
             <input type="checkbox" id="opt-normalize" ${state.settings.normalize ? 'checked' : ''} />
           </label>
           <label class="toggle-row">
             <span>
-              <strong>Boost bis 150 %</strong>
-              <small>Für leise Quellen. Ein Limiter verhindert Übersteuern. Mausrad, M und +/− regeln überall.</small>
+              <strong>${t('settings.sound.boost')}</strong>
+              <small>${t('settings.sound.boostHelp')}</small>
             </span>
             <input type="checkbox" id="opt-boost" ${state.settings.volumeBoost ? 'checked' : ''} />
           </label>
           <div class="tone-row">
             <div class="tone-head">
-              <strong>Klang</strong>
-              <small>Bass und Höhen anheben oder absenken. 0 dB = unverändert.</small>
+              <strong>${t('settings.sound.tone')}</strong>
+              <small>${t('settings.sound.toneHelp')}</small>
             </div>
             <label class="tone-control">
-              <span>Bass</span>
+              <span>${t('settings.sound.bass')}</span>
               <input type="range" id="opt-bass" min="-6" max="9" step="1" value="${Number(state.settings.bass) || 0}" />
               <output id="opt-bass-value">${toneLabel(state.settings.bass)}</output>
             </label>
             <label class="tone-control">
-              <span>Höhen</span>
+              <span>${t('settings.sound.treble')}</span>
               <input type="range" id="opt-treble" min="-6" max="6" step="1" value="${Number(state.settings.treble) || 0}" />
               <output id="opt-treble-value">${toneLabel(state.settings.treble)}</output>
             </label>
             <div class="row tone-presets">
-              <button class="radio-tag" data-tone-preset="0,0">Neutral</button>
-              <button class="radio-tag" data-tone-preset="5,0">Mehr Bass</button>
-              <button class="radio-tag" data-tone-preset="-2,4">Stimme klar</button>
-              <button class="radio-tag" data-tone-preset="4,3">Laptop-Lautsprecher</button>
+              <button class="radio-tag" data-tone-preset="0,0">${t('settings.sound.neutral')}</button>
+              <button class="radio-tag" data-tone-preset="5,0">${t('settings.sound.moreBass')}</button>
+              <button class="radio-tag" data-tone-preset="-2,4">${t('settings.sound.clearVoice')}</button>
+              <button class="radio-tag" data-tone-preset="4,3">${t('settings.sound.laptop')}</button>
             </div>
           </div>
           ${equalizerPanelHtml()}
@@ -15835,79 +16100,74 @@
         ${discordPanel()}
 
         <div class="panel" id="remote-panel">
-          <h3>Handy-Fernbedienung</h3>
-          <p>Steuere CleanMusic im selben privaten WLAN über eine kleine Webseite. Standardmäßig aus. Jede Anfrage braucht den geheimen Link-Schlüssel; nur Loopback und private IPv4-Netze werden angenommen.</p>
+          <h3>${t('settings.connections.remoteTitle')}</h3>
+          <p>${t('settings.connections.remoteText')}</p>
           <label class="toggle-row">
-            <span><strong>Fernbedienung einschalten</strong><small>Startet den lokalen HTTP-Server auf Port 4790. Beim ersten Windows-Dialog nur „Private Netzwerke“ zulassen.</small></span>
+            <span><strong>${t('settings.connections.remoteOn')}</strong><small>${t('settings.connections.remoteOnHelp')}</small></span>
             <input type="checkbox" id="opt-remote" ${state.remote.enabled ? 'checked' : ''} />
           </label>
           <div class="row" style="margin-top:12px">
-            <label class="muted small" for="opt-remote-port">Port</label>
+            <label class="muted small" for="opt-remote-port">${t('settings.connections.port')}</label>
             <input id="opt-remote-port" type="number" min="1024" max="65535" value="${Number(state.remote.requestedPort || state.remote.port) || 4790}" style="width:110px" />
-            <button class="btn ghost small" data-remote-action="port">Port speichern</button>
-            ${state.remote.enabled ? '<button class="btn ghost small danger" data-remote-action="rotate">Neuen Link erzeugen</button>' : ''}
+            <button class="btn ghost small" data-remote-action="port">${t('settings.connections.savePort')}</button>
+            ${state.remote.enabled ? `<button class="btn ghost small danger" data-remote-action="rotate">${t('settings.connections.rotate')}</button>` : ''}
           </div>
           ${state.remote.error ? `<p class="muted small">${esc(state.remote.error)}</p>` : ''}
-          ${state.remote.enabled && state.remote.url ? `<div class="row" style="align-items:flex-start;margin-top:14px"><img src="${esc(state.remote.qr)}" alt="QR-Code für die Fernbedienung" width="150" height="150" style="border-radius:10px;background:white;padding:5px" /><div><strong>Auf dem Handy öffnen</strong><p class="small"><a href="${esc(state.remote.url)}" id="remote-link">${esc(state.remote.url)}</a></p><p class="muted small">Der Schlüssel steckt im Link. Teile ihn nur mit Geräten, denen du vertraust. Ein neuer Link widerruft den alten sofort.</p></div></div>` : ''}
+          ${state.remote.enabled && state.remote.url ? `<div class="row" style="align-items:flex-start;margin-top:14px"><img src="${esc(state.remote.qr)}" alt="${t('settings.connections.qrAlt')}" width="150" height="150" style="border-radius:10px;background:white;padding:5px" /><div><strong>${t('settings.connections.openPhone')}</strong><p class="small"><a href="${esc(state.remote.url)}" id="remote-link">${esc(state.remote.url)}</a></p><p class="muted small">${t('settings.connections.keyNote')}</p></div></div>` : ''}
           <div class="row" style="margin-top:14px;align-items:center;gap:8px;flex-wrap:wrap">
-            <label class="muted small" for="tv-pair-url">An Fernseher senden</label>
+            <label class="muted small" for="tv-pair-url">${t('settings.connections.sendTv')}</label>
             <input id="tv-pair-url" type="url" placeholder="http://192.168.…:4790/?k=…" spellcheck="false" style="flex:1 1 240px;min-width:0" />
-            <button class="btn ghost small" data-tv-pair="send">Favoriten &amp; Playlists senden</button>
+            <button class="btn ghost small" data-tv-pair="send">${t('settings.connections.send')}</button>
           </div>
-          <p class="muted small">Den Link zeigt CleanMusic TV auf dem Startbildschirm (QR-Code). Am Fernseher einmal bestätigen.</p>
+          <p class="muted small">${t('settings.connections.tvNote')}</p>
         </div>
 
         <div class="panel">
-          <h3>Apple Music · MusicKit</h3>
-          <p>
-            Apple Music ist der einzige große Dienst, der Dritten offizielle
-            In-App-Wiedergabe erlaubt. Dafür brauchst du einen MusicKit-Developer-Token
-            aus deinem Apple-Developer-Account.
-          </p>
+          <h3>${t('settings.connections.musickitTitle')}</h3>
+          <p>${t('settings.connections.musickitText')}</p>
           <div class="row">
-            <button class="btn primary" id="btn-musickit">MusicKit-Fenster öffnen</button>
-            <a class="btn ghost" href="https://developer.apple.com/musickit/" target="_blank" rel="noreferrer">Apple-Doku</a>
+            <button class="btn primary" id="btn-musickit">${t('settings.connections.musickitOpen')}</button>
+            <a class="btn ghost" href="https://developer.apple.com/musickit/" target="_blank" rel="noreferrer">${t('settings.connections.appleDocs')}</a>
           </div>
-          <p class="muted small" style="margin-top:10px">
-            Hinweis: MusicKit braucht ein Apple-Music-Abo und funktioniert nur,
-            wenn Widevine geladen ist.
-          </p>
+          <p class="muted small" style="margin-top:10px">${t('settings.connections.musickitNote')}</p>
         </div>
         ` : ''}
 
         ${settingsTab === 'system' ? `
+        ${languagePanel()}
+
         <div class="panel">
-          <h3>System &amp; Start</h3>
+          <h3>${t('settings.system.title')}</h3>
           <dl class="facts">
             ${facts.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('')}
           </dl>
           <div class="row" style="margin-top:12px">
-            <button class="btn ghost small" data-onboarding="open">Erste Schritte erneut zeigen</button>
-            <button class="btn ghost small" data-shortcuts="open">Tastenkürzel</button>
+            <button class="btn ghost small" data-onboarding="open">${t('settings.system.onboarding')}</button>
+            <button class="btn ghost small" data-shortcuts="open">${t('settings.system.shortcuts')}</button>
             <label class="toggle-row" style="flex:1;min-width:240px;margin:0">
-              <span><strong>Globale Tastenkürzel</strong><small>Standardmäßig aus. Steuern CleanMusic auch im Hintergrund.</small></span>
+              <span><strong>${t('settings.system.globalShortcuts')}</strong><small>${t('settings.system.globalShortcutsHelp')}</small></span>
               <input type="checkbox" id="opt-global-shortcuts" ${state.globalShortcuts.enabled ? 'checked' : ''} />
             </label>
           </div>
-          ${state.globalShortcuts.conflict ? `<p class="muted small">Kürzel ist schon belegt: ${esc(state.globalShortcuts.conflict)}</p>` : ''}
+          ${state.globalShortcuts.conflict ? `<p class="muted small">${t('settings.system.conflict', { name: state.globalShortcuts.conflict })}</p>` : ''}
           <label class="toggle-row" style="margin-top:14px">
             <span>
-              <strong>Beim Schließen im Infobereich weiterlaufen</strong>
-              <small>Das X versteckt CleanMusic nur, die Musik läuft weiter. Beenden über das Symbol im Infobereich.</small>
+              <strong>${t('settings.system.tray')}</strong>
+              <small>${t('settings.system.trayHelp')}</small>
             </span>
             <input type="checkbox" id="opt-tray" ${state.closeToTray ? 'checked' : ''} />
           </label>
           <label class="toggle-row">
             <span>
-              <strong>Fortschritt in der Taskleiste</strong>
-              <small>${info.platform === 'win32' ? 'Zeigt Titel-Fortschritt und Play/Pause-Knöpfe in der Windows-Taskleiste.' : 'Nur unter Windows verfügbar.'}</small>
+              <strong>${t('settings.system.taskbar')}</strong>
+              <small>${info.platform === 'win32' ? t('settings.system.taskbarHelpWin') : t('settings.system.taskbarHelpOther')}</small>
             </span>
             <input type="checkbox" id="opt-taskbar" ${state.taskbarProgress ? 'checked' : ''} ${info.platform === 'win32' ? '' : 'disabled'} />
           </label>
-          ${info.platform === 'win32' ? `<label class="toggle-row" style="margin-top:14px"><span><strong>Mit Windows starten</strong><small>${state.closeToTray ? 'Startet im Infobereich; andernfalls minimiert.' : 'Startet minimiert.'} Portable Builds werden bei Updates auf den neuen Dateipfad gesetzt.</small></span><input type="checkbox" id="opt-login" ${state.startOnLogin ? 'checked' : ''} /></label>` : ''}
+          ${info.platform === 'win32' ? `<label class="toggle-row" style="margin-top:14px"><span><strong>${t('settings.system.login')}</strong><small>${state.closeToTray ? t('settings.system.loginTray') : t('settings.system.loginMin')} ${t('settings.system.loginPortable')}</small></span><input type="checkbox" id="opt-login" ${state.startOnLogin ? 'checked' : ''} /></label>` : ''}
           <label class="toggle-row" style="margin-top:14px">
-            <span><strong>Hilfe</strong><small>Diagnose bleibt im Arbeitsspeicher. Es werden keine Dateien oder Telemetrie angelegt.</small></span>
-            <span class="row"><button class="btn ghost small" data-diagnostic="copy">Diagnose kopieren</button><button class="btn ghost small" data-diagnostic="issue">Fehler melden</button></span>
+            <span><strong>${t('settings.system.help')}</strong><small>${t('settings.system.helpText')}</small></span>
+            <span class="row"><button class="btn ghost small" data-diagnostic="copy">${t('settings.system.copyDiagnostic')}</button><button class="btn ghost small" data-diagnostic="issue">${t('settings.system.reportIssue')}</button></span>
           </label>
         </div>
 
@@ -16717,6 +16977,16 @@ ${updatePanel()}
         return;
       }
 
+      if (event.target.closest('[data-language-restart]')) {
+        const confirmed = await askConfirm({
+          title: t('settings.language.restartTitle'),
+          message: t('settings.language.restartMessage'),
+          confirm: t('settings.language.restartConfirm'),
+        });
+        if (confirmed) location.reload();
+        return;
+      }
+
       const eqAction = event.target.closest('[data-eq-action]');
       if (eqAction) {
         if (eqAction.dataset.eqAction === 'save') await saveCustomEq();
@@ -17008,6 +17278,13 @@ ${updatePanel()}
     });
 
     $('#view-settings').addEventListener('change', async (event) => {
+      if (event.target.id === 'opt-language') {
+        state.settings.language = CMI18n.normalize(event.target.value);
+        saveSettings();
+        toast(t('settings.language.saved'));
+        return;
+      }
+
       if (event.target.id === 'opt-system') {
         state.settings.systemBrowser = event.target.checked;
         saveSettings();
@@ -17638,6 +17915,8 @@ ${updatePanel()}
    * ---------------------------------------------------------------- */
 
   function init() {
+    CMI18n.setLang(state.settings.language);
+    CMI18n.applyStatic();
     applyTheme();
     applyBackground();
     applyLayout();
@@ -18536,7 +18815,21 @@ ${updatePanel()}
         state.nowMode = 'plugin';
         updateLyricLine();
         const full = host ? host.querySelectorAll('p[data-ly]').length : 0;
-        return { before, preview, full };
+        // Plain fallback from the second database: lines + attribution.
+        Object.assign(lyricsState, {
+          key: 'smoke|plain',
+          lines: [],
+          plain: 'Erste Zeile\nZweite Zeile',
+          source: 'ovh',
+          loading: false,
+          error: null,
+          index: -1,
+        });
+        renderLyrics();
+        const sourceNote = Boolean(
+          host && host.textContent.includes('lyrics.ovh') && host.textContent.includes('Erste Zeile')
+        );
+        return { before, preview, full, sourceNote };
       } finally {
         lyricsHold = false;
         state.settings.lyrics = saved.lyrics;

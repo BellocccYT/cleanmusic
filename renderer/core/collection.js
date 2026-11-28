@@ -143,7 +143,10 @@
     }
     const added = (row) => Number(row.entry.addedAt) || 0;
     const text = (value) => loose(value).trim();
-    const by = (field) => (a, b) => text(a.entry[field]).localeCompare(text(b.entry[field]), 'de');
+    // UI language, with German as the fallback when i18n is not loaded (tests).
+    const locale =
+      (typeof window !== 'undefined' && window.CMI18n && window.CMI18n.locale && window.CMI18n.locale()) || 'de';
+    const by = (field) => (a, b) => text(a.entry[field]).localeCompare(text(b.entry[field]), locale);
     if (sort === 'added') view.sort((a, b) => added(b) - added(a) || b.index - a.index);
     else if (sort === 'oldest') view.sort((a, b) => added(a) - added(b) || a.index - b.index);
     else if (sort === 'title') view.sort((a, b) => by('title')(a, b) || a.index - b.index);
